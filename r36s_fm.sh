@@ -10,10 +10,6 @@ echo "Procurando por subpastas contendo ROMs..."
 
 gamelist_dirs=()
 for dir in "${dirs[@]}"; do  # Itera sobre cada diretório e checa se a saída de FIND ñ é uma string vazia -n
-    #if [ -n "$(find "$dir" -mindepth 1 -print -quit)" ]; then
-
-        # printf '\e[36m%s\e[0m não está vazio.\n' "$dir"
-     
      if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
         gamelist_dirs+=("$dir")
     else
@@ -30,10 +26,14 @@ select dir in "${gamelist_dirs[@]}" "Sair"; do
            exit 0
            ;;
        *)
-            
+           if [[ ! $REPLY =~ ^[0-9]+$ ]] || [ "$REPLY" -lt 1 ] || [ "$REPLY" -gt "${#gamelist_dirs[@]}" ]; then
+               echo "Opção inválida. Tente novamente."
+               continue
+           fi
            cd "$(pwd)/$dir"
-           echo "$dir $REPLY"
-           exit 0 
+           break
            ;;
    esac
 done
+
+echo "teste"
