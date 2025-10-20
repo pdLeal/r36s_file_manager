@@ -1,23 +1,23 @@
 #!/bin/bash
 
-##################################################### 
-echo "Avaliando Diretório"
-
+#####################################################
 dirs=(*/)
-total_dirs=$(printf '%s\n' "${dirs[@]}" | wc -l)
-printf '\e[32m%s Subpastas Encontradas\e[0m\n' "$total_dirs"
+check_dir () {
+    local total_dirs=$(printf '%s\n' "${dirs[@]}" | wc -l)
+    printf '\e[32m%s Subpastas Encontradas\e[0m\n' "$total_dirs"
 
-echo "Procurando por subpastas contendo ROMs..."
+}
 
 games_dirs=()
 no_games_dirs=()
-extensions="nes,smc,sfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,gdi,chd,zip,7z"
+look4_roms () {
+    local extensions="nes,smc,sfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,gdi,chd,zip,7z"
+    
+    # Converte "nes,chd,zip" em "-name '*.nes' -o -name '*.chd' -o -name '*.zip'"
+    local ext_find=$(echo "$extensions" | awk -F, '{for(i=1;i<=NF;i++) printf "-name *.%s%s",$i,(i==NF?"":" -o ")}')
 
-# Converte "nes,chd,zip" em "-name '*.nes' -o -name '*.chd' -o -name '*.zip'"
-ext_find=$(echo "$extensions" | awk -F, '{for(i=1;i<=NF;i++) printf "-name *.%s%s",$i,(i==NF?"":" -o ")}')
-
-for dir in "${dirs[@]}"; do
-# Itera sobre cada diretório e checa se a saída de FIND ñ é uma string vazia -n
+    for dir in "${dirs[@]}"; do
+    # Itera sobre cada diretório e checa se a saída de FIND ñ é uma string vazia -n
      if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
     
         if find "$dir" -maxdepth 1 -type f \( $ext_find \) -print -quit| grep -q .; then
@@ -33,35 +33,39 @@ for dir in "${dirs[@]}"; do
     fi
 done
 
-printf '\e[32m%s Subpastas contendo ROMs\e[0m\n' "${#games_dirs[@]}" 
-printf '\e[91m%s Subpastas possuem apenas "gamelist.xml"\e[0m\n' "${#no_games_dirs[@]}" 
 
-echo "O que deseja fazer?"
-select option in "Ver subpastas com ROMs" "Ver subpastas sem ROMs" "Sair"; do
-    case "$option" in
-        "Ver subpastas com ROMs")
-            printf '\e[32mSubpastas com ROMs:\e[0m\n'
-            for gd in "${games_dirs[@]}"; do
-                echo "$gd"
-            done
-            break
-            ;;
-        "Ver subpastas sem ROMs")
-            printf '\e[91mSubpastas sem ROMs:\e[0m\n'
-            for ngd in "${no_games_dirs[@]}"; do
-                echo "$ngd"
-            done
-            break
-            ;;
-        "Sair")
-            echo "Saindo..."
-            exit 0
-            ;;
-        *)
-            echo "Opção inválida. Tente novamente."
-            ;;
-    esac
-done
+}
+
+main () {
+    echo "Avaliando Diretório"
+    check_dir
+
+    echo "Procurando por subpastas contendo ROMs..."
+    look4_roms
+    printf '\e[32m%s Subpastas contendo ROMs\e[0m\n' "${#games_dirs[@]}" 
+    printf '\e[91m%s Subpastas possuem apenas "gamelist.xml"\e[0m\n' "${#no_games_dirs[@]}" 
+
+}
+main "$@"
+
+
+
+
+#printf "O que deseja fazer?\n1) Ver ROMs\n2) Ver Outros\n"
+#read -p "Escolha: " user_option
+#
+#case "$user_option" in
+#    1)
+#        echo "Subpastas com ROMs"
+#        ;;
+#    2)
+#        echo "Subpastas sem ROMs"
+#        ;;
+#    *)
+#        echo "Opção inválida. Saindo..."
+#        exit 1
+#        ;;
+#esac
 
 
 
