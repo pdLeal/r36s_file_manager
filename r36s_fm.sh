@@ -8,6 +8,11 @@ CYAN="\e[36m"
 YELLOW="\e[93m"
 BLUE="\e[94m"
 ENDCOLOR="\e[0m"
+
+EXTENSIONS="nes,smc,sfc,fig,gb,gbsfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,PBP,gdi,chd,zip,7z"
+
+
+
 # FUNÇÕES AUXILIARES
 is_valid_option () {
 # Verifica se a entrada é um número, se ñ é < 1 ou > q o número de opções 
@@ -32,10 +37,8 @@ check_dir () {
 GAMES_DIRS=()
 NO_GAMES_DIRS=()
 look4_roms () {
-    local extensions="nes,smc,sfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,gdi,chd,zip,7z"
-    
     # Converte "nes,chd,zip" em "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
-    local ext_find=$(echo "$extensions" | awk -F, '{for(i=1;i<=NF;i++) printf "-name *.%s%s",$i,(i==NF?"":" -o ")}')
+    local ext_find=$(echo "$EXTENSIONS" | awk -F, '{for(i=1;i<=NF;i++) printf "-name *.%s%s",$i,(i==NF?"":" -o ")}')
 
     for dir in "${DIRS[@]}"; do
     # Itera sobre cada diretório e checa se a saída de FIND ñ é uma string vazia -n
@@ -101,6 +104,46 @@ select_dir () {
 
 }
 
+find_games () {
+     # Coleta todos os arquivos de jogos com as extensões especificadas
+        shopt -s globstar nullglob
+        local game_files=( **/*.{nes,smc,sfc,fig,gb,gbsfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,PBP,gdi,chd,zip,7z} )
+
+        printf "${GREEN}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_files[@]}"
+
+        # Extrai caminhos e nomes dos jogos do gamelist.xml
+        mapfile -t paths < <(awk -F'[<>]' '/<path>/{print $3}' gamelist.xml | xargs -n1 basename)
+        mapfile -t names < <(awk -F'[<>]' '/<name>/{print $3}' gamelist.xml) 
+
+        # Criar mapa associativo dos arquivos existentes
+        declare -A files_map
+        local game=""
+        for game in "${game_files[@]}"; do
+            files_map["$game"]=1
+        done
+
+       # Descobrir arquivos ausentes
+        local missing_files=()
+        local path=""
+        for path in "${paths[@]}"; do
+            if [[ -z "${files_map[$path]:-}" ]]; then
+                missing_files+=("$path")
+            fi
+        done
+#
+       # Imprimir resultado
+       if [[ ${#missing_files[@]} -eq 0 ]]; then
+           echo "Todos os arquivos do XML existem no game_files."
+       else
+           echo "Arquivos do XML ausentes em game_files:"
+           for f in "${missing_files[@]}"; do
+               echo " - $f"
+           done
+       fi
+
+
+}
+
 main () {
 
     echo "Avaliando Diretório..."
@@ -114,15 +157,15 @@ main () {
     ask_user "Ver subpastas com ROMs" "Ver subpastas sem ROMs"
     if [[ "$USER_ANSWER" -eq 1 ]]; then
         select_dir "${GAMES_DIRS[@]}"
+
+        find_games
+
     else
         select_dir "${NO_GAMES_DIRS[@]}"
     fi
 
-    ask_user "Listar jogos" "Copiar jogo" "Mover jogo" "Deletar jogo"
+    #ask_user "Listar jogos" "Copiar jogo" "Mover jogo" "Achar outras versões" "Encontrar arquivos inúteis" "Deletar jogo"
     
-
-
-
 
 }
 main "$@"
