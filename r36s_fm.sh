@@ -26,6 +26,37 @@ is_valid_option () {
     fi
 }
 
+get_files() {
+ # Coleta todos os arquivos de jogos com as extensões especificadas
+    shopt -s globstar nullglob
+    local -n found=$1 
+    found=( **/*.{nes,smc,sfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,PBP,gdi,chd,zip,7z} )
+}
+
+find_only_in_xml() {
+    local -n xml_only=$1
+    local -n g_files=$2
+    local game=""
+    
+    declare -A game_hash
+    for game in "${g_files[@]}"; do
+        game_hash["$game"]=1
+    done
+
+    # Verificar cada jogo do XML
+    local path=""
+    local name=""
+    while IFS='|' read -r path name; do
+        path="${path#./}"  # Remove o prefixo ./
+        # Se NÃO está no hash, adiciona
+        if [ -z "${game_hash[$path]:-}" ]; then
+            xml_only+=("$name")
+        fi
+    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml)
+
+}
+
+
 #####################################################
 DIRS=(*/)
 check_dir () {
@@ -105,43 +136,15 @@ select_dir () {
 }
 
 find_games () {
-     # Coleta todos os arquivos de jogos com as extensões especificadas
-        shopt -s globstar nullglob
-        local game_files=( **/*.{nes,smc,sfc,fig,gb,gbsfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,PBP,gdi,chd,zip,7z} )
+        local game_files=()
+        local only_in_xml=()
+
+        get_files game_files
+        find_only_in_xml only_in_xml game_files
 
         printf "${GREEN}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_files[@]}"
-
-        # Extrai caminhos e nomes dos jogos do gamelist.xml
-        mapfile -t paths < <(awk -F'[<>]' '/<path>/{print $3}' gamelist.xml | xargs -n1 basename)
-        mapfile -t names < <(awk -F'[<>]' '/<name>/{print $3}' gamelist.xml) 
-
-        # Criar mapa associativo dos arquivos existentes
-        declare -A files_map
-        local game=""
-        for game in "${game_files[@]}"; do
-            files_map["$game"]=1
-        done
-
-       # Descobrir arquivos ausentes
-        local missing_files=()
-        local path=""
-        for path in "${paths[@]}"; do
-            if [[ -z "${files_map[$path]:-}" ]]; then
-                missing_files+=("$path")
-            fi
-        done
-#
-       # Imprimir resultado
-       if [[ ${#missing_files[@]} -eq 0 ]]; then
-           echo "Todos os arquivos do XML existem no game_files."
-       else
-           echo "Arquivos do XML ausentes em game_files:"
-           for f in "${missing_files[@]}"; do
-               echo " - $f"
-           done
-       fi
-
-
+        printf "${YELLOW}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#only_in_xml[@]}"
+        
 }
 
 main () {
@@ -170,42 +173,7 @@ main () {
 }
 main "$@"
 
-#
-## Coleta todos os arquivos de jogos com as extensões especificadas
-#shopt -s globstar nullglob
-#game_files=( **/*.{nes,smc,sfc,fig,gb,gbsfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,gdi,chd,zip,7z} )
-#
-#printf '\e[93m%s Jogos Encontrados\e[0m\n' "${#game_files[@]}"
-#for game in "${game_files[@]}"; do
-#    echo "$game"
-#done
 
-# Extrai caminhos e nomes dos jogos do gamelist.xml
-#mapfile -t paths < <(awk -F'[<>]' '/<path>/{print $3}' gamelist.xml)
-#mapfile -t names < <(awk -F'[<>]' '/<name>/{print $3}' gamelist.xml)
-
-
-#echo "${#names[@]} jogos encontrados: ${#paths[@]} caminhos correspondentes."
-
-
-#select name in "${names[@]}" "Sair"; do
-#    case "$name" in
-#        "Sair")
-#            echo "Saindo..."
-#            exit 0
-#            ;;
-#        *)
-#            if [[ ! $REPLY =~ ^[0-9]+$ ]] || [ "$REPLY" -lt 1 ] || [ "$REPLY" -gt "${#names[@]}" ]; then
-#                echo "Opção inválida. Tente novamente."
-#                continue
-#            fi
-#            selected_name="$name"
-#            break
-#            ;;
-#    esac
-#done
-#
-#printf 'Você selecionou: \e[36m%s\e[0m\n' "$selected_name"  
 #
 #while true; do
 #read -p "O que deseja fazer com este jogo? Mover-> mv, Copiar-> cp, Deletar-> rm, Sair: " action
