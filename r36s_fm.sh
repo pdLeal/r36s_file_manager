@@ -30,16 +30,23 @@ get_files() {
  # Coleta todos os arquivos de jogos com as extensões especificadas
     shopt -s globstar nullglob
     local -n found=$1 
-    found=( **/*.{nes,smc,sfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,PBP,gdi,chd,zip,7z} )
+
+    IFS=',' read -ra EXTS <<< "$EXTENSIONS"
+
+    for ext in "${EXTS[@]}"; do
+    found+=( **/*."$ext" )
+    done
+
 }
 
 find_only_in_xml() {
-    local -n xml_only=$1
-    local -n g_files=$2
+    # Compara os arquivos encontrados com os do gamelist.xml
+    local -n files=$1
+    local -n in_xml=$2
     local game=""
     
     declare -A game_hash
-    for game in "${g_files[@]}"; do
+    for game in "${files[@]}"; do
         game_hash["$game"]=1
     done
 
@@ -50,7 +57,7 @@ find_only_in_xml() {
         path="${path#./}"  # Remove o prefixo ./
         # Se NÃO está no hash, adiciona
         if [ -z "${game_hash[$path]:-}" ]; then
-            xml_only+=("$name")
+            in_xml+=("$name")
         fi
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml)
 
@@ -135,16 +142,51 @@ select_dir () {
 
 }
 
+GAME_FILES=()
+ONLY_IN_XML=()
 find_games () {
-        local game_files=()
-        local only_in_xml=()
+    get_files GAME_FILES
+    find_only_in_xml GAME_FILES ONLY_IN_XML
 
-        get_files game_files
-        find_only_in_xml only_in_xml game_files
-
-        printf "${GREEN}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_files[@]}"
-        printf "${YELLOW}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#only_in_xml[@]}"
+    printf "${GREEN}%s Jogos Encontrados${ENDCOLOR}\n" "${#GAME_FILES[@]}"
+    printf "${YELLOW}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#ONLY_IN_XML[@]}"
         
+}
+
+SELECTED_GAME=""
+select_game () {
+    ###################################
+    ######### PRECISA OTIMIZAR #########
+    #####################################
+    local opt=""
+
+    local game=""
+    local game_names=()
+    for game in "$@"; do
+        local name=$(xmlstarlet sel -t -m "//game[path=\"./$game\"]" -v "name" -n ./gamelist.xml)
+        game_names+=("$name")
+    done
+
+    printf "${BLUE}Selecione um jogo:${ENDCOLOR}\n"
+    select opt in "${game_names[@]}" "Sair"; do
+        case "$opt" in
+            "Sair")
+                echo "Saindo..."
+                exit 0
+                ;;
+            *)
+                if ! is_valid_option "$REPLY" "$#"; then
+                    printf "${RED}Opção inválida. Tente novamente.${ENDCOLOR}\n"
+                    continue
+                fi
+
+                printf "Jogo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$opt"
+                SELECTED_GAME="$opt"
+                break
+                ;;
+        esac
+    done
+
 }
 
 main () {
@@ -160,52 +202,40 @@ main () {
     ask_user "Ver subpastas com ROMs" "Ver subpastas sem ROMs"
     if [[ "$USER_ANSWER" -eq 1 ]]; then
         select_dir "${GAMES_DIRS[@]}"
-
         find_games
 
-    else
-        select_dir "${NO_GAMES_DIRS[@]}"
+        ask_user "Ver jogos" "Editar gamelist.xml"
+
+    #else VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
+    #    select_dir "${NO_GAMES_DIRS[@]}"
     fi
 
-    #ask_user "Listar jogos" "Copiar jogo" "Mover jogo" "Achar outras versões" "Encontrar arquivos inúteis" "Deletar jogo"
-    
+    if [[ "$USER_ANSWER" -eq 1 ]]; then
+
+        select_game "${GAME_FILES[@]}"    
+
+        while true; do
+        ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
+        case "$USER_ANSWER" in
+                1)
+                    echo "Mover jogo selecionado"
+                    break
+                    ;;
+                2)
+                   echo "Copiar jogo selecionado"
+                    break
+                    ;;
+                3)
+                    echo "Deletar jogo selecionado"
+                    break
+                    ;;
+                *)
+                    echo "Escolha uma ação válida."
+                    continue
+                    ;;
+            esac
+        done 
+    fi
 
 }
 main "$@"
-
-
-#
-#while true; do
-#read -p "O que deseja fazer com este jogo? Mover-> mv, Copiar-> cp, Deletar-> rm, Sair: " action
-#case "$action" in
-#        mv)
-#            read -p "Digite o caminho de destino para mover o jogo: " dest_path
-#            break
-#            ;;
-#        cp)
-#            read -p "Digite o caminho de destino para copiar o jogo: " dest_path
-#            break
-#            ;;
-#        rm)
-#            printf 'Deletando o jogo: \e[31m%s\e[0m\n' "$selected_name"
-#            break
-#            ;;
-#        Sair)
-#            echo "Saindo..."
-#            exit 0
-#            ;;
-#        *)
-#            echo "Escolha uma ação válida."
-#            continue
-#            ;;
-#    esac
-#done
-
-#games=()
-#for i in "${!paths[@]}"; do
-#    games+=("${names[i]}|${paths[i]}")
-#done            
-#
-#for game in "${games[@]}"; do
-#    echo "$game"
-#done
