@@ -213,12 +213,15 @@ main () {
    fi
 
    if [[ "$USER_ANSWER" -eq 1 ]]; then
-       select_game "${GAME_FILES[@]}"    
+       select_game "${GAME_FILES[@]}" 
+
        while true; do
        ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
        case "$USER_ANSWER" in
                1)
-                   echo "Mover jogo selecionado"
+                   read -p "Digite o caminho de destino: " dest_path
+                   printf "MOvendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME" "$dest_path"
+                   #mv "$SELECTED_GAME" "$dest_path"
                    break
                    ;;
                2)
