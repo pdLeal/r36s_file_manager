@@ -39,15 +39,16 @@ get_files() {
 
 }
 
+    declare -A NAME_MAP
 find_only_in_xml() {
     # Compara os arquivos encontrados com os do gamelist.xml
     local -n files=$1
     local -n in_xml=$2
     local game=""
     
-    declare -A game_hash
     for game in "${files[@]}"; do
-        game_hash["$game"]=1
+        NAME_MAP["$game"]=1
+        
     done
 
     # Verificar cada jogo do XML
@@ -55,9 +56,13 @@ find_only_in_xml() {
     local name=""
     while IFS='|' read -r path name; do
         path="${path#./}"  # Remove o prefixo ./
+
         # Se NÃO está no hash, adiciona
-        if [ -z "${game_hash[$path]:-}" ]; then
+        if [ -z "${NAME_MAP[$path]:-}" ]; then
             in_xml+=("$name")
+        
+        else #  Atualiza o nome no hash para referência futura
+            NAME_MAP["$path"]="$name"   
         fi
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml)
 
@@ -155,16 +160,12 @@ find_games () {
 
 SELECTED_GAME=""
 select_game () {
-    ###################################
-    ######### PRECISA OTIMIZAR #########
-    #####################################
     local opt=""
 
     local game=""
     local game_names=()
     for game in "$@"; do
-        local name=$(xmlstarlet sel -t -m "//game[path=\"./$game\"]" -v "name" -n ./gamelist.xml)
-        game_names+=("$name")
+        game_names+=("${NAME_MAP[$game]}")
     done
 
     printf "${BLUE}Selecione um jogo:${ENDCOLOR}\n"
@@ -204,37 +205,36 @@ main () {
         select_dir "${GAMES_DIRS[@]}"
         find_games
 
-        ask_user "Ver jogos" "Editar gamelist.xml"
 
-    #else VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
-    #    select_dir "${NO_GAMES_DIRS[@]}"
-    fi
+       ask_user "Ver jogos" "Editar gamelist.xml"
 
-    if [[ "$USER_ANSWER" -eq 1 ]]; then
+   #else VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
+   #    select_dir "${NO_GAMES_DIRS[@]}"
+   fi
 
-        select_game "${GAME_FILES[@]}"    
-
-        while true; do
-        ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
-        case "$USER_ANSWER" in
-                1)
-                    echo "Mover jogo selecionado"
-                    break
-                    ;;
-                2)
-                   echo "Copiar jogo selecionado"
-                    break
-                    ;;
-                3)
-                    echo "Deletar jogo selecionado"
-                    break
-                    ;;
-                *)
-                    echo "Escolha uma ação válida."
-                    continue
-                    ;;
-            esac
-        done 
+   if [[ "$USER_ANSWER" -eq 1 ]]; then
+       select_game "${GAME_FILES[@]}"    
+       while true; do
+       ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
+       case "$USER_ANSWER" in
+               1)
+                   echo "Mover jogo selecionado"
+                   break
+                   ;;
+               2)
+                  echo "Copiar jogo selecionado"
+                   break
+                   ;;
+               3)
+                   echo "Deletar jogo selecionado"
+                   break
+                   ;;
+               *)
+                   echo "Escolha uma ação válida."
+                   continue
+                   ;;
+           esac
+       done 
     fi
 
 }
