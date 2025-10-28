@@ -39,7 +39,7 @@ get_files() {
 
 }
 
-    declare -A NAME_MAP
+declare -A NAME_MAP
 find_only_in_xml() {
     # Compara os arquivos encontrados com os do gamelist.xml
     local -n files=$1
@@ -158,9 +158,11 @@ find_games () {
         
 }
 
-SELECTED_GAME=""
+SELECTED_GAME_NAME=""
+SELECTED_GAME_PATH=""
 select_game () {
     local opt=""
+    local args_array=("$@")
 
     local game=""
     local game_names=()
@@ -182,11 +184,45 @@ select_game () {
                 fi
 
                 printf "Jogo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$opt"
-                SELECTED_GAME="$opt"
+                SELECTED_GAME_NAME="$opt"
+                SELECTED_GAME_PATH="${args_array[$REPLY-1]}"
+
                 break
                 ;;
         esac
     done
+
+}
+
+mv_game () {
+    local dest_path=""
+
+    while true; do
+        read -p "Digite o caminho de destino: " dest_path
+        if [[ ! -d "$dest_path" ]]; then
+            printf "${RED}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
+            continue
+        fi
+
+        break
+    done
+
+    printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
+
+    if [[ -f "$dest_path/gamelist.xml" ]]; then
+        printf "${YELLOW}Atualizando gamelist.xml${ENDCOLOR}\n"
+
+        ######################################################
+        ### FALTA IMPLEMENTAR A ATUALIZAÇÃO DO GAMELIST.XML ###
+        ########################################################
+
+
+        return
+    fi
+
+
+    #sudo mv "$SELECTED_GAME_PATH" "$dest_path"
+    printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
 
@@ -219,9 +255,7 @@ main () {
        ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
        case "$USER_ANSWER" in
                1)
-                   read -p "Digite o caminho de destino: " dest_path
-                   printf "MOvendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME" "$dest_path"
-                   #mv "$SELECTED_GAME" "$dest_path"
+                   mv_game
                    break
                    ;;
                2)
