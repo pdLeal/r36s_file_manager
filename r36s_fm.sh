@@ -213,42 +213,21 @@ mv_game () {
     done
 
     printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
+    sudo mv "$SELECTED_GAME_PATH" "$dest_path" 2>/dev/null
 
     local dest_xml="$dest_path/gamelist.xml"
     if [[ -f "$dest_xml" ]]; then
-        printf "${YELLOW}Atualizando $dest_xml${ENDCOLOR}\n"
-
-        #local node=$(xmlstarlet sel -t -c "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml")
-        
-        # 1. Remover do arquivo origem
-        #sudo xmlstarlet ed --inplace -d "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml"
-
-###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES############################
-
+        printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
 
         # arquivos temporários seguros
         TMP_GAME="$(mktemp --tmpdir game.XXXXXX.xml)"
         TMP_XSL="$(mktemp --tmpdir append.XXXXXX.xsl)"
         TMP_OUT="$(mktemp --tmpdir out.XXXXXX.xml)"
 
-
-
         # 1) extrai o <game> para o temporário
-        printf "${YELLOW}Salvando o nó do jogo selecionado${ENDCOLOR}\n"
         xmlstarlet sel -t -c "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml" > $TMP_GAME
 
-        ls -la $TMP_GAME
-        printf "${RED}Nó salvo em: %s${ENDCOLOR}\n" "$TMP_GAME"
-        cat $TMP_GAME
-
-        read junk
-
-        
-
-
         # 2) cria o XSLT via heredoc
-        printf "${YELLOW}Criando o arquivo XSLT para anexar o nó${ENDCOLOR}\n"
-
 
 cat > "$TMP_XSL" <<'XSL'
 <?xml version="1.0" encoding="utf-8"?>
@@ -274,39 +253,28 @@ XSL
         # substitui o placeholder pelo caminho do arquivo temporário do jogo
         sed -i "s|%%TMP_GAME%%|$TMP_GAME|g" "$TMP_XSL"
 
-
         # 3) aplica o XSLT ao arquivo destino e grava em TMP_OUT
         xsltproc "$TMP_XSL" "$dest_xml" > "$TMP_OUT"
 
-        ls -la $TMP_OUT
-
-        read junk
-
-        printf "${YELLOW}Conteúdo do arquivo \$TMP_GAME:${ENDCOLOR}\n"
-
+        # Apenas aproveita o arquivo temporário do jogo p/ formatar o XML de saída
         xmlstarlet fo -t --encode utf-8 $TMP_OUT > $TMP_GAME
-        # Apenas aproveitei o arquivo temporário do jogo p/ formatar o XML de saída
 
-        cat $TMP_GAME 
-
-        read junk
-
-        # 4) (opcional) backup do original e substituição atômica
+        # 4) (opcional) backup do original
         #cp -a "$dest_xml" "${dest_xml}.bak.$(date +%s)"
+
+        # 5) move o arquivo temporário formatado p/ o destino final
+        printf "${GREEN}Atualizando gamelist.xml em %s${ENDCOLOR}\n" "$dest_path"
         sudo mv "$TMP_GAME" "$dest_xml" 2>/dev/null
 
-
+        # 6) remove a entrada do gamelist.xml original
+        printf "${RED}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
+        sudo xmlstarlet ed --inplace -d "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml"
 
         rm -f $TMP_GAME $TMP_OUT $TMP_XSL
 
-
-###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES############################
-
     fi
 
-
-    #sudo mv "$SELECTED_GAME_PATH" "$dest_path"
-    #printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
+    printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
 
