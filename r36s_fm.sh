@@ -70,9 +70,9 @@ find_only_in_xml() {
 
 cleanup() {
     echo "Limpando arquivos temporários..."
-    rm -f "$tmp_node" "$tmp_xslt" "$tmp_out"
+    rm -f "$TMP_GAME" "$TMP_OUT" "$TMP_XSL"
 }
-#trap cleanup EXIT
+trap cleanup EXIT
 
 #####################################################
 DIRS=(*/)
@@ -215,16 +215,89 @@ mv_game () {
     printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
 
     local dest_xml="$dest_path/gamelist.xml"
-    if [[ -f "$dest_path/gamelist.xml" ]]; then
-        printf "${YELLOW}Atualizando gamelist.xml${ENDCOLOR}\n"
+    if [[ -f "$dest_xml" ]]; then
+        printf "${YELLOW}Atualizando $dest_xml${ENDCOLOR}\n"
 
         #local node=$(xmlstarlet sel -t -c "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml")
+        
         # 1. Remover do arquivo origem
         #sudo xmlstarlet ed --inplace -d "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml"
 
 ###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES############################
 
 
+        # arquivos temporários seguros
+        TMP_GAME="$(mktemp --tmpdir game.XXXXXX.xml)"
+        TMP_XSL="$(mktemp --tmpdir append.XXXXXX.xsl)"
+        TMP_OUT="$(mktemp --tmpdir out.XXXXXX.xml)"
+
+
+
+        # 1) extrai o <game> para o temporário
+        printf "${YELLOW}Salvando o nó do jogo selecionado${ENDCOLOR}\n"
+        xmlstarlet sel -t -c "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml" > $TMP_GAME
+
+        ls -la $TMP_GAME
+        printf "${RED}Nó salvo em: %s${ENDCOLOR}\n" "$TMP_GAME"
+        cat $TMP_GAME
+
+        read junk
+
+        
+
+
+        # 2) cria o XSLT via heredoc
+        printf "${YELLOW}Criando o arquivo XSLT para anexar o nó${ENDCOLOR}\n"
+
+
+cat > "$TMP_XSL" <<'XSL'
+<?xml version="1.0" encoding="utf-8"?>
+<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+  <xsl:output method="xml" indent="yes"/>
+
+  <xsl:template match="@*|node()">
+    <xsl:copy>
+      <xsl:apply-templates select="@*|node()"/>
+    </xsl:copy>
+  </xsl:template>
+
+  <xsl:template match="gameList">
+    <xsl:copy>
+      <xsl:apply-templates select="@*|node()"/>
+      <xsl:apply-templates select="document('%%TMP_GAME%%')/game"/>
+    </xsl:copy>
+  </xsl:template>
+
+</xsl:stylesheet>
+XSL
+
+        # substitui o placeholder pelo caminho do arquivo temporário do jogo
+        sed -i "s|%%TMP_GAME%%|$TMP_GAME|g" "$TMP_XSL"
+
+
+        # 3) aplica o XSLT ao arquivo destino e grava em TMP_OUT
+        xsltproc "$TMP_XSL" "$dest_xml" > "$TMP_OUT"
+
+        ls -la $TMP_OUT
+
+        read junk
+
+        printf "${YELLOW}Conteúdo do arquivo \$TMP_GAME:${ENDCOLOR}\n"
+
+        xmlstarlet fo -t --encode utf-8 $TMP_OUT > $TMP_GAME
+        # Apenas aproveitei o arquivo temporário do jogo p/ formatar o XML de saída
+
+        cat $TMP_GAME 
+
+        read junk
+
+        # 4) (opcional) backup do original e substituição atômica
+        #cp -a "$dest_xml" "${dest_xml}.bak.$(date +%s)"
+        sudo mv "$TMP_GAME" "$dest_xml" 2>/dev/null
+
+
+
+        rm -f $TMP_GAME $TMP_OUT $TMP_XSL
 
 
 ###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES############################
