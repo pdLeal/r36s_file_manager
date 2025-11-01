@@ -68,6 +68,11 @@ find_only_in_xml() {
 
 }
 
+cleanup() {
+    echo "Limpando arquivos temporários..."
+    rm -f "$tmp_node" "$tmp_xslt" "$tmp_out"
+}
+#trap cleanup EXIT
 
 #####################################################
 DIRS=(*/)
@@ -209,20 +214,26 @@ mv_game () {
 
     printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
 
+    local dest_xml="$dest_path/gamelist.xml"
     if [[ -f "$dest_path/gamelist.xml" ]]; then
         printf "${YELLOW}Atualizando gamelist.xml${ENDCOLOR}\n"
 
-        ######################################################
-        ### FALTA IMPLEMENTAR A ATUALIZAÇÃO DO GAMELIST.XML ###
-        ########################################################
+        #local node=$(xmlstarlet sel -t -c "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml")
+        # 1. Remover do arquivo origem
+        #sudo xmlstarlet ed --inplace -d "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml"
+
+###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES############################
 
 
-        return
+
+
+###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES############################
+
     fi
 
 
     #sudo mv "$SELECTED_GAME_PATH" "$dest_path"
-    printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
+    #printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
 
