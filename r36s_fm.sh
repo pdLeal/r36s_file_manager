@@ -70,9 +70,12 @@ find_only_in_xml() {
 
 cleanup() {
     echo "Limpando arquivos temporários..."
-    rm -f "$TMP_GAME" "$TMP_OUT" "$TMP_XSL"
+
+    if [[ -n "${TMP_GAME:-}" ]]; then
+    rm -f "$TMP_GAME" "$TMP_OUT" "$TMP_XSL" 
+    fi
 }
-trap cleanup EXIT
+trap cleanup EXIT 
 
 #####################################################
 DIRS=(*/)
@@ -199,6 +202,10 @@ select_game () {
 
 }
 
+mv_xml_entry () {
+    true
+}
+
 mv_game () {
     local dest_path=""
 
@@ -211,9 +218,6 @@ mv_game () {
 
         break
     done
-
-    printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
-    sudo mv "$SELECTED_GAME_PATH" "$dest_path" 2>/dev/null
 
     local dest_xml="$dest_path/gamelist.xml"
     if [[ -f "$dest_xml" ]]; then
@@ -270,10 +274,19 @@ XSL
         printf "${RED}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
         sudo xmlstarlet ed --inplace -d "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml"
 
-        rm -f $TMP_GAME $TMP_OUT $TMP_XSL
+    else
+        printf "${YELLOW}Nenhum gamelist.xml encontrado no destino. Criando um...${ENDCOLOR}\n"
+
+        #sudo touch "$dest_xml" 2>/dev/null
+        #sudo tee "$dest_xml" > /dev/null <<EOF
+#<?xml version="1.0" encoding="utf-8"?>
+#<gameList>
+#</gameList>
+#EOF
 
     fi
-
+    printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
+    #sudo mv "$SELECTED_GAME_PATH" "$dest_path" 2>/dev/null
     printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
