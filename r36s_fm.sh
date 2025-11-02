@@ -203,27 +203,8 @@ select_game () {
 }
 
 mv_xml_entry () {
-    true
-}
-
-mv_game () {
-    local dest_path=""
-
-    while true; do
-        read -p "Digite o caminho de destino: " dest_path
-        if [[ ! -d "$dest_path" ]]; then
-            printf "${RED}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
-            continue
-        fi
-
-        break
-    done
-
-    local dest_xml="$dest_path/gamelist.xml"
-    if [[ -f "$dest_xml" ]]; then
-        printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
-
-        # arquivos temporários seguros
+    path=$1
+    # arquivos temporários seguros
         TMP_GAME="$(mktemp --tmpdir game.XXXXXX.xml)"
         TMP_XSL="$(mktemp --tmpdir append.XXXXXX.xsl)"
         TMP_OUT="$(mktemp --tmpdir out.XXXXXX.xml)"
@@ -258,35 +239,57 @@ XSL
         sed -i "s|%%TMP_GAME%%|$TMP_GAME|g" "$TMP_XSL"
 
         # 3) aplica o XSLT ao arquivo destino e grava em TMP_OUT
-        xsltproc "$TMP_XSL" "$dest_xml" > "$TMP_OUT"
+        xsltproc "$TMP_XSL" "$path" > "$TMP_OUT"
 
         # Apenas aproveita o arquivo temporário do jogo p/ formatar o XML de saída
         xmlstarlet fo -t --encode utf-8 $TMP_OUT > $TMP_GAME
 
         # 4) (opcional) backup do original
-        #cp -a "$dest_xml" "${dest_xml}.bak.$(date +%s)"
+        #cp -a "$path" "${path}.bak.$(date +%s)"
 
         # 5) move o arquivo temporário formatado p/ o destino final
         printf "${GREEN}Atualizando gamelist.xml em %s${ENDCOLOR}\n" "$dest_path"
-        sudo mv "$TMP_GAME" "$dest_xml" 2>/dev/null
+        sudo mv "$TMP_GAME" "$path" 2>/dev/null
 
         # 6) remove a entrada do gamelist.xml original
         printf "${RED}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
         sudo xmlstarlet ed --inplace -d "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml"
+}
+
+mv_game () {
+    local dest_path=""
+
+    while true; do
+        read -p "Digite o caminho de destino: " dest_path
+        if [[ ! -d "$dest_path" ]]; then
+            printf "${RED}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
+            continue
+        fi
+
+        break
+    done
+
+    local dest_xml="$dest_path/gamelist.xml"
+    if [[ -f "$dest_xml" ]]; then
+        printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
+
+        mv_xml_entry "$dest_xml"
 
     else
         printf "${YELLOW}Nenhum gamelist.xml encontrado no destino. Criando um...${ENDCOLOR}\n"
 
-        #sudo touch "$dest_xml" 2>/dev/null
-        #sudo tee "$dest_xml" > /dev/null <<EOF
-#<?xml version="1.0" encoding="utf-8"?>
-#<gameList>
-#</gameList>
-#EOF
+        sudo touch "$dest_xml" 2>/dev/null
+sudo tee "$dest_xml" > /dev/null <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<gameList>
+</gameList>
+EOF
+
+        mv_xml_entry "$dest_xml"
 
     fi
     printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
-    #sudo mv "$SELECTED_GAME_PATH" "$dest_path" 2>/dev/null
+    sudo mv "$SELECTED_GAME_PATH" "$dest_path" 2>/dev/null
     printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
