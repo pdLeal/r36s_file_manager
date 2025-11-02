@@ -41,7 +41,7 @@ get_files() {
 
 declare -A NAME_MAP
 find_only_in_xml() {
-    # Compara os arquivos encontrados com os do gamelist.xml
+# Compara os arquivos encontrados com os do gamelist.xml
     local -n files=$1
     local -n in_xml=$2
     local game=""
@@ -213,7 +213,7 @@ mv_xml_entry () {
         xmlstarlet sel -t -c "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml" > $TMP_GAME
 
         # 2) cria o XSLT via heredoc
-
+# Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo
 cat > "$TMP_XSL" <<'XSL'
 <?xml version="1.0" encoding="utf-8"?>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
