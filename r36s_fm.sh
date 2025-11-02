@@ -1,4 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# r36s_fm.sh - Gerenciador de arquivos de jogos para EmulationStation
+# Autor: pleal
+# Data: 18/10/2025
 
 set -u
 #####################################################
@@ -9,8 +12,7 @@ YELLOW="\e[93m"
 BLUE="\e[94m"
 ENDCOLOR="\e[0m"
 
-EXTENSIONS="nes,smc,sfc,fig,gb,gbsfc,fig,gb,gbc,gba,bin,md,smd,gen,sms,gg,n64,z64,v64,s64,iso,cso,cue,pbp,PBP,gdi,chd,zip,7z"
-
+EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
 
 
 # FUNÇÕES AUXILIARES
@@ -31,9 +33,7 @@ get_files() {
     shopt -s globstar nullglob
     local -n found=$1 
 
-    IFS=',' read -ra EXTS <<< "$EXTENSIONS"
-
-    for ext in "${EXTS[@]}"; do
+    for ext in "${EXTENSIONS[@]}"; do
     found+=( **/*."$ext" )
     done
 
@@ -69,9 +69,8 @@ find_only_in_xml() {
 }
 
 cleanup() {
-    echo "Limpando arquivos temporários..."
-
     if [[ -n "${TMP_GAME:-}" ]]; then
+    echo "Limpando arquivos temporários..."
     rm -f "$TMP_GAME" "$TMP_OUT" "$TMP_XSL" 
     fi
 }
@@ -88,8 +87,18 @@ check_dir () {
 GAMES_DIRS=()
 NO_GAMES_DIRS=()
 look4_roms () {
-    # Converte "nes,chd,zip" em "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
-    local ext_find=$(echo "$EXTENSIONS" | awk -F, '{for(i=1;i<=NF;i++) printf "-name *.%s%s",$i,(i==NF?"":" -o ")}')
+    # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
+    local first=1
+    local ext=""
+    local ext_find=""
+    for ext in "${EXTENSIONS[@]}"; do
+        if (( first )); then
+          ext_find+=" -name "*.${ext}" "
+          first=0
+        else
+          ext_find+=" -o -name "*.${ext}" "
+        fi
+    done
 
     for dir in "${DIRS[@]}"; do
     # Itera sobre cada diretório e checa se a saída de FIND ñ é uma string vazia -n
@@ -301,6 +310,7 @@ main () {
 
     echo "Procurando por subpastas contendo ROMs..."
     look4_roms
+
     printf "${GREEN}%s Subpastas contendo ROMs${ENDCOLOR}\n" "${#GAMES_DIRS[@]}" 
     printf "${YELLOW}%s Subpastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#NO_GAMES_DIRS[@]}" 
 
