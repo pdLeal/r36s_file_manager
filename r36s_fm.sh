@@ -5,14 +5,18 @@
 
 set -u
 #####################################################
+# VARIÁVEIS GLOBAIS E CONSTANTES
+#####################################################
+# Cores para saída no terminal
 readonly RED="\e[31m"
 readonly GREEN="\e[32m"
 readonly CYAN="\e[36m"
-readonly YELLOW="\e[93m"
-readonly BLUE="\e[94m"
+readonly YELLOW="\e[33m"
+readonly BLUE="\e[34m"
 readonly ENDCOLOR="\e[0m"
 
-EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
+# Extensões de arquivos de jogos suportadas
+readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
 
 
 # FUNÇÕES AUXILIARES
@@ -78,14 +82,16 @@ trap cleanup EXIT
 
 #####################################################
 
-
-GAMES_DIRS=()
-NO_GAMES_DIRS=()
 look4_roms () {
-    # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
+    local -n dirs=$1
+    local -n w_games=$2
+    local -n w_no_games=$3
+
     local first=1
     local ext=""
     local ext_find=""
+
+    # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
     for ext in "${EXTENSIONS[@]}"; do
         if (( first )); then
           ext_find+=" -name "*.${ext}" "
@@ -95,16 +101,16 @@ look4_roms () {
         fi
     done
 
-    for dir in "${DIRS[@]}"; do
-    # Itera sobre cada diretório e checa se a saída de FIND ñ é uma string vazia -n
+    # Itera sobre cada diretório e checa se a saída de find ñ é uma string vazia -n
+    # O comando abaixo lista diretórios que contêm um arquivo 'gamelist.xml' usando -printf '%h\n' para mostrar o caminho do diretório do arquivo encontrado
+    for dir in "${dirs[@]}"; do
      if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
     
+        # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
         if find "$dir" -maxdepth 1 -type f \( $ext_find \) -print -quit| grep -q .; then
-        # Procura por pelo menos 1 arquivo com as extensões especificadas
-            GAMES_DIRS+=("$dir")
-
+            w_games+=("$dir")
         else
-            NO_GAMES_DIRS+=("$dir")
+            w_no_games+=("$dir")
         fi
     fi
 done
@@ -299,17 +305,19 @@ EOF
 }
 
 main () {
-    local dirs_list=(*/) # Lista de subdiretórios na pasta atual
+    local dirs_list=(*/) # Lista de pastas no diretório atual | antiga: DIRS=(*/)
+    local dirs_with_games=() # antes: GAMES_DIRS=()
+    local dirs_without_games=() # antes: NO_GAMES_DIRS=()
 
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
                                         # Conta o número de linhas/elementos em dirs_list
     printf "${RED}%s Pastas Encontradas${ENDCOLOR}\n" "$(printf '%s\n' "${dirs_list[@]}" | wc -l)"
-#
-    #echo "Procurando por subpastas contendo ROMs..."
-    #look4_roms
-#
-    #printf "${GREEN}%s Subpastas contendo ROMs${ENDCOLOR}\n" "${#GAMES_DIRS[@]}" 
-    #printf "${YELLOW}%s Subpastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#NO_GAMES_DIRS[@]}" 
+
+    echo "Procurando por pastas contendo ROMs..."
+    look4_roms dirs_list dirs_with_games dirs_without_games
+
+    printf "${RED}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
+    printf "${YELLOW}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
 #
     #ask_user "Ver subpastas com ROMs" "Ver subpastas sem ROMs"
     #if [[ "$USER_ANSWER" -eq 1 ]]; then
