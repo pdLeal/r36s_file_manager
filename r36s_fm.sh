@@ -7,6 +7,7 @@ set -u
 #####################################################
 # VARIÁVEIS GLOBAIS E CONSTANTES
 #####################################################
+
 # Cores para saída no terminal
 readonly RED="\e[31m"
 readonly GREEN="\e[32m"
@@ -19,13 +20,17 @@ readonly ENDCOLOR="\e[0m"
 readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
 
 
-# FUNÇÕES AUXILIARES
+#####################################################
+# FUNÇÕES
+#####################################################
+
 is_valid_option () {
-# Verifica se a entrada é um número, se ñ é < 1 ou > q o número de opções 
+# Verifica se a entrada é um número, se ñ é < 1 ou > q o número de opções/argumentos 
     local input="$1"
     local max_option="$2"
 
-    if [[ ! $input =~ ^[0-9]+$ ]] || [ "$input" -lt 1 ] || [ "$input" -gt "$max_option" ]; then
+    if [[ ! "$input" =~ ^[0-9]+$ ]] || [ "$input" -lt 1 ] || [ "$input" -gt "$max_option" ]; then
+        printf "${BLUE}Opção inválida. Tente novamente.${ENDCOLOR}\n"
         return 1  # Inválido
     else
         return 0  # Válido
@@ -83,6 +88,7 @@ trap cleanup EXIT
 #####################################################
 
 look4_roms () {
+# Procura por arquivos de jogos nas pastas fornecidas
     local -n dirs=$1
     local -n w_games=$2
     local -n w_no_games=$3
@@ -101,8 +107,9 @@ look4_roms () {
         fi
     done
 
-    # Itera sobre cada diretório e checa se a saída de find ñ é uma string vazia -n
-    # O comando abaixo lista diretórios que contêm um arquivo 'gamelist.xml' usando -printf '%h\n' para mostrar o caminho do diretório do arquivo encontrado
+
+    # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
+    # Se existir, find imprime o diretório pai (%h) e a condição [-n ...] será verdadeira.
     for dir in "${dirs[@]}"; do
      if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
     
@@ -119,8 +126,12 @@ done
 }
 
 ask_user () {
+# Exibe um menu de opções para o usuário e armazena a escolha em user_answer
+    local -n answer=$1
+    shift
     local opt=""
-    printf "${BLUE}O que deseja fazer?${ENDCOLOR}\n"
+
+    printf "${RED}O que deseja fazer?${ENDCOLOR}\n"
     select opt in "$@" "Sair"; do
         case "$opt" in
             "Sair")
@@ -128,12 +139,9 @@ ask_user () {
                 exit 0
                 ;;
             *)
-                if ! is_valid_option "$REPLY" "$#"; then
-                    printf "${RED}Opção inválida. Tente novamente.${ENDCOLOR}\n"
-                    continue
-                fi
-
-                USER_ANSWER="$REPLY"
+                ! is_valid_option "$REPLY" "$#" && continue
+                
+                answer="$REPLY"
                 break
                 ;;
         esac
@@ -143,7 +151,7 @@ ask_user () {
 
 select_dir () {
     local opt=""
-    printf "${BLUE}Selecione uma subpasta:${ENDCOLOR}\n"
+    printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
     select opt in "$@" "Sair"; do
         case "$opt" in
             "Sair")
@@ -152,11 +160,11 @@ select_dir () {
                 ;;
             *)
                 if ! is_valid_option "$REPLY" "$#"; then
-                    printf "${RED}Opção inválida. Tente novamente.${ENDCOLOR}\n"
+                    printf "${BLUE}Opção inválida. Tente novamente.${ENDCOLOR}\n"
                     continue
                 fi
 
-                printf "${CYAN}Entrando na subpasta: %s${ENDCOLOR}\n" "$opt"
+                printf "${CYAN}Entrando na pasta: %s${ENDCOLOR}\n" "$opt"
                 cd "$(pwd)/$opt"
                 break
                 ;;
@@ -308,18 +316,19 @@ main () {
     local dirs_list=(*/) # Lista de pastas no diretório atual | antiga: DIRS=(*/)
     local dirs_with_games=() # antes: GAMES_DIRS=()
     local dirs_without_games=() # antes: NO_GAMES_DIRS=()
+    local user_answer=""
 
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
                                         # Conta o número de linhas/elementos em dirs_list
-    printf "${RED}%s Pastas Encontradas${ENDCOLOR}\n" "$(printf '%s\n' "${dirs_list[@]}" | wc -l)"
+    printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "$(printf '%s\n' "${dirs_list[@]}" | wc -l)"
 
     echo "Procurando por pastas contendo ROMs..."
     look4_roms dirs_list dirs_with_games dirs_without_games
 
-    printf "${RED}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
-    printf "${YELLOW}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
-#
-    #ask_user "Ver subpastas com ROMs" "Ver subpastas sem ROMs"
+    printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
+    printf "${CYAN}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
+
+    ask_user user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" 
     #if [[ "$USER_ANSWER" -eq 1 ]]; then
     #    select_dir "${GAMES_DIRS[@]}"
     #    find_games
