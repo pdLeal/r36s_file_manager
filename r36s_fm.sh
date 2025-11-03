@@ -28,9 +28,10 @@ is_valid_option () {
 # Verifica se a entrada é um número, se ñ é < 1 ou > q o número de opções/argumentos 
     local input="$1"
     local max_option="$2"
+    local msg="${3:-"Opção inválida."}"
 
     if [[ ! "$input" =~ ^[0-9]+$ ]] || [ "$input" -lt 1 ] || [ "$input" -gt "$max_option" ]; then
-        printf "${BLUE}Opção inválida. Tente novamente.${ENDCOLOR}\n"
+        printf "${BLUE}$msg Tente Novamente${ENDCOLOR}\n"
         return 1  # Inválido
     else
         return 0  # Válido
@@ -139,7 +140,7 @@ ask_user () {
                 exit 0
                 ;;
             *)
-                ! is_valid_option "$REPLY" "$#" && continue
+                ! is_valid_option "$REPLY" "$#" && continue # pula para próxima iteração se a opção fornecida for inválida
                 
                 answer="$REPLY"
                 break
@@ -150,6 +151,7 @@ ask_user () {
 }
 
 select_dir () {
+# Exibe um menu de seleção de diretórios para o usuário entra no diretóirio escolhido
     local opt=""
     printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
     select opt in "$@" "Sair"; do
@@ -159,13 +161,10 @@ select_dir () {
                 exit 0
                 ;;
             *)
-                if ! is_valid_option "$REPLY" "$#"; then
-                    printf "${BLUE}Opção inválida. Tente novamente.${ENDCOLOR}\n"
-                    continue
-                fi
+                ! is_valid_option "$REPLY" "$#" && continue
 
-                printf "${CYAN}Entrando na pasta: %s${ENDCOLOR}\n" "$opt"
-                cd "$(pwd)/$opt"
+                printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
+                cd -- "$opt"
                 break
                 ;;
         esac
@@ -329,16 +328,16 @@ main () {
     printf "${CYAN}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
 
     ask_user user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" 
-    #if [[ "$USER_ANSWER" -eq 1 ]]; then
-    #    select_dir "${GAMES_DIRS[@]}"
-    #    find_games
-#
-#
-    #   ask_user "Ver jogos" "Editar gamelist.xml"
+    if [[ "$user_answer" -eq 1 ]]; then
+        select_dir "${dirs_with_games[@]}"
+        #find_games
+
+
+        #ask_user "Ver jogos" "Editar gamelist.xml"
 
    #else VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
    #    select_dir "${NO_GAMES_DIRS[@]}"
-   #fi
+   fi
 #
    #if [[ "$USER_ANSWER" -eq 1 ]]; then
    #    select_game "${GAME_FILES[@]}" 
