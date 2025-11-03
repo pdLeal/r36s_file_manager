@@ -39,25 +39,36 @@ is_valid_option () {
 }
 
 get_files() {
- # Coleta todos os arquivos de jogos com as extensões especificadas
+# Coleta todos os arquivos com as extensões especificadas e popula o array fornecido
     shopt -s globstar nullglob
-    local -n found=$1 
+    local -n found="$1"
+    local ext=""
 
     for ext in "${EXTENSIONS[@]}"; do
     found+=( **/*."$ext" )
     done
 
+    shopt -u globstar nullglob
 }
 
-declare -A NAME_MAP
 find_only_in_xml() {
-# Compara os arquivos encontrados com os do gamelist.xml
-    local -n files=$1
-    local -n in_xml=$2
-    local game=""
+# Compara os arquivos encontrados com os do gamelist.xml e identifica quais estão apenas no XML.
+    # Parâmetros:
+    #   $1 - (array, referência) Lista de arquivos encontrados
+    #   $2 - (array, referência) Lista de nomes de jogos presentes apenas no gamelist.xml
+    #   $3 - (associative array, referência) Mapeamento de arquivos para nomes de jogos
+    # Retorno:
+    #   Popula $2 com nomes de jogos que estão apenas no gamelist.xml
+    #   Atualiza $3 com nomes de jogos encontrados
+
+    local -n files="$1"
+    local -n in_xml="$2"
+    local -n map="$3"
+    local file=""
     
-    for game in "${files[@]}"; do
-        NAME_MAP["$game"]=1
+    # Criar um hash dos arquivos encontrados
+    for file in "${files[@]}"; do
+        map["$file"]="__UNSET__"  # Valor temporário
         
     done
 
@@ -68,11 +79,11 @@ find_only_in_xml() {
         path="${path#./}"  # Remove o prefixo ./
 
         # Se NÃO está no hash, adiciona
-        if [ -z "${NAME_MAP[$path]:-}" ]; then
+        if [[ -z "${map["$path"]:-}" ]]; then
             in_xml+=("$name")
         
         else #  Atualiza o nome no hash para referência futura
-            NAME_MAP["$path"]="$name"   
+            map["$path"]="$name"   
         fi
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml)
 
@@ -170,17 +181,6 @@ select_dir () {
         esac
     done
 
-}
-
-GAME_FILES=()
-ONLY_IN_XML=()
-find_games () {
-    get_files GAME_FILES
-    find_only_in_xml GAME_FILES ONLY_IN_XML
-
-    printf "${GREEN}%s Jogos Encontrados${ENDCOLOR}\n" "${#GAME_FILES[@]}"
-    printf "${YELLOW}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#ONLY_IN_XML[@]}"
-        
 }
 
 SELECTED_GAME_NAME=""
@@ -316,8 +316,12 @@ main () {
     local dirs_with_games=() # antes: GAMES_DIRS=()
     local dirs_without_games=() # antes: NO_GAMES_DIRS=()
     local user_answer=""
-
+    local games_files=()
+    local games_only_in_xml=()
+    local -A games_map
+    
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
+
                                         # Conta o número de linhas/elementos em dirs_list
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "$(printf '%s\n' "${dirs_list[@]}" | wc -l)"
 
@@ -330,8 +334,12 @@ main () {
     ask_user user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" 
     if [[ "$user_answer" -eq 1 ]]; then
         select_dir "${dirs_with_games[@]}"
-        #find_games
 
+        get_files games_files
+        printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#games_files[@]}"
+
+        find_only_in_xml games_files games_only_in_xml games_map
+        printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
 
         #ask_user "Ver jogos" "Editar gamelist.xml"
 
