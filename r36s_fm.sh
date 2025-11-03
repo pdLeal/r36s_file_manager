@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# r36s_fm.sh - Gerenciador de arquivos de jogos para EmulationStation
+# r36s_fm.sh - Gerenciador de arquivos de jogos para R36s
 # Autor: pleal
 # Data: 18/10/2025
 
 set -u
 #####################################################
-RED="\e[31m"
-GREEN="\e[32m"
-CYAN="\e[36m"
-YELLOW="\e[93m"
-BLUE="\e[94m"
-ENDCOLOR="\e[0m"
+readonly RED="\e[31m"
+readonly GREEN="\e[32m"
+readonly CYAN="\e[36m"
+readonly YELLOW="\e[93m"
+readonly BLUE="\e[94m"
+readonly ENDCOLOR="\e[0m"
 
 EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
 
@@ -77,12 +77,7 @@ cleanup() {
 trap cleanup EXIT 
 
 #####################################################
-DIRS=(*/)
-check_dir () {
-    local total_dirs=$(printf '%s\n' "${DIRS[@]}" | wc -l)
-    printf "${GREEN}%s Subpastas Encontradas${ENDCOLOR}\n" "$total_dirs"
 
-}
 
 GAMES_DIRS=()
 NO_GAMES_DIRS=()
@@ -304,53 +299,55 @@ EOF
 }
 
 main () {
+    local dirs_list=(*/) # Lista de subdiretórios na pasta atual
 
-    echo "Avaliando Diretório..."
-    check_dir
-
-    echo "Procurando por subpastas contendo ROMs..."
-    look4_roms
-
-    printf "${GREEN}%s Subpastas contendo ROMs${ENDCOLOR}\n" "${#GAMES_DIRS[@]}" 
-    printf "${YELLOW}%s Subpastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#NO_GAMES_DIRS[@]}" 
-
-    ask_user "Ver subpastas com ROMs" "Ver subpastas sem ROMs"
-    if [[ "$USER_ANSWER" -eq 1 ]]; then
-        select_dir "${GAMES_DIRS[@]}"
-        find_games
-
-
-       ask_user "Ver jogos" "Editar gamelist.xml"
+    printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
+                                        # Conta o número de linhas/elementos em dirs_list
+    printf "${RED}%s Pastas Encontradas${ENDCOLOR}\n" "$(printf '%s\n' "${dirs_list[@]}" | wc -l)"
+#
+    #echo "Procurando por subpastas contendo ROMs..."
+    #look4_roms
+#
+    #printf "${GREEN}%s Subpastas contendo ROMs${ENDCOLOR}\n" "${#GAMES_DIRS[@]}" 
+    #printf "${YELLOW}%s Subpastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#NO_GAMES_DIRS[@]}" 
+#
+    #ask_user "Ver subpastas com ROMs" "Ver subpastas sem ROMs"
+    #if [[ "$USER_ANSWER" -eq 1 ]]; then
+    #    select_dir "${GAMES_DIRS[@]}"
+    #    find_games
+#
+#
+    #   ask_user "Ver jogos" "Editar gamelist.xml"
 
    #else VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
    #    select_dir "${NO_GAMES_DIRS[@]}"
-   fi
-
-   if [[ "$USER_ANSWER" -eq 1 ]]; then
-       select_game "${GAME_FILES[@]}" 
-
-       while true; do
-       ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
-       case "$USER_ANSWER" in
-               1)
-                   mv_game
-                   break
-                   ;;
-               2)
-                  echo "Copiar jogo selecionado"
-                   break
-                   ;;
-               3)
-                   echo "Deletar jogo selecionado"
-                   break
-                   ;;
-               *)
-                   echo "Escolha uma ação válida."
-                   continue
-                   ;;
-           esac
-       done 
-    fi
+   #fi
+#
+   #if [[ "$USER_ANSWER" -eq 1 ]]; then
+   #    select_game "${GAME_FILES[@]}" 
+#
+   #    while true; do
+   #    ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
+   #    case "$USER_ANSWER" in
+   #            1)
+   #                mv_game
+   #                break
+   #                ;;
+   #            2)
+   #               echo "Copiar jogo selecionado"
+   #                break
+   #                ;;
+   #            3)
+   #                echo "Deletar jogo selecionado"
+   #                break
+   #                ;;
+   #            *)
+   #                echo "Escolha uma ação válida."
+   #                continue
+   #                ;;
+   #        esac
+   #    done 
+   # fi
 
 }
 main "$@"
