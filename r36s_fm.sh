@@ -11,9 +11,9 @@ set -u
 # Cores para saída no terminal
 readonly RED="\e[31m"
 readonly GREEN="\e[32m"
-readonly CYAN="\e[36m"
 readonly YELLOW="\e[33m"
 readonly BLUE="\e[34m"
+readonly CYAN="\e[36m"
 readonly ENDCOLOR="\e[0m"
 
 # Extensões de arquivos de jogos suportadas
@@ -30,7 +30,7 @@ is_valid_option () {
     local max_option="$2"
     local msg="${3:-"Opção inválida."}"
 
-    if [[ ! "$input" =~ ^[0-9]+$ ]] || [ "$input" -lt 1 ] || [ "$input" -gt "$max_option" ]; then
+    if [[ ! "$input" =~ ^[0-9]+$ ]] || [[ "$input" -lt 1 ]] || [[ "$input" -gt "$max_option" ]]; then
         printf "${BLUE}$msg Tente Novamente${ENDCOLOR}\n"
         return 1  # Inválido
     else
@@ -78,7 +78,7 @@ find_only_in_xml() {
     while IFS='|' read -r path name; do
         path="${path#./}"  # Remove o prefixo ./
 
-        # Se NÃO está no hash, adiciona
+        # Se NÃO está no hash, adiciona - Obs:path tem o msm nome do arquivo/jogo
         if [[ -z "${map["$path"]:-}" ]]; then
             in_xml+=("$name")
         
@@ -105,7 +105,7 @@ look4_roms () {
     local -n w_games=$2
     local -n w_no_games=$3
 
-    local first=1
+    local first=1 # flag para a primeira iteração
     local ext=""
     local ext_find=""
 
@@ -183,19 +183,27 @@ select_dir () {
 
 }
 
-SELECTED_GAME_NAME=""
-SELECTED_GAME_PATH=""
 select_game () {
+# Exibe um menu para seleção de jogos pelo usuário.
+    # Parâmetros:
+    #   $1 - (string, referência) Nome do jogo selecionado (retorno)
+    #   $2 - (string, referência) Caminho do arquivo do jogo selecionado (retorno)
+    #   $@ - Lista de caminhos de arquivos de jogos disponíveis para seleção
+    local -n selected_name="$1"
+    local -n selected_path="$2"
+    local -n map="$3"
+    shift 3
+       
     local opt=""
-    local args_array=("$@")
+    local files_array=("$@")
 
-    local game=""
+    local file=""
     local game_names=()
-    for game in "$@"; do
-        game_names+=("${NAME_MAP[$game]}")
+    for file in "${files_array[@]}"; do
+        game_names+=("${map[$file]}")
     done
 
-    printf "${BLUE}Selecione um jogo:${ENDCOLOR}\n"
+    printf "${RED}Selecione um jogo:${ENDCOLOR}\n"
     select opt in "${game_names[@]}" "Sair"; do
         case "$opt" in
             "Sair")
@@ -203,15 +211,11 @@ select_game () {
                 exit 0
                 ;;
             *)
-                if ! is_valid_option "$REPLY" "$#"; then
-                    printf "${RED}Opção inválida. Tente novamente.${ENDCOLOR}\n"
-                    continue
-                fi
+                ! is_valid_option "$REPLY" "$#" && continue
 
-                printf "Jogo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$opt"
-                SELECTED_GAME_NAME="$opt"
-                SELECTED_GAME_PATH="${args_array[$REPLY-1]}"
-
+                printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$opt"
+                selected_name="$opt"
+                selected_path="${files_array[$REPLY-1]}"
                 break
                 ;;
         esac
@@ -318,7 +322,9 @@ main () {
     local user_answer=""
     local games_files=()
     local games_only_in_xml=()
-    local -A games_map
+    local -A games_map # [chave/arquivo]=>[valor/nome do jogo]
+    local selected_game_name=""
+    local selected_game_path=""
     
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
 
@@ -341,15 +347,16 @@ main () {
         find_only_in_xml games_files games_only_in_xml games_map
         printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
 
-        #ask_user "Ver jogos" "Editar gamelist.xml"
+        ask_user user_answer "Ver jogos" "Editar gamelist.xml"
 
-   #else VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
-   #    select_dir "${NO_GAMES_DIRS[@]}"
+   #else # VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
+   #    select_dir "${dirs_without_games[@]}"
    fi
 #
-   #if [[ "$USER_ANSWER" -eq 1 ]]; then
-   #    select_game "${GAME_FILES[@]}" 
-#
+   #
+   if [[ "$user_answer" -eq 1 ]]; then
+       select_game selected_game_name selected_game_path games_map "${games_files[@]}" 
+
    #    while true; do
    #    ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
    #    case "$USER_ANSWER" in
@@ -371,7 +378,7 @@ main () {
    #                ;;
    #        esac
    #    done 
-   # fi
+    fi
 
 }
 main "$@"
