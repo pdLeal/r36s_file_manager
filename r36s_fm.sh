@@ -24,6 +24,52 @@ readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba"
 # FUNÇÕES
 #####################################################
 
+cleanup() {
+    if [[ -n "${tmp_game:-}" ]]; then
+    echo "Limpando arquivos temporários..."
+    rm -f "$tmp_game" "$tmp_output" "$tmp_xsl" 
+    fi
+}
+trap cleanup EXIT 
+
+#####################################################
+
+look4_roms () {
+# Procura por arquivos de jogos nas pastas fornecidas
+    local -n dirs=$1
+    local -n w_games=$2
+    local -n w_no_games=$3
+
+    local first=1 # flag para a primeira iteração
+    local ext=""
+    local ext_find=""
+
+    # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
+    for ext in "${EXTENSIONS[@]}"; do
+        if (( first )); then
+          ext_find+=" -name "*.${ext}" "
+          first=0
+        else
+          ext_find+=" -o -name "*.${ext}" "
+        fi
+    done
+
+
+    # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
+    # Se existir, find imprime o diretório pai (%h) e a condição [-n ...] será verdadeira.
+    for dir in "${dirs[@]}"; do
+     if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
+        # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
+        if find "$dir" -maxdepth 1 -type f \( $ext_find \) -print -quit| grep -q .; then
+            w_games+=("$dir")
+        else
+    # OBS: só procura em dirs com gamelist.xml - PENSAR SOBRE OS DIRS SEM ELE DEPOIS
+            w_no_games+=("$dir")
+        fi
+    fi
+    done
+}
+
 is_valid_option () {
 # Verifica se a entrada é um número, se ñ é < 1 ou > q o número de opções/argumentos 
     local input="$1"
@@ -36,6 +82,52 @@ is_valid_option () {
     else
         return 0  # Válido
     fi
+}
+
+ask_user () {
+# Exibe um menu de opções para o usuário e armazena a escolha em user_answer
+    local -n answer=$1
+    shift
+    local opt=""
+
+    printf "${RED}O que deseja fazer?${ENDCOLOR}\n"
+    select opt in "$@" "Sair"; do
+        case "$opt" in
+            "Sair")
+                echo "Saindo..."
+                exit 0
+                ;;
+            *)
+                ! is_valid_option "$REPLY" "$#" && continue # pula para próxima iteração se a opção fornecida for inválida
+                
+                answer="$REPLY"
+                break
+                ;;
+        esac
+    done
+
+}
+
+select_dir () {
+# Exibe um menu de seleção de diretórios para o usuário entra no diretóirio escolhido
+    local opt=""
+    printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
+    select opt in "$@" "Sair"; do
+        case "$opt" in
+            "Sair")
+                echo "Saindo..."
+                exit 0
+                ;;
+            *)
+                ! is_valid_option "$REPLY" "$#" && continue
+
+                printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
+                cd -- "$opt"
+                break
+                ;;
+        esac
+    done
+
 }
 
 get_files() {
@@ -89,100 +181,6 @@ find_only_in_xml() {
 
 }
 
-cleanup() {
-    if [[ -n "${TMP_GAME:-}" ]]; then
-    echo "Limpando arquivos temporários..."
-    rm -f "$TMP_GAME" "$TMP_OUT" "$TMP_XSL" 
-    fi
-}
-trap cleanup EXIT 
-
-#####################################################
-
-look4_roms () {
-# Procura por arquivos de jogos nas pastas fornecidas
-    local -n dirs=$1
-    local -n w_games=$2
-    local -n w_no_games=$3
-
-    local first=1 # flag para a primeira iteração
-    local ext=""
-    local ext_find=""
-
-    # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
-    for ext in "${EXTENSIONS[@]}"; do
-        if (( first )); then
-          ext_find+=" -name "*.${ext}" "
-          first=0
-        else
-          ext_find+=" -o -name "*.${ext}" "
-        fi
-    done
-
-
-    # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
-    # Se existir, find imprime o diretório pai (%h) e a condição [-n ...] será verdadeira.
-    for dir in "${dirs[@]}"; do
-     if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
-    
-        # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
-        if find "$dir" -maxdepth 1 -type f \( $ext_find \) -print -quit| grep -q .; then
-            w_games+=("$dir")
-        else
-            w_no_games+=("$dir")
-        fi
-    fi
-done
-
-
-}
-
-ask_user () {
-# Exibe um menu de opções para o usuário e armazena a escolha em user_answer
-    local -n answer=$1
-    shift
-    local opt=""
-
-    printf "${RED}O que deseja fazer?${ENDCOLOR}\n"
-    select opt in "$@" "Sair"; do
-        case "$opt" in
-            "Sair")
-                echo "Saindo..."
-                exit 0
-                ;;
-            *)
-                ! is_valid_option "$REPLY" "$#" && continue # pula para próxima iteração se a opção fornecida for inválida
-                
-                answer="$REPLY"
-                break
-                ;;
-        esac
-    done
-
-}
-
-select_dir () {
-# Exibe um menu de seleção de diretórios para o usuário entra no diretóirio escolhido
-    local opt=""
-    printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
-    select opt in "$@" "Sair"; do
-        case "$opt" in
-            "Sair")
-                echo "Saindo..."
-                exit 0
-                ;;
-            *)
-                ! is_valid_option "$REPLY" "$#" && continue
-
-                printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
-                cd -- "$opt"
-                break
-                ;;
-        esac
-    done
-
-}
-
 select_game () {
 # Exibe um menu para seleção de jogos pelo usuário.
     # Parâmetros:
@@ -224,18 +222,21 @@ select_game () {
 }
 
 mv_xml_entry () {
-    path=$1
+    local game="$1"
+    local path="$2"
+    local dest_path="$3"
     # arquivos temporários seguros
-        TMP_GAME="$(mktemp --tmpdir game.XXXXXX.xml)"
-        TMP_XSL="$(mktemp --tmpdir append.XXXXXX.xsl)"
-        TMP_OUT="$(mktemp --tmpdir out.XXXXXX.xml)"
+        tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)"
+        tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)"
+        tmp_output="$(mktemp --tmpdir out.XXXXXX.xml)"
 
         # 1) extrai o <game> para o temporário
-        xmlstarlet sel -t -c "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml" > $TMP_GAME
+        xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
 
         # 2) cria o XSLT via heredoc
-# Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo
-cat > "$TMP_XSL" <<'XSL'
+# Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
+#Cria uma cópia gamelist.xml com a entrada do jogo anexada
+cat > "$tmp_xsl" <<'XSL' 
 <?xml version="1.0" encoding="utf-8"?>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
   <xsl:output method="xml" indent="yes"/>
@@ -249,7 +250,7 @@ cat > "$TMP_XSL" <<'XSL'
   <xsl:template match="gameList">
     <xsl:copy>
       <xsl:apply-templates select="@*|node()"/>
-      <xsl:apply-templates select="document('%%TMP_GAME%%')/game"/>
+      <xsl:apply-templates select="document('%%tmp_game%%')/game"/>
     </xsl:copy>
   </xsl:template>
 
@@ -257,33 +258,47 @@ cat > "$TMP_XSL" <<'XSL'
 XSL
 
         # substitui o placeholder pelo caminho do arquivo temporário do jogo
-        sed -i "s|%%TMP_GAME%%|$TMP_GAME|g" "$TMP_XSL"
+        sed -i "s|%%tmp_game%%|$tmp_game|g" "$tmp_xsl"
 
-        # 3) aplica o XSLT ao arquivo destino e grava em TMP_OUT
-        xsltproc "$TMP_XSL" "$path" > "$TMP_OUT"
+        # 3) aplica o XSLT ao arquivo destino e grava em tmp_output
+        xsltproc "$tmp_xsl" "$path" > "$tmp_output"
 
         # Apenas aproveita o arquivo temporário do jogo p/ formatar o XML de saída
-        xmlstarlet fo -t --encode utf-8 $TMP_OUT > $TMP_GAME
+        xmlstarlet fo -t --encode utf-8 $tmp_output > "$tmp_game"
 
         # 4) (opcional) backup do original
         #cp -a "$path" "${path}.bak.$(date +%s)"
 
-        # 5) move o arquivo temporário formatado p/ o destino final
-        printf "${GREEN}Atualizando gamelist.xml em %s${ENDCOLOR}\n" "$dest_path"
-        sudo mv "$TMP_GAME" "$path" 2>/dev/null
+        # 5) valida o arquivo temporário antes de mover para o destino final
+        if xmlstarlet val -q "$tmp_game"; then
+            printf "Atualizando gamelist.xml em${GREEN} %s${ENDCOLOR}\n" "$dest_path"
+            sudo mv "$tmp_game" "$path" 2>/dev/null  # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
+        else
+            printf "${BLUE}Erro: O arquivo temporário não é um XML válido. gamelist.xml não foi sobrescrito.${ENDCOLOR}\n"
+            exit 1
+        fi
 
         # 6) remove a entrada do gamelist.xml original
-        printf "${RED}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
-        sudo xmlstarlet ed --inplace -d "//game[name='$SELECTED_GAME_NAME']" "./gamelist.xml"
+        printf "${BLUE}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
+        if ! sudo xmlstarlet ed --inplace -d "//game[name='$game']" "./gamelist.xml"; then
+            printf "${RED}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
+            exit 1
+        fi
 }
 
 mv_game () {
+# Move um jogo e sua entrada no gamelist.xml para um diretório de destino.
+    # Parâmetros:
+    #   $1 - Nome do jogo
+    #   $2 - Caminho do arquivo do jogo
+    local  game_name="$1"
+    local  game_path="$2"
     local dest_path=""
 
     while true; do
         read -p "Digite o caminho de destino: " dest_path
         if [[ ! -d "$dest_path" ]]; then
-            printf "${RED}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
+            printf "${BLUE}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
             continue
         fi
 
@@ -294,24 +309,23 @@ mv_game () {
     if [[ -f "$dest_xml" ]]; then
         printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
 
-        mv_xml_entry "$dest_xml"
+        mv_xml_entry "$game_name" "$dest_xml" "$dest_path"
 
     else
-        printf "${YELLOW}Nenhum gamelist.xml encontrado no destino. Criando um...${ENDCOLOR}\n"
+        printf "${CYAN}Nenhum gamelist.xml encontrado no destino. Criando um...${ENDCOLOR}\n"
 
-        sudo touch "$dest_xml" 2>/dev/null
 sudo tee "$dest_xml" > /dev/null <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <gameList>
 </gameList>
 EOF
 
-        mv_xml_entry "$dest_xml"
+        mv_xml_entry "$game_name" "$dest_xml"
 
     fi
-    printf "Movendo ${CYAN}%s${ENDCOLOR} para ${CYAN}%s${ENDCOLOR}\n" "$SELECTED_GAME_NAME" "$dest_path"
-    sudo mv "$SELECTED_GAME_PATH" "$dest_path" 2>/dev/null
-    printf "${GREEN}Jogo movido com sucesso!${ENDCOLOR}\n"
+    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$dest_path"
+    sudo mv "$game_path" "$dest_path" 
+    printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
 
@@ -357,27 +371,27 @@ main () {
    if [[ "$user_answer" -eq 1 ]]; then
        select_game selected_game_name selected_game_path games_map "${games_files[@]}" 
 
-   #    while true; do
-   #    ask_user "Mover jogo" "Copiar jogo" "Deletar jogo"
-   #    case "$USER_ANSWER" in
-   #            1)
-   #                mv_game
-   #                break
-   #                ;;
-   #            2)
-   #               echo "Copiar jogo selecionado"
-   #                break
-   #                ;;
-   #            3)
-   #                echo "Deletar jogo selecionado"
-   #                break
-   #                ;;
-   #            *)
-   #                echo "Escolha uma ação válida."
-   #                continue
-   #                ;;
-   #        esac
-   #    done 
+       while true; do
+       ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo"
+       case "$user_answer" in
+               1)
+                   mv_game "$selected_game_name" "$selected_game_path"
+                   break
+                   ;;
+               2)
+                  echo "Copiar jogo selecionado"
+                   break
+                   ;;
+               3)
+                   echo "Deletar jogo selecionado"
+                   break
+                   ;;
+               *)
+                   echo "Escolha uma ação válida."
+                   continue
+                   ;;
+           esac
+       done 
     fi
 
 }
