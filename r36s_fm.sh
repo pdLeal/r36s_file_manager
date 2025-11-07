@@ -221,6 +221,58 @@ select_game () {
 
 }
 
+mv_related_files () {
+# Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
+# É preciso descobrir se existem e move-los junto
+   local game_xml="$1"
+
+    # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name> ou <desc>
+    # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídas
+    local other_files=()
+    mapfile -t other_files < <(xmlstarlet sel -t \
+                    -m "//game/*[starts-with(normalize-space(.), \"./\")]" \
+                    -v "." -n "$game_xml")
+
+    if [[ "${#other_files[@]}" -eq 0 ]]; then
+        printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
+        return
+    else
+        printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
+        local file=""
+        for file in "${other_files[@]}"; do
+            printf "Arquivo relacionado: %s\n" "$file"
+        done
+      
+      
+      
+      #  while true; do
+      #      read -p "Deseja movê-los junto? (s/n): " yn
+      #      case "$yn" in
+      #          [Ss])
+      #              local file=""
+      #              for file in "${other_files[@]}"; do
+      #              printf "Verificando arquivo relacionado: %s\n" "$file"
+      #                  if [[ -f "${file}" ]]; then
+      #                      printf "Movendo arquivo relacionado: ${GREEN}%s${ENDCOLOR}\n" "$file"
+      #                      #sudo mv "$file" "$dest_path" 2>/dev/null
+      #                  else
+      #                      printf "${BLUE}Arquivo relacionado não encontrado: %s${ENDCOLOR}\n" "$file"
+      #                  fi
+      #              done
+      #              break
+      #              ;;
+      #          [Nn])
+      #              printf "${BLUE}Arquivos relacionados não serão movidos.${ENDCOLOR}\n"
+      #              break
+      #              ;;
+      #          * ) printf "${RED}Por favor responda sim (s) ou não (n).${ENDCOLOR}\n";;
+      #      esac
+      #  done
+    fi
+
+
+}
+
 mv_xml_entry () {
     local game="$1"
     local path="$2"
@@ -232,6 +284,16 @@ mv_xml_entry () {
 
         # 1) extrai o <game> para o temporário
         xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
+
+        ###TESTES###COM###mv_related_files#################################################
+        
+        mv_related_files "$tmp_game"
+        
+
+        read junk
+        exit 0
+        ###TESTES###COM###mv_related_files#################################################
+
 
         # 2) cria o XSLT via heredoc
 # Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
