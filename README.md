@@ -1,13 +1,13 @@
-# 📁 R36S File Manager
+# 📁 R36s File Manager
 
-> *"A small project to force me to go back to study"*
+> *"A small project a small project so I can go back to study"*
 > — also known as *“my last attempt to feel productive while procrastinating.”*
 
 ---
 
 ### 🧠 About the Project
 
-This is a tiny file manager made for the R36S — that handheld console that was meant just for gaming but somehow became my personal coding lab of chaos.
+This is a tiny file manager made for the R36s — that handheld console that was meant just for gaming but somehow became my personal coding lab of chaos.
 
 The idea was simple: I wanted to *relearn how to code*, and apparently the best way to do that is by recreating something that already exists a thousand times — just with my own customized bugs.
 
@@ -18,22 +18,14 @@ The idea was simple: I wanted to *relearn how to code*, and apparently the best 
 * Manages files.
 * Moves, copies, and deletes stuff (with the constant fear of deleting everything).
 * Built in the spirit of “works on my machine.”
-* And yes, it MAY run on the R36S someday - but today is not the day.
+* And yes, it MAY run on the R36s someday - but today is not the day - keep it on the terminal
 
 ---
 
 ### 🧩 Why It Exists
 
 Because studying is hard, but breaking systems is fun.
-This project started as a technical excuse to open my code editor without admitting that I’m rewatching 2018 tutorials.
-
----
-
-### 💡 Philosophy
-
-> “Don’t just play games — break their file system.”
-
-Learn by playing, study by breaking, and laugh when everything just goes wild.
+This project started as a technical levar a new language without admitting that I’m rewatching 2018 tutorials.
 
 ---
 
