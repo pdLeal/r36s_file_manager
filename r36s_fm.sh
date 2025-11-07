@@ -198,6 +198,13 @@ select_game () {
     local file=""
     local game_names=()
     for file in "${files_array[@]}"; do
+
+        if [[ "${map[$file]} == "__UNSET__"" ]]; then
+            printf "${YELLOW}Aviso: Jogo sem entrada no gamelist.xml: %s${ENDCOLOR}\n" "$file"
+            read junk
+            exit 0
+        fi
+
         game_names+=("${map[$file]}")
     done
 
