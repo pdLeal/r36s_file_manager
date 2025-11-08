@@ -17,7 +17,7 @@ readonly CYAN="\e[36m"
 readonly ENDCOLOR="\e[0m"
 
 # Extensões de arquivos de jogos suportadas
-readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
+readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
 
 
 #####################################################
@@ -147,69 +147,44 @@ find_only_in_xml() {
 # Compara os arquivos encontrados com os do gamelist.xml e identifica quais estão apenas no XML.
     # Parâmetros:
     #   $1 - (array, referência) Lista de arquivos encontrados
-    #   $2 - (array, referência) Lista de nomes de jogos presentes apenas no gamelist.xml
-    #   $3 - (associative array, referência) Mapeamento de arquivos para nomes de jogos
-    # Retorno:
-    #   Popula $2 com nomes de jogos que estão apenas no gamelist.xml
-    #   Atualiza $3 com nomes de jogos encontrados
-
+    #   $2 - (associative array, referência) Mapa para armazenar jogos apenas no XML
+    #   $3 - (associative array, referência) Mapa para armazenar arquivos encontrados com seus nomes de jogos
     local -n files="$1"
     local -n in_xml="$2"
     local -n map="$3"
     local file=""
     
-    # Criar um hash dos arquivos encontrados
-    for file in "${files[@]}"; do
-        map["$file"]="__UNSET__"  # Valor temporário
-        
-    done
-
     # Verificar cada jogo do XML
     local path=""
     local name=""
     while IFS='|' read -r path name; do
         path="${path#./}"  # Remove o prefixo ./
+        in_xml["$path"]="$name" 
 
-        # Se NÃO está no hash, adiciona - Obs:path tem o msm nome do arquivo/jogo
-        if [[ -z "${map["$path"]:-}" ]]; then
-            in_xml+=("$name")
-        
-        else #  Atualiza o nome no hash para referência futura
-            map["$path"]="$name"   
+    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
+                sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
+        # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
+
+    for file in "${files[@]}"; do
+        if [[ -n "${in_xml["$file"]:-}" ]]; then
+            map["$file"]="${in_xml["$file"]}"
+            unset in_xml["$file"] 
         fi
-    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml)
-
+    done
+    
 }
 
 select_game () {
 # Exibe um menu para seleção de jogos pelo usuário.
-    # Parâmetros:
-    #   $1 - (string, referência) Nome do jogo selecionado (retorno)
-    #   $2 - (string, referência) Caminho do arquivo do jogo selecionado (retorno)
-    #   $@ - Lista de caminhos de arquivos de jogos disponíveis para seleção
+
     local -n selected_name="$1"
     local -n selected_path="$2"
     local -n map="$3"
-    shift 3
        
     local opt=""
-    local files_array=("$@")
-
-    local file=""
-    local game_names=()
-    for file in "${files_array[@]}"; do
-
-        if [[ "${map[$file]} == "__UNSET__"" ]]; then
-            printf "${YELLOW}Aviso: Jogo sem entrada no gamelist.xml: %s${ENDCOLOR}\n" "$file"
-            read junk
-            exit 0
-        fi
-
-        game_names+=("${map[$file]}")
-    done
 
     printf "${RED}Selecione um jogo:${ENDCOLOR}\n"
-    select opt in "${game_names[@]}" "Sair"; do
+    select opt in "${map[@]}" "Sair"; do
         case "$opt" in
             "Sair")
                 echo "Saindo..."
@@ -220,7 +195,7 @@ select_game () {
 
                 printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$opt"
                 selected_name="$opt"
-                selected_path="${files_array[$REPLY-1]}"
+                #selected_path="${files_array[$REPLY-1]}"
                 break
                 ;;
         esac
@@ -403,9 +378,9 @@ main () {
     local dirs_with_games=() # antes: GAMES_DIRS=()
     local dirs_without_games=() # antes: NO_GAMES_DIRS=()
     local user_answer=""
-    local games_files=()
-    local games_only_in_xml=()
-    local -A games_map # [chave/arquivo]=>[valor/nome do jogo]
+    local game_files=()
+    local -A file_by_game # [chave/arquivo]=>[valor/nome do jogo]
+    local -A games_only_in_xml
     local selected_game_name=""
     local selected_game_path=""
     
@@ -424,10 +399,10 @@ main () {
     if [[ "$user_answer" -eq 1 ]]; then
         select_dir "${dirs_with_games[@]}"
 
-        get_files games_files
-        printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#games_files[@]}"
+        get_files game_files
+        find_only_in_xml game_files games_only_in_xml file_by_game
 
-        find_only_in_xml games_files games_only_in_xml games_map
+        printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#file_by_game[@]}"
         printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
 
         ask_user user_answer "Ver jogos" "Editar gamelist.xml"
@@ -438,7 +413,7 @@ main () {
 #
    #
    if [[ "$user_answer" -eq 1 ]]; then
-       select_game selected_game_name selected_game_path games_map "${games_files[@]}" 
+       select_game selected_game_name selected_game_path file_by_game "${game_files[@]}" 
 
        while true; do
        ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo"
