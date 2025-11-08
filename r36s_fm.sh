@@ -34,7 +34,7 @@ trap cleanup EXIT
 
 #####################################################
 
-look4_roms () {
+look4_roms() {
 # Procura por arquivos de jogos nas pastas fornecidas
     local -n dirs=$1
     local -n w_games=$2
@@ -70,7 +70,7 @@ look4_roms () {
     done
 }
 
-is_valid_option () {
+is_valid_option() {
 # Verifica se a entrada é um número, se ñ é < 1 ou > q o número de opções/argumentos 
     local input="$1"
     local max_option="$2"
@@ -84,7 +84,7 @@ is_valid_option () {
     fi
 }
 
-ask_user () {
+ask_user() {
 # Exibe um menu de opções para o usuário e armazena a escolha em user_answer
     local -n answer=$1
     shift
@@ -108,7 +108,7 @@ ask_user () {
 
 }
 
-select_dir () {
+select_dir() {
 # Exibe um menu de seleção de diretórios para o usuário entra no diretóirio escolhido
     local opt=""
     printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
@@ -174,9 +174,12 @@ find_only_in_xml() {
     
 }
 
-select_game () {
+select_game() {
 # Exibe um menu para seleção de jogos pelo usuário.
-
+    # Parâmetros:
+    #   $1 - (string, referência) Variável para armazenar o nome do jogo selecionado
+    #   $2 - (string, referência) Variável para armazenar o caminho do arquivo do jogo selecionado
+    #   $3 - (associative array, referência) Mapa de arquivos para nomes de jogos
     local -n selected_name="$1"
     local -n selected_path="$2"
     local -n map="$3"
@@ -191,19 +194,27 @@ select_game () {
                 exit 0
                 ;;
             *)
-                ! is_valid_option "$REPLY" "$#" && continue
+                ! is_valid_option "$REPLY" "${#map[@]}" && continue
 
-                printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$opt"
                 selected_name="$opt"
-                #selected_path="${files_array[$REPLY-1]}"
-                break
+
+                for file in "${!map[@]}"; do
+                    if [[ "${map[$file]}" == "$selected_name" ]]; then
+                        selected_path="$file"
+                        break
+                    fi
+                done
+
+                printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_name"
+                printf "Nome do arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_path"
                 ;;
         esac
+        break
     done
 
 }
 
-mv_related_files () {
+mv_related_files() {
 # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
 # É preciso descobrir se existem e move-los junto
    local game_xml="$1"
@@ -255,7 +266,7 @@ mv_related_files () {
 
 }
 
-mv_xml_entry () {
+mv_xml_entry() {
     local game="$1"
     local path="$2"
     local dest_path="$3"
@@ -330,7 +341,7 @@ XSL
         fi
 }
 
-mv_game () {
+mv_game() {
 # Move um jogo e sua entrada no gamelist.xml para um diretório de destino.
     # Parâmetros:
     #   $1 - Nome do jogo
@@ -373,7 +384,7 @@ EOF
 
 }
 
-main () {
+main() {
     local dirs_list=(*/) # Lista de pastas no diretório atual | antiga: DIRS=(*/)
     local dirs_with_games=() # antes: GAMES_DIRS=()
     local dirs_without_games=() # antes: NO_GAMES_DIRS=()
@@ -413,13 +424,13 @@ main () {
 #
    #
    if [[ "$user_answer" -eq 1 ]]; then
-       select_game selected_game_name selected_game_path file_by_game "${game_files[@]}" 
+       select_game selected_game_name selected_game_path file_by_game 
 
        while true; do
        ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo"
        case "$user_answer" in
                1)
-                   mv_game "$selected_game_name" "$selected_game_path"
+                   #mv_game "$selected_game_name" "$selected_game_path"
                    break
                    ;;
                2)
