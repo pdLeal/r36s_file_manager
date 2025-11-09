@@ -220,7 +220,7 @@ mv_related_files() {
    local game_xml="$1"
 
     # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name> ou <desc>
-    # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídas
+    # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
     local other_files=()
     mapfile -t other_files < <(xmlstarlet sel -t \
                     -m "//game/*[starts-with(normalize-space(.), \"./\")]" \
