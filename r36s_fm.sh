@@ -168,7 +168,7 @@ find_only_in_xml() {
     for file in "${files[@]}"; do
         if [[ -n "${in_xml["$file"]:-}" ]]; then
             map["$file"]="${in_xml["$file"]}"
-            unset in_xml["$file"] 
+            unset in_xml["$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
         fi
     done
     
@@ -198,7 +198,7 @@ select_game() {
 
                 selected_name="$opt"
 
-                for file in "${!map[@]}"; do
+                for file in "${!map[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
                     if [[ "${map[$file]}" == "$selected_name" ]]; then
                         selected_path="$file"
                         break
@@ -247,7 +247,7 @@ mv_related_files() {
       #              printf "Verificando arquivo relacionado: %s\n" "$file"
       #                  if [[ -f "${file}" ]]; then
       #                      printf "Movendo arquivo relacionado: ${GREEN}%s${ENDCOLOR}\n" "$file"
-      #                      #sudo mv "$file" "$dest_path" 2>/dev/null
+      #                      #sudo mv "$file" "$target_dir" 2>/dev/null
       #                  else
       #                      printf "${BLUE}Arquivo relacionado não encontrado: %s${ENDCOLOR}\n" "$file"
       #                  fi
@@ -268,30 +268,37 @@ mv_related_files() {
 
 mv_xml_entry() {
     local game="$1"
-    local path="$2"
-    local dest_path="$3"
-    # arquivos temporários seguros
-        tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)"
-        tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)"
-        tmp_output="$(mktemp --tmpdir out.XXXXXX.xml)"
+    local tgt_file="$2"
+    local tgt_dir="$3"
 
-        # 1) extrai o <game> para o temporário
-        xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
+    printf "Atualizando gamelist.xml em${GREEN} %s${ENDCOLOR}\n" "$tgt_dir"
+    
+    # Arquivos temporários seguros
+    tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)"
+    tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)"
+    tmp_output="$(mktemp --tmpdir out.XXXXXX.xml)"
 
-        ###TESTES###COM###mv_related_files#################################################
+    # 1) extrai o <game> para o temporário
+    xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
+
+    ###TESTES###COM###mv_related_files#################################################
         
-        mv_related_files "$tmp_game"
+        #mv_related_files "$tmp_game"
+        
         
 
-        read junk
-        exit 0
-        ###TESTES###COM###mv_related_files#################################################
+
+
+        #read junk
+        #exit 0
+
+    ###TESTES###COM###mv_related_files#################################################
 
 
         # 2) cria o XSLT via heredoc
-# Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
-#Cria uma cópia gamelist.xml com a entrada do jogo anexada
-cat > "$tmp_xsl" <<'XSL' 
+# Cria uma cópia gamelist.xml com a entrada do jogo anexada
+# AVISO: Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
+cat > "$tmp_xsl" <<'XSL'
 <?xml version="1.0" encoding="utf-8"?>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
   <xsl:output method="xml" indent="yes"/>
@@ -312,33 +319,38 @@ cat > "$tmp_xsl" <<'XSL'
 </xsl:stylesheet>
 XSL
 
-        # substitui o placeholder pelo caminho do arquivo temporário do jogo
-        sed -i "s|%%tmp_game%%|$tmp_game|g" "$tmp_xsl"
+    # substitui o placeholder pelo caminho do arquivo temporário do jogo
+    sed -i "s|%%tmp_game%%|$tmp_game|g" "$tmp_xsl"
 
-        # 3) aplica o XSLT ao arquivo destino e grava em tmp_output
-        xsltproc "$tmp_xsl" "$path" > "$tmp_output"
+    # 3) Aplica o XSLT ao arquivo destino e grava em tmp_output
+    xsltproc "$tmp_xsl" "$tgt_file" > "$tmp_output"
 
-        # Apenas aproveita o arquivo temporário do jogo p/ formatar o XML de saída
-        xmlstarlet fo -t --encode utf-8 $tmp_output > "$tmp_game"
+    # Apenas aproveita o arquivo temporário do jogo p/ formatar o XML de saída
+    xmlstarlet fo -t --encode utf-8 $tmp_output > "$tmp_game"
 
-        # 4) (opcional) backup do original
-        #cp -a "$path" "${path}.bak.$(date +%s)"
+    # 4) (opcional) backup do original
+    #cp -a "$tgt_file" "${tgt_file}.bak.$(date +%s)"
 
-        # 5) valida o arquivo temporário antes de mover para o destino final
-        if xmlstarlet val -q "$tmp_game"; then
-            printf "Atualizando gamelist.xml em${GREEN} %s${ENDCOLOR}\n" "$dest_path"
-            sudo mv "$tmp_game" "$path" 2>/dev/null  # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
-        else
-            printf "${BLUE}Erro: O arquivo temporário não é um XML válido. gamelist.xml não foi sobrescrito.${ENDCOLOR}\n"
-            exit 1
-        fi
-
+    # 5) Valida o arquivo temporário antes de mover para o destino final
+    if xmlstarlet val -q "$tmp_game"; then
+        
         # 6) remove a entrada do gamelist.xml original
         printf "${BLUE}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
+
         if ! sudo xmlstarlet ed --inplace -d "//game[name='$game']" "./gamelist.xml"; then
             printf "${RED}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
             exit 1
+        else
+            # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
+            sudo mv "$tmp_game" "$tgt_file" 2>/dev/null
         fi
+    
+    else
+        printf "${BLUE}Erro: O arquivo temporário não é um XML válido. Operação Cancelada.${ENDCOLOR}\n"
+        exit 1
+    fi
+
+   
 }
 
 mv_game() {
@@ -346,48 +358,47 @@ mv_game() {
     # Parâmetros:
     #   $1 - Nome do jogo
     #   $2 - Caminho do arquivo do jogo
-    local  game_name="$1"
-    local  game_path="$2"
-    local dest_path=""
+    local game_name="$1"
+    local game_path="$2"
+    local target_dir=""
 
     while true; do
-        read -p "Digite o caminho de destino: " dest_path
-        if [[ ! -d "$dest_path" ]]; then
+        read -p "Digite o diretório de destino: " target_dir
+        if [[ ! -d "$target_dir" ]]; then
             printf "${BLUE}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
             continue
         fi
-
         break
     done
 
-    local dest_xml="$dest_path/gamelist.xml"
-    if [[ -f "$dest_xml" ]]; then
+    local target_file="$target_dir/gamelist.xml"
+    if [[ -f "$target_file" ]]; then
         printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
 
-        mv_xml_entry "$game_name" "$dest_xml" "$dest_path"
+        mv_xml_entry "$game_name" "$target_file" "$target_dir"
 
     else
         printf "${CYAN}Nenhum gamelist.xml encontrado no destino. Criando um...${ENDCOLOR}\n"
 
-sudo tee "$dest_xml" > /dev/null <<EOF
+sudo tee "$target_file" > /dev/null <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <gameList>
 </gameList>
 EOF
 
-        mv_xml_entry "$game_name" "$dest_xml"
+        mv_xml_entry "$game_name" "$target_file" "$target_dir"
 
     fi
-    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$dest_path"
-    sudo mv "$game_path" "$dest_path" 
+    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$target_dir"
+    sudo mv "$game_path" "$target_dir" 
     printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
 
 main() {
-    local dirs_list=(*/) # Lista de pastas no diretório atual | antiga: DIRS=(*/)
-    local dirs_with_games=() # antes: GAMES_DIRS=()
-    local dirs_without_games=() # antes: NO_GAMES_DIRS=()
+    local dirs_list=(*/) # Lista de pastas no diretório atual
+    local dirs_with_games=() 
+    local dirs_without_games=() 
     local user_answer=""
     local game_files=()
     local -A file_by_game # [chave/arquivo]=>[valor/nome do jogo]
@@ -430,7 +441,7 @@ main() {
        ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo"
        case "$user_answer" in
                1)
-                   #mv_game "$selected_game_name" "$selected_game_path"
+                   mv_game "$selected_game_name" "$selected_game_path"
                    break
                    ;;
                2)
