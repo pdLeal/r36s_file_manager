@@ -255,6 +255,7 @@ mv_related_files() {
             file_dir="${file_dir#./}" # Remove o prefixo ./
 
             local target_file_dir="$tg_dir/$file_dir"
+
             if [[ ! -d "$target_file_dir" ]]; then
                 printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_file_dir"
                 sudo mkdir "$target_file_dir"
@@ -266,9 +267,9 @@ mv_related_files() {
                 sudo mv "$other" "$target_file_dir"
             fi
             
-
         done
-      
+        printf "${YELLOW}Arquivos relacionados movidos com sucesso!${ENDCOLOR}\n"
+        return 0
     fi
 
 
@@ -289,19 +290,9 @@ mv_xml_entry() {
     # 1) extrai o <game> para o temporário
     xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
 
-    ###TESTES###COM###mv_related_files#################################################
+    printf "Verificando e movendo arquivos relacionados ao jogo... \n"
+    mv_related_files "$tmp_game" "$tgt_dir"
         
-        mv_related_files "$tmp_game" "$tgt_dir"
-        
-        
-
-
-
-        read junk
-        exit 0
-
-    ###TESTES###COM###mv_related_files#################################################
-
 
         # 2) cria o XSLT via heredoc
 # Cria uma cópia gamelist.xml com a entrada do jogo anexada
@@ -351,6 +342,7 @@ XSL
         else
             # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
             sudo mv "$tmp_game" "$tgt_file" 2>/dev/null
+            printf "${YELLOW}Entrada movida com sucesso para o gamelist.xml de destino!${ENDCOLOR}\n"
         fi
     
     else
@@ -415,9 +407,7 @@ main() {
     local selected_game_path=""
     
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
-
-                                        # Conta o número de linhas/elementos em dirs_list
-    printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "$(printf '%s\n' "${dirs_list[@]}" | wc -l)"
+    printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
     echo "Procurando por pastas contendo ROMs..."
     look4_roms dirs_list dirs_with_games dirs_without_games
