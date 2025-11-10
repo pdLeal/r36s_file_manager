@@ -17,7 +17,7 @@ readonly CYAN="\e[36m"
 readonly ENDCOLOR="\e[0m"
 
 # Extensões de arquivos de jogos suportadas
-readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "gdi" "chd" "zip" "7z")
+readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z")
 
 
 #####################################################
@@ -218,49 +218,57 @@ mv_related_files() {
 # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
 # É preciso descobrir se existem e move-los junto
    local game_xml="$1"
+   local tg_dir="$2"
 
-    # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name> ou <desc>
+    # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
     # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
     local other_files=()
     mapfile -t other_files < <(xmlstarlet sel -t \
-                    -m "//game/*[starts-with(normalize-space(.), \"./\")]" \
+                    -m "//game/*[starts-with(normalize-space(.), \"./\") and \
+                        not(self::name or self::path or self::desc or self::scrap)]" \
                     -v "." -n "$game_xml")
 
     if [[ "${#other_files[@]}" -eq 0 ]]; then
         printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
-        return
+        return 0
     else
+
+        local -A seen
+        local unique=()
+        local other=""
+
+        for other in "${other_files[@]}"; do # Remove duplicatas, pois alguns jogos possuem duas ou mais
+            if [[ -z "${seen[$other]:-}" ]]; then  # tags q apontam p/ mesmo arquivo
+                seen[$other]=1
+                unique+=("$other")
+            fi
+        done
+
+        other_files=("${unique[@]}")
+
+
         printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
-        local file=""
-        for file in "${other_files[@]}"; do
-            printf "Arquivo relacionado: %s\n" "$file"
+
+        for other in "${other_files[@]}"; do
+
+            local file_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
+            file_dir="${file_dir#./}" # Remove o prefixo ./
+
+            local target_file_dir="$tg_dir/$file_dir"
+            if [[ ! -d "$target_file_dir" ]]; then
+                printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_file_dir"
+                sudo mkdir "$target_file_dir"
+                
+                printf "Movendo arquivo relacionado ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
+                sudo mv "$other" "$target_file_dir"
+            else
+                printf "Movendo arquivo relacionado ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
+                sudo mv "$other" "$target_file_dir"
+            fi
+            
+
         done
       
-      
-      
-      #  while true; do
-      #      read -p "Deseja movê-los junto? (s/n): " yn
-      #      case "$yn" in
-      #          [Ss])
-      #              local file=""
-      #              for file in "${other_files[@]}"; do
-      #              printf "Verificando arquivo relacionado: %s\n" "$file"
-      #                  if [[ -f "${file}" ]]; then
-      #                      printf "Movendo arquivo relacionado: ${GREEN}%s${ENDCOLOR}\n" "$file"
-      #                      #sudo mv "$file" "$target_dir" 2>/dev/null
-      #                  else
-      #                      printf "${BLUE}Arquivo relacionado não encontrado: %s${ENDCOLOR}\n" "$file"
-      #                  fi
-      #              done
-      #              break
-      #              ;;
-      #          [Nn])
-      #              printf "${BLUE}Arquivos relacionados não serão movidos.${ENDCOLOR}\n"
-      #              break
-      #              ;;
-      #          * ) printf "${RED}Por favor responda sim (s) ou não (n).${ENDCOLOR}\n";;
-      #      esac
-      #  done
     fi
 
 
@@ -283,14 +291,14 @@ mv_xml_entry() {
 
     ###TESTES###COM###mv_related_files#################################################
         
-        #mv_related_files "$tmp_game"
+        mv_related_files "$tmp_game" "$tgt_dir"
         
         
 
 
 
-        #read junk
-        #exit 0
+        read junk
+        exit 0
 
     ###TESTES###COM###mv_related_files#################################################
 
