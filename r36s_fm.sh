@@ -430,8 +430,8 @@ cp_game() {
     # Parâmetros:
     #   $1 - Nome do jogo
     #   $2 - Caminho do arquivo do jogo
-    local game_name="$1"
-    local game_path="$2"
+    local selected_game="$1"
+    local selected_path="$2"
     local target_dir=""
 
     while true; do
@@ -443,22 +443,25 @@ cp_game() {
         break
     done
 
-    local target_file="$target_dir/gamelist.xml" 
+    local target_file="$target_dir/gamelist.xml" # gamelist.xml no diretório de destino
     if [[ -f "$target_file" ]]; then
         printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
     else
         printf "${CYAN}Nenhum gamelist.xml encontrado no destino.${ENDCOLOR}\n"
         create_gamelist "$target_file"
     fi
-    #duplicate_xml_with_entry "$game" "$target_file"
-    #sudo mv "$tmp_output_fmt" "$target_file" 2>/dev/null
 
-    printf "Verificando e movendo arquivos relacionados ao jogo... \n"
-    process_other_files "$tmp_game" "$target_dir" "cp"
+    duplicate_xml_with_entry "$selected_game" "$target_file" && \
+        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+        
+    mv_xml_entry "$target_file" && \
+        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$target_file"
+
+    process_other_files "$tmp_game" "$target_dir" "cp" #tmp_game é criado pelo mv_xml_entry
     
-    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$target_dir"
-    sudo cp "$game_path" "$target_dir" 
-    printf "${YELLOW}Jogo copiado com sucesso!${ENDCOLOR}\n"
+    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
+    sudo cp "$selected_path" "$target_dir" && \
+        printf "${YELLOW}Jogo Copiado com sucesso!${ENDCOLOR}\n"
 
 }
 
