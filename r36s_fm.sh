@@ -251,7 +251,6 @@ duplicate_xml_with_entry() {
 
     printf "Criando cópia do gamelist.xml de destino com a entrada anexada...\n"
     # 2) cria o XSLT via heredoc
-# Cria uma cópia gamelist.xml com a entrada do jogo anexada
 # AVISO: Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
 cat > "$tmp_xsl" <<'XSL'
 <?xml version="1.0" encoding="utf-8"?>
@@ -289,7 +288,7 @@ XSL
 
     # 6) Valida o XML final
     if xmlstarlet val -q "$tmp_output_fmt"; then
-        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+        return 0
     else
         printf "${BLUE}Erro: O arquivo temporário não é um XML válido. Operação Cancelada.${ENDCOLOR}\n"
         exit 1
@@ -298,30 +297,38 @@ XSL
 }
 
 mv_xml_entry() {
-    local game="$1"
-    local tgt_file="$2"
-    local tgt_dir="$3"
+# Move a entrada do gamelist.xml temporário para o arquivo de destino
+    local tgt_file="$1"
     
-    duplicate_xml_with_entry "$game" "$tgt_file"
-    # Remove a entrada do gamelist.xml original
-    printf "${BLUE}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
-
-    if ! sudo xmlstarlet ed --inplace -d "//game[name='$game']" "./gamelist.xml"; then
-        printf "${RED}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
-        exit 1
+    # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
+    if sudo mv "$tmp_output_fmt" "$tgt_file" 2>/dev/null; then
+        return 0
     else
-        # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
-        sudo mv "$tmp_output_fmt" "$tgt_file" 2>/dev/null
-        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$tgt_file"
+        printf "${BLUE}Erro ao mover o arquivo temporário para o destino. Verifique permissões.${ENDCOLOR}\n"
+        exit 1
     fi
-   
 }
 
-mv_related_files() {
+rm_xml_entry() {
+# Remove a entrada do gamelist.xml original
+    local game="$1"
+    printf "${CYAN}Removendo entrada do gamelist.xml...${ENDCOLOR}\n"
+
+    if ! sudo xmlstarlet ed --inplace -d "//game[name='$game']" "./gamelist.xml"; then
+        printf "${BLUE}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
+        exit 1
+    else
+        return 0
+    fi
+}
+
+process_other_files() {
 # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
 # É preciso descobrir se existem e move-los junto
    local game_xml="$1"
    local tg_dir="$2"
+   local command="$3"
+   printf "Verificando e movendo arquivos relacionados ao jogo... \n"
 
     # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
     # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
@@ -362,16 +369,12 @@ mv_related_files() {
             if [[ ! -d "$target_file_dir" ]]; then
                 printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_file_dir"
                 sudo mkdir "$target_file_dir"
-                
-                printf "Movendo arquivo relacionado ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
-                sudo mv "$other" "$target_file_dir"
-            else
-                printf "Movendo arquivo relacionado ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
-                sudo mv "$other" "$target_file_dir"
             fi
+            printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
+            sudo "$command" "$other" "$target_file_dir"
             
         done
-        printf "${YELLOW}Arquivos relacionados movidos com sucesso!${ENDCOLOR}\n"
+        printf "${YELLOW}Arquivos relacionados processados com sucesso!${ENDCOLOR}\n"
         return 0
     fi
 
@@ -383,8 +386,8 @@ mv_game() {
     # Parâmetros:
     #   $1 - Nome do jogo
     #   $2 - Caminho do arquivo do jogo
-    local game_name="$1"
-    local game_path="$2"
+    local selected_game="$1"
+    local selected_path="$2"
     local target_dir=""
 
     while true; do
@@ -402,21 +405,28 @@ mv_game() {
     else
         printf "${CYAN}Nenhum gamelist.xml encontrado no destino.${ENDCOLOR}\n"
         create_gamelist "$target_file"
-
     fi
-    mv_xml_entry "$game_name" "$target_file" "$target_dir"
 
-    printf "Verificando e movendo arquivos relacionados ao jogo... \n"
-    mv_related_files "$tmp_game" "$target_dir" #tmp_game é criado pelo mv_xml_entry
+    duplicate_xml_with_entry "$selected_game" "$target_file" && \
+        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+        
+    mv_xml_entry "$target_file" && \
+        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$target_file"
+
+    rm_xml_entry "$selected_game" && \
+        printf "${YELLOW}Entrada removida com sucesso!${ENDCOLOR}\n"
+
+   
+    process_other_files "$tmp_game" "$target_dir" "mv" #tmp_game é criado pelo mv_xml_entry
     
-    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$target_dir"
-    sudo mv "$game_path" "$target_dir" 
-    printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
+    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
+    sudo mv "$selected_path" "$target_dir" && \
+        printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
 
 }
 
 cp_game() {
-# Move um jogo e sua entrada no gamelist.xml para um diretório de destino.
+# Copia um jogo e sua entrada no gamelist.xml para um diretório de destino.
     # Parâmetros:
     #   $1 - Nome do jogo
     #   $2 - Caminho do arquivo do jogo
@@ -433,22 +443,22 @@ cp_game() {
         break
     done
 
-    local target_file="$target_dir/gamelist.xml" # gamelist.xml no diretório de destino
+    local target_file="$target_dir/gamelist.xml" 
     if [[ -f "$target_file" ]]; then
         printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
     else
         printf "${CYAN}Nenhum gamelist.xml encontrado no destino.${ENDCOLOR}\n"
         create_gamelist "$target_file"
-
     fi
-    mv_xml_entry "$game_name" "$target_file" "$target_dir"
+    #duplicate_xml_with_entry "$game" "$target_file"
+    #sudo mv "$tmp_output_fmt" "$target_file" 2>/dev/null
 
     printf "Verificando e movendo arquivos relacionados ao jogo... \n"
-    mv_related_files "$tmp_game" "$target_dir" #tmp_game é criado pelo mv_xml_entry
+    process_other_files "$tmp_game" "$target_dir" "cp"
     
-    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$target_dir"
-    sudo mv "$game_path" "$target_dir" 
-    printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
+    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$target_dir"
+    sudo cp "$game_path" "$target_dir" 
+    printf "${YELLOW}Jogo copiado com sucesso!${ENDCOLOR}\n"
 
 }
 
