@@ -415,6 +415,43 @@ mv_game() {
 
 }
 
+cp_game() {
+# Move um jogo e sua entrada no gamelist.xml para um diretório de destino.
+    # Parâmetros:
+    #   $1 - Nome do jogo
+    #   $2 - Caminho do arquivo do jogo
+    local game_name="$1"
+    local game_path="$2"
+    local target_dir=""
+
+    while true; do
+        read -p "Digite o diretório de destino: " target_dir
+        if [[ ! -d "$target_dir" ]]; then
+            printf "${BLUE}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
+            continue
+        fi
+        break
+    done
+
+    local target_file="$target_dir/gamelist.xml" # gamelist.xml no diretório de destino
+    if [[ -f "$target_file" ]]; then
+        printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
+    else
+        printf "${CYAN}Nenhum gamelist.xml encontrado no destino.${ENDCOLOR}\n"
+        create_gamelist "$target_file"
+
+    fi
+    mv_xml_entry "$game_name" "$target_file" "$target_dir"
+
+    printf "Verificando e movendo arquivos relacionados ao jogo... \n"
+    mv_related_files "$tmp_game" "$target_dir" #tmp_game é criado pelo mv_xml_entry
+    
+    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$target_dir"
+    sudo mv "$game_path" "$target_dir" 
+    printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
+
+}
+
 main() {
     local dirs_list=(*/) # Lista de pastas no diretório atual
     local dirs_with_games=() 
@@ -463,7 +500,7 @@ main() {
                    break
                    ;;
                2)
-                  echo "Copiar jogo selecionado"
+                   cp_game "$selected_game_name" "$selected_game_path"
                    break
                    ;;
                3)
