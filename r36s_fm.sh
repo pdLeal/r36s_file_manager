@@ -17,7 +17,7 @@ readonly CYAN="\e[36m"
 readonly ENDCOLOR="\e[0m"
 
 # Extensões de arquivos de jogos suportadas
-readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z")
+readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z")
 
 
 #####################################################
@@ -27,7 +27,7 @@ readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "gbsfc" "fig" "gb" "gbc" "gba"
 cleanup() {
     if [[ -n "${tmp_game:-}" ]]; then
     echo "Limpando arquivos temporários..."
-    rm -f "$tmp_game" "$tmp_output" "$tmp_xsl" 
+    rm -f "$tmp_game" "$tmp_output_raw" "$tmp_xsl" "$tmp_output_fmt" 
     fi
 }
 trap cleanup EXIT 
@@ -214,6 +214,109 @@ select_game() {
 
 }
 
+create_gamelist() {
+# Cria um gamelist.xml básico em um diretório especificado
+    local target="$1"
+    printf "Criando${GREEN} %s${ENDCOLOR}\n" "$target_file"
+
+sudo tee "$target" > /dev/null <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<gameList>
+</gameList>
+EOF
+}
+
+duplicate_xml_with_entry() {
+# Cria uma cópia do gamelist.xml com a entrada de um jogo anexada como arquivo temporário
+    local game="$1"
+    local tgt_file="$2"
+    printf "Criando arquivos temporários necessários...\n"
+
+    # Arquivos temporários seguros
+    tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" && \
+        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_game"
+
+    tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)" && \
+        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_xsl"
+
+    tmp_output_raw="$(mktemp --tmpdir out_raw.XXXXXX.xml)" && \
+        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_output_raw"
+
+    tmp_output_fmt="$(mktemp --tmpdir out_fmt.XXXXXX.xml)" && \
+        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_output_fmt"
+
+    # 1) Extrai o <game> para o temporário
+    printf "Extraindo entrada do jogo selecionado...\n"
+    xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
+
+    printf "Criando cópia do gamelist.xml de destino com a entrada anexada...\n"
+    # 2) cria o XSLT via heredoc
+# Cria uma cópia gamelist.xml com a entrada do jogo anexada
+# AVISO: Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
+cat > "$tmp_xsl" <<'XSL'
+<?xml version="1.0" encoding="utf-8"?>
+<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+  <xsl:output method="xml" indent="yes"/>
+
+  <xsl:template match="@*|node()">
+    <xsl:copy>
+      <xsl:apply-templates select="@*|node()"/>
+    </xsl:copy>
+  </xsl:template>
+
+  <xsl:template match="gameList">
+    <xsl:copy>
+      <xsl:apply-templates select="@*|node()"/>
+      <xsl:apply-templates select="document('%%tmp_game%%')/game"/>
+    </xsl:copy>
+  </xsl:template>
+
+</xsl:stylesheet>
+XSL
+
+    # 2.1) Substitui o placeholder pelo caminho do arquivo temporário do jogo
+    sed -i "s|%%tmp_game%%|$tmp_game|g" "$tmp_xsl"
+
+    # 3) Aplica o XSLT ao arquivo destino e grava em tmp_output_raw
+
+    xsltproc "$tmp_xsl" "$tgt_file" > "$tmp_output_raw"
+
+    # 4) Formata o XML de saída corretamente
+    xmlstarlet fo -t --encode utf-8 $tmp_output_raw > "$tmp_output_fmt"
+
+    # 5) (opcional) backup do original
+    #cp -a "$tgt_file" "${tgt_file}.bak.$(date +%s)" 
+
+    # 6) Valida o XML final
+    if xmlstarlet val -q "$tmp_output_fmt"; then
+        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+    else
+        printf "${BLUE}Erro: O arquivo temporário não é um XML válido. Operação Cancelada.${ENDCOLOR}\n"
+        exit 1
+    fi
+    
+}
+
+mv_xml_entry() {
+    local game="$1"
+    local tgt_file="$2"
+    local tgt_dir="$3"
+    
+    duplicate_xml_with_entry "$game" "$tgt_file"
+    # Remove a entrada do gamelist.xml original
+    printf "${BLUE}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
+
+    if ! sudo xmlstarlet ed --inplace -d "//game[name='$game']" "./gamelist.xml"; then
+        printf "${RED}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
+        exit 1
+    else
+        # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
+        sudo mv "$tmp_output_fmt" "$tgt_file" 2>/dev/null
+        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$tgt_file"
+    fi
+   
+}
+
 mv_related_files() {
 # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
 # É preciso descobrir se existem e move-los junto
@@ -275,84 +378,6 @@ mv_related_files() {
 
 }
 
-mv_xml_entry() {
-    local game="$1"
-    local tgt_file="$2"
-    local tgt_dir="$3"
-
-    printf "Atualizando gamelist.xml em${GREEN} %s${ENDCOLOR}\n" "$tgt_dir"
-    
-    # Arquivos temporários seguros
-    tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)"
-    tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)"
-    tmp_output="$(mktemp --tmpdir out.XXXXXX.xml)"
-
-    # 1) extrai o <game> para o temporário
-    xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
-
-    printf "Verificando e movendo arquivos relacionados ao jogo... \n"
-    mv_related_files "$tmp_game" "$tgt_dir"
-        
-
-        # 2) cria o XSLT via heredoc
-# Cria uma cópia gamelist.xml com a entrada do jogo anexada
-# AVISO: Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
-cat > "$tmp_xsl" <<'XSL'
-<?xml version="1.0" encoding="utf-8"?>
-<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
-  <xsl:output method="xml" indent="yes"/>
-
-  <xsl:template match="@*|node()">
-    <xsl:copy>
-      <xsl:apply-templates select="@*|node()"/>
-    </xsl:copy>
-  </xsl:template>
-
-  <xsl:template match="gameList">
-    <xsl:copy>
-      <xsl:apply-templates select="@*|node()"/>
-      <xsl:apply-templates select="document('%%tmp_game%%')/game"/>
-    </xsl:copy>
-  </xsl:template>
-
-</xsl:stylesheet>
-XSL
-
-    # substitui o placeholder pelo caminho do arquivo temporário do jogo
-    sed -i "s|%%tmp_game%%|$tmp_game|g" "$tmp_xsl"
-
-    # 3) Aplica o XSLT ao arquivo destino e grava em tmp_output
-    xsltproc "$tmp_xsl" "$tgt_file" > "$tmp_output"
-
-    # Apenas aproveita o arquivo temporário do jogo p/ formatar o XML de saída
-    xmlstarlet fo -t --encode utf-8 $tmp_output > "$tmp_game"
-
-    # 4) (opcional) backup do original
-    #cp -a "$tgt_file" "${tgt_file}.bak.$(date +%s)"
-
-    # 5) Valida o arquivo temporário antes de mover para o destino final
-    if xmlstarlet val -q "$tmp_game"; then
-        
-        # 6) remove a entrada do gamelist.xml original
-        printf "${BLUE}Removendo entrada do gamelist.xml original...${ENDCOLOR}\n"
-
-        if ! sudo xmlstarlet ed --inplace -d "//game[name='$game']" "./gamelist.xml"; then
-            printf "${RED}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
-            exit 1
-        else
-            # TODO: Lidar com erro de permissão ao invés de ignorar - eventualmente =)
-            sudo mv "$tmp_game" "$tgt_file" 2>/dev/null
-            printf "${YELLOW}Entrada movida com sucesso para o gamelist.xml de destino!${ENDCOLOR}\n"
-        fi
-    
-    else
-        printf "${BLUE}Erro: O arquivo temporário não é um XML válido. Operação Cancelada.${ENDCOLOR}\n"
-        exit 1
-    fi
-
-   
-}
-
 mv_game() {
 # Move um jogo e sua entrada no gamelist.xml para um diretório de destino.
     # Parâmetros:
@@ -371,24 +396,19 @@ mv_game() {
         break
     done
 
-    local target_file="$target_dir/gamelist.xml"
+    local target_file="$target_dir/gamelist.xml" # gamelist.xml no diretório de destino
     if [[ -f "$target_file" ]]; then
         printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
-
-        mv_xml_entry "$game_name" "$target_file" "$target_dir"
-
     else
-        printf "${CYAN}Nenhum gamelist.xml encontrado no destino. Criando um...${ENDCOLOR}\n"
-
-sudo tee "$target_file" > /dev/null <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<gameList>
-</gameList>
-EOF
-
-        mv_xml_entry "$game_name" "$target_file" "$target_dir"
+        printf "${CYAN}Nenhum gamelist.xml encontrado no destino.${ENDCOLOR}\n"
+        create_gamelist "$target_file"
 
     fi
+    mv_xml_entry "$game_name" "$target_file" "$target_dir"
+
+    printf "Verificando e movendo arquivos relacionados ao jogo... \n"
+    mv_related_files "$tmp_game" "$target_dir" #tmp_game é criado pelo mv_xml_entry
+    
     printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$game_name" "$target_dir"
     sudo mv "$game_path" "$target_dir" 
     printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
