@@ -27,10 +27,10 @@ readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb"
 cleanup() {
     if [[ -n "${tmp_game:-}" ]]; then
     echo "Limpando arquivos temporários..."
-    rm -f "$tmp_game" "$tmp_output_raw" "$tmp_xsl" "$tmp_output_fmt" 
+    rm -f "${tmp_game:-}" "${tmp_output_raw:-}" "${tmp_xsl:-}" "${tmp_output_fmt:-}"
     fi
 }
-trap cleanup EXIT 
+trap cleanup EXIT 2>/dev/null
 
 #####################################################
 
@@ -328,7 +328,7 @@ process_other_files() {
    local game_xml="$1"
    local tg_dir="$2"
    local command="$3"
-   printf "Verificando e movendo arquivos relacionados ao jogo... \n"
+   printf "Verificando e processando arquivos relacionados ao jogo... \n"
 
     # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
     # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
@@ -358,20 +358,35 @@ process_other_files() {
 
 
         printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
-
         for other in "${other_files[@]}"; do
-
             local file_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
             file_dir="${file_dir#./}" # Remove o prefixo ./
 
             local target_file_dir="$tg_dir/$file_dir"
 
-            if [[ ! -d "$target_file_dir" ]]; then
-                printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_file_dir"
-                sudo mkdir "$target_file_dir"
-            fi
-            printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
-            sudo "$command" "$other" "$target_file_dir"
+            case "$command" in
+                cp|mv)
+                    if [[ ! -d "$target_file_dir" ]]; then
+                        printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_file_dir"
+                        sudo mkdir -p "$target_file_dir"
+                    fi
+                    ;;&
+                mv)
+                    
+                    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
+                    sudo "$command" "$other" "$target_file_dir"
+                    ;;
+                cp)
+                    
+                    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_file_dir"
+                    sudo "$command" "$other" "$target_file_dir"
+                    ;;
+                rm)
+                    
+                    printf "Removendo ${GREEN}%s${ENDCOLOR}${ENDCOLOR}\n" "$other"
+                    sudo "$command" "$other"
+                    ;;
+            esac
             
         done
         printf "${YELLOW}Arquivos relacionados processados com sucesso!${ENDCOLOR}\n"
@@ -465,6 +480,33 @@ cp_game() {
 
 }
 
+rm_game() {
+# Remove um jogo e sua entrada no gamelist.xml.
+    # Parâmetros:
+    #   $1 - Nome do jogo
+    #   $2 - Caminho do arquivo do jogo
+    local selected_game="$1"
+    local selected_path="$2"
+
+    printf "Criando xml temporário...\n"
+    tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" && \
+        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_game"
+
+    printf "Extraindo entrada do jogo selecionado...\n"
+    xmlstarlet sel -t -c "//game[name='$selected_game']" "./gamelist.xml" > "$tmp_game"
+
+    rm_xml_entry "$selected_game" && \
+        printf "${YELLOW}Entrada removida com sucesso!${ENDCOLOR}\n"
+
+    process_other_files "$tmp_game" "$selected_path" "rm"
+
+    sudo rm -f "$selected_path" && \
+        printf "${YELLOW}Jogo removido com sucesso!${ENDCOLOR}\n"
+
+    rm -f "$tmp_game" && \
+        printf "${YELLOW}Arquivo temporário removido com sucesso!${ENDCOLOR}\n"
+}
+
 main() {
     local dirs_list=(*/) # Lista de pastas no diretório atual
     local dirs_with_games=() 
@@ -517,7 +559,7 @@ main() {
                    break
                    ;;
                3)
-                   echo "Deletar jogo selecionado"
+                   rm_game "$selected_game_name" "$selected_game_path"
                    break
                    ;;
                *)
