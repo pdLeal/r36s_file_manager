@@ -13,6 +13,7 @@ readonly RED="\e[31m"
 readonly GREEN="\e[32m"
 readonly YELLOW="\e[33m"
 readonly BLUE="\e[34m"
+readonly PINK="\e[35m"
 readonly CYAN="\e[36m"
 readonly ENDCOLOR="\e[0m"
 
@@ -328,8 +329,6 @@ process_other_files() {
    local game_xml="$1"
    local tg_dir="$2"
    local command="$3"
-   shift 3
-   local g_files=($@)
    printf "Verificando e processando arquivos relacionados ao jogo... \n"
 
     # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
@@ -342,14 +341,12 @@ process_other_files() {
                         not(self::name or self::path or self::desc or self::scrap)]" \
                     -v "." -n "$game_xml")
 
-    for file in "${g_files[@]}"; do
+    
     # TODO: passar selected_game_path EXPLICITAMENTE!!!
-    # Alguns jogos possuem arquivos como gameName.iso e gameName.cue q devem ser processados tbm
-        if [[ "$file" != "$selected_game_path" ]]; then
-        other_files+=("$file")
-        fi
-    done
-
+    # Alguns jogos possuem arquivos como fileName.iso e fileName.cue q devem ser processados tbm
+    local name="${selected_game_path%.*}"
+    mapfile -t -O "${#other_files[@]}" other_files < <(find . -type f -name "$name.*")
+    
     if [[ "${#other_files[@]}" -eq 0 ]]; then
         printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
         return 0
@@ -360,8 +357,8 @@ process_other_files() {
         local other=""
 
         for other in "${other_files[@]}"; do # Remove duplicatas, pois alguns jogos possuem duas ou mais
-            if [[ -z "${seen[$other]:-}" ]]; then  # tags q apontam p/ mesmo arquivo
-                seen[$other]=1
+            if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]]; then  # tags q apontam p/ mesmo arquivo ou
+                seen[$other]=1                          # foram achados novamente pelo segundo mapfile
                 unique+=("$other")
             fi
         done
@@ -370,6 +367,8 @@ process_other_files() {
 
 
         printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
+        printf "${PINK}%s${ENDCOLOR}\n" "${other_files[@]}"
+
         for other in "${other_files[@]}"; do
             local sub_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
             sub_dir="${sub_dir#./}" # Remove o prefixo ./
@@ -377,6 +376,7 @@ process_other_files() {
             local target_sub_dir=""
             if [[ ! "$other" =~ ^\./ ]]; then # Decide entre usar o diretório principal como destino ou um subdiretório
                 target_sub_dir="$tg_dir"
+                
             else
                 target_sub_dir="$tg_dir/$sub_dir"
             fi
@@ -392,16 +392,19 @@ process_other_files() {
                     
                     printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
                     sudo "$command" "$other" "$target_sub_dir"
+                    continue
                     ;;
                 cp)
                     
                     printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
                     sudo "$command" "$other" "$target_sub_dir"
+                    continue
                     ;;
                 rm)
                     
                     printf "Removendo ${GREEN}%s${ENDCOLOR}${ENDCOLOR}\n" "$other"
                     sudo "$command" "$other"
+                    continue
                     ;;
             esac
             
@@ -466,8 +469,6 @@ cp_game() {
     #   $2 - Caminho do arquivo do jogo
     local selected_game="$1"
     local selected_path="$2"
-    shift 2
-    local g_files=("$@")
     local target_dir=""
 
     while true; do
@@ -493,9 +494,21 @@ cp_game() {
     mv_xml_entry "$target_file" && \
         printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$target_file"
 
-    process_other_files "$tmp_game" "$target_dir" "cp" "${g_files[@]}" #tmp_game é criado pelo mv_xml_entry
+    process_other_files "$tmp_game" "$target_dir" "cp" #tmp_game é criado pelo mv_xml_entry
     
     printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
+###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES
+
+
+    printf 'SELECTED_PATH=[%q]\n' "$selected_path"
+    printf 'TARGET_DIR=[%q]\n' "$target_dir"
+    # está travando no cp, é preciso sair com Ctrl+C,o jogo é copiado após, mas 
+    # ñ retorna a mensagem de sucesso 
+
+    #exit 0
+
+
+###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES    
     sudo cp "$selected_path" "$target_dir" && \
         printf "${YELLOW}Jogo Copiado com sucesso!${ENDCOLOR}\n"
 
@@ -574,15 +587,15 @@ main() {
        ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo"
        case "$user_answer" in
                1)
-                   mv_game "$selected_game_name" "$selected_game_path" "${game_files[@]}"
+                   mv_game "$selected_game_name" "$selected_game_path"
                    break
                    ;;
                2)
-                   cp_game "$selected_game_name" "$selected_game_path" "${game_files[@]}"
+                   cp_game "$selected_game_name" "$selected_game_path"
                    break
                    ;;
                3)
-                   rm_game "$selected_game_name" "$selected_game_path" "${game_files[@]}"
+                   rm_game "$selected_game_name" "$selected_game_path"
                    break
                    ;;
                *)
