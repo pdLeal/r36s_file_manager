@@ -423,8 +423,6 @@ mv_game() {
     #   $2 - Caminho do arquivo do jogo
     local selected_game="$1"
     local selected_path="$2"
-    shift 2
-    local g_files=("$@")
     local target_dir=""
 
     while true; do
@@ -454,11 +452,14 @@ mv_game() {
         printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
 
    
-    process_other_files "$tmp_game" "$target_dir" "mv" "${g_files[@]}" #tmp_game é criado pelo duplicate_xml...
+    process_other_files "$tmp_game" "$target_dir" "mv" #tmp_game é criado pelo duplicate_xml...
     
     printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
-    sudo mv "$selected_path" "$target_dir" && \
+    sudo mv "$selected_path" "$target_dir" && \ 
         printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
+    # rsync -ah --info=progress2 --remove-source-files "$selected_path" "$target_dir/"
+    # Dá p/ usar o comando acima - mais seguro - porém deu problema devido a espaço de armazenamento
+    # Resolver eventualmente =)
 
 }
 
@@ -496,20 +497,8 @@ cp_game() {
 
     process_other_files "$tmp_game" "$target_dir" "cp" #tmp_game é criado pelo mv_xml_entry
     
-    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
-###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES
-
-
-    printf 'SELECTED_PATH=[%q]\n' "$selected_path"
-    printf 'TARGET_DIR=[%q]\n' "$target_dir"
-    # está travando no cp, é preciso sair com Ctrl+C,o jogo é copiado após, mas 
-    # ñ retorna a mensagem de sucesso 
-
-    #exit 0
-
-
-###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES    
-    sudo cp "$selected_path" "$target_dir" && \
+    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"  
+    sudo rsync -ah --info=progress2 "./$selected_path" "$target_dir/" && \
         printf "${YELLOW}Jogo Copiado com sucesso!${ENDCOLOR}\n"
 
 }
@@ -521,8 +510,6 @@ rm_game() {
     #   $2 - Caminho do arquivo do jogo
     local selected_game="$1"
     local selected_path="$2"
-    shift 2
-    local g_files=("$@")
 
     printf "Criando xml temporário...\n"
     tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" && \
@@ -534,7 +521,7 @@ rm_game() {
     rm_xml_entry "$selected_game" && \
         printf "${YELLOW}Entrada removida com sucesso!${ENDCOLOR}\n"
 
-    process_other_files "$tmp_game" "$selected_path" "rm" "${g_files[@]}"
+    process_other_files "$tmp_game" "$selected_path" "rm"
 
     sudo rm -f "$selected_path" && \
         printf "${YELLOW}Jogo removido com sucesso!${ENDCOLOR}\n"
