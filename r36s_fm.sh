@@ -365,7 +365,6 @@ process_other_files() {
 
         other_files=("${unique[@]}")
 
-
         printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
         printf "${PINK}%s${ENDCOLOR}\n" "${other_files[@]}"
 
@@ -374,13 +373,13 @@ process_other_files() {
             sub_dir="${sub_dir#./}" # Remove o prefixo ./
 
             local target_sub_dir=""
-            if [[ ! "$other" =~ ^\./ ]]; then # Decide entre usar o diretório principal como destino ou um subdiretório
+            
+            if [[  "$sub_dir" =~ ^\. ]]; then # Decide entre usar o diretório principal como destino ou um subdiretório
                 target_sub_dir="$tg_dir"
-                
             else
                 target_sub_dir="$tg_dir/$sub_dir"
             fi
-
+                
             case "$command" in
                 cp|mv)
                     if [[ ! -d "$target_sub_dir" ]]; then
@@ -455,7 +454,7 @@ mv_game() {
     process_other_files "$tmp_game" "$target_dir" "mv" #tmp_game é criado pelo duplicate_xml...
     
     printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
-    sudo mv "$selected_path" "$target_dir" && \ 
+    sudo mv "$selected_path" "$target_dir" && \
         printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
     # rsync -ah --info=progress2 --remove-source-files "$selected_path" "$target_dir/"
     # Dá p/ usar o comando acima - mais seguro - porém deu problema devido a espaço de armazenamento
