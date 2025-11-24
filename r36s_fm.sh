@@ -40,6 +40,8 @@ look4_roms() {
     local -n dirs=$1
     local -n w_games=$2
     local -n w_no_games=$3
+    w_games=()
+    w_no_games=()
 
     local first=1 # flag para a primeira iteração
     local ext=""
@@ -599,8 +601,132 @@ main() {
 
 ###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST
 
+STATE="LOOK"
 
+main_menu() {
+    local dirs_list=(*/) # Lista de pastas no diretório atual
+    local dirs_with_games=() 
+    local dirs_without_games=() 
+    local user_answer=""
+    local game_files=()
+    local -A file_by_game # [chave/arquivo]=>[valor/nome do jogo]
+    local -A games_only_in_xml
+    local selected_game_name=""
+    local selected_game_path=""
+    
+    printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
+    printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
+    while true; do
+        case "$STATE" in
+            LOOK)
+                echo "Procurando por pastas contendo ROMs..."
+                look4_roms dirs_list dirs_with_games dirs_without_games
+
+                printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
+                printf "${CYAN}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
+
+                ask_user user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs"
+                if [[ "$user_answer" -eq 1 ]]; then
+                    STATE="CONSOLE_MENU"
+                else
+                    STATE="PLACEHOLDER"
+                fi
+                ;;
+
+            CONSOLE_MENU)
+                local opt=""
+                printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
+                select opt in "${dirs_with_games[@]}" "Voltar" "Sair"; do
+                    case "$opt" in
+                        "Voltar")
+                            STATE="LOOK"
+                            ;;
+
+                        "Sair")
+                            echo "Saindo..."
+                            exit 0
+                            ;;
+                        *)
+                            echo "$REPLY"
+                            ! is_valid_option "$REPLY" "$#" && continue
+
+                            printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
+                            cd -- "$opt"
+                            break
+                            ;;
+                    esac
+                done
+                ;;
+                # SAMERDA TÁ BUGANDO, CONTINUAR DAQUI
+                #só está aceitando voltar e sair como opção válida, descobrir o por que
+
+            DIR_ACTION)
+                game_files=()
+                file_by_game=()
+                games_only_in_xml=()
+
+                get_files game_files
+                find_only_in_xml game_files games_only_in_xml file_by_game
+
+                printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#file_by_game[@]}"
+                printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
+
+                ask_user user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
+                if [[ "$user_answer" -eq 1 ]]; then
+                    STATE="GAMES_MENU"
+                elif [[ "$user_answer" -eq 2 ]]; then
+                    STATE="PLACEHOLDER"
+                else
+                    printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                    cd "$OLDPWD"
+                    STATE="CONSOLE_MENU"
+                fi
+                ;;
+
+            GAMES_MENU)
+                local opt=""
+
+                printf "${RED}Selecione um jogo:${ENDCOLOR}\n"
+                select opt in "${file_by_game[@]}" "Voltar" "Sair"; do
+                    case "$opt" in
+                        "Voltar")
+                            STATE="CONSOLE_MENU"
+                            ;;
+
+                        "Sair")
+                            echo "Saindo..."
+                            exit 0
+                            ;;
+
+                        *)
+                            ! is_valid_option "$REPLY" "${#file_by_game[@]}" && continue
+
+                            selected_game_name="$opt"
+
+                            for file in "${!file_by_game[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
+                                if [[ "${file_by_game[$file]}" == "$selected_game_name" ]]; then
+                                    selected_game_path="$file"
+                                    break
+                                fi
+                            done
+
+                            printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
+                            printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
+                            STATE="GAME_ACTION"
+                            ;;
+                    esac
+                    break
+                done
+                ;;
+            GAME_ACTION)
+                echo "ESCOLHER AÇÃO"
+                ;;
+
+        esac
+    done
+}
+main_menu "$@"
 
 
 
