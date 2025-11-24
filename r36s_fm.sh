@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # r36s_fm.sh - Gerenciador de arquivos de jogos para R36s
 # Autor: pleal
-# Data: 18/10/2025
+# Data de Início: 18/10/2025
 
 set -u
 #####################################################
@@ -326,6 +326,8 @@ rm_xml_entry() {
 process_other_files() {
 # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
 # É preciso descobrir se existem e move-los junto
+# TODO: add lógica p/ verificar se os arquivos de other_files existem, pois alguns 
+# podem constar no gamelist.xml sem de fato existirem!
    local game_xml="$1"
    local tg_dir="$2"
    local command="$3"
