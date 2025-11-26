@@ -111,28 +111,6 @@ ask_user() {
 
 }
 
-select_dir() {
-# Exibe um menu de seleção de diretórios para o usuário entra no diretóirio escolhido
-    local opt=""
-    printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
-    select opt in "$@" "Sair"; do
-        case "$opt" in
-            "Sair")
-                echo "Saindo..."
-                exit 0
-                ;;
-            *)
-                ! is_valid_option "$REPLY" "$#" && continue
-
-                printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
-                cd -- "$opt"
-                break
-                ;;
-        esac
-    done
-
-}
-
 get_files() {
 # Coleta todos os arquivos com as extensões especificadas e popula o array fornecido
     shopt -s globstar nullglob
@@ -175,46 +153,6 @@ find_only_in_xml() {
         fi
     done
     
-}
-
-select_game() {
-# Exibe um menu para seleção de jogos pelo usuário.
-    # Parâmetros:
-    #   $1 - (string, referência) Variável para armazenar o nome do jogo selecionado
-    #   $2 - (string, referência) Variável para armazenar o caminho do arquivo do jogo selecionado
-    #   $3 - (associative array, referência) Mapa de arquivos para nomes de jogos
-    local -n selected_name="$1"
-    local -n selected_path="$2"
-    local -n map="$3"
-       
-    local opt=""
-
-    printf "${RED}Selecione um jogo:${ENDCOLOR}\n"
-    select opt in "${map[@]}" "Sair"; do
-        case "$opt" in
-            "Sair")
-                echo "Saindo..."
-                exit 0
-                ;;
-            *)
-                ! is_valid_option "$REPLY" "${#map[@]}" && continue
-
-                selected_name="$opt"
-
-                for file in "${!map[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
-                    if [[ "${map[$file]}" == "$selected_name" ]]; then
-                        selected_path="$file"
-                        break
-                    fi
-                done
-
-                printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_name"
-                printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_path"
-                ;;
-        esac
-        break
-    done
-
 }
 
 create_gamelist() {
@@ -532,74 +470,6 @@ rm_game() {
     rm -f "$tmp_game" && \
         printf "${YELLOW}Arquivo temporário removido com sucesso!${ENDCOLOR}\n"
 }
-
-main() {
-    local dirs_list=(*/) # Lista de pastas no diretório atual
-    local dirs_with_games=() 
-    local dirs_without_games=() 
-    local user_answer=""
-    local game_files=()
-    local -A file_by_game # [chave/arquivo]=>[valor/nome do jogo]
-    local -A games_only_in_xml
-    local selected_game_name=""
-    local selected_game_path=""
-    
-    printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
-    printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
-
-    echo "Procurando por pastas contendo ROMs..."
-    look4_roms dirs_list dirs_with_games dirs_without_games
-
-    printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
-    printf "${CYAN}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
-
-    ask_user user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" 
-    if [[ "$user_answer" -eq 1 ]]; then
-        select_dir "${dirs_with_games[@]}"
-
-        get_files game_files
-        find_only_in_xml game_files games_only_in_xml file_by_game
-
-        printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#file_by_game[@]}"
-        printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
-
-        ask_user user_answer "Ver jogos" "Editar gamelist.xml"
-
-   #else # VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
-   #    select_dir "${dirs_without_games[@]}"
-   fi
-
-   if [[ "$user_answer" -eq 1 ]]; then
-       select_game selected_game_name selected_game_path file_by_game 
-
-       while true; do
-       ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo"
-       case "$user_answer" in
-               1)
-                   mv_game "$selected_game_name" "$selected_game_path"
-                   break
-                   ;;
-               2)
-                   cp_game "$selected_game_name" "$selected_game_path"
-                   break
-                   ;;
-               3)
-                   rm_game "$selected_game_name" "$selected_game_path"
-                   break
-                   ;;
-               *)
-                   echo "Escolha uma ação válida."
-                   continue
-                   ;;
-           esac
-       done 
-    fi
-
-}
-#main "$@"
-
-###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST
-
 STATE="LOOK"
 
 main_menu() {
@@ -751,9 +621,6 @@ main_menu() {
 
         esac
     done
+
 }
 main_menu "$@"
-
-
-
-###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST###STATE##TEST
