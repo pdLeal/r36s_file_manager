@@ -171,6 +171,7 @@ duplicate_xml_with_entry() {
 # Cria uma cópia do gamelist.xml com a entrada de um jogo anexada como arquivo temporário
     local game="$1"
     local tgt_file="$2"
+    local open_vscode="${3:-false}" # flag q controla a edição de metadados
     printf "Criando arquivos temporários necessários...\n"
 
     # Arquivos temporários seguros
@@ -189,6 +190,10 @@ duplicate_xml_with_entry() {
     # 1) Extrai o <game> para o temporário
     printf "Extraindo entrada do jogo selecionado...\n"
     xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
+
+    if "$open_vscode"; then
+        code --wait "$tmp_game"
+    fi
 
     printf "Criando cópia do gamelist.xml de destino com a entrada anexada...\n"
     # 2) cria o XSLT via heredoc
@@ -607,12 +612,10 @@ main_menu() {
                 ;;
 
             "GAME_ACTION")
-            # Está terminando o programa depois da ação (break), pensar sobre 
-            # o que "vem a seguir" p/ deixar mais fluido - SATATE=???
-            # ADD: opção p/ ver/editar metadados
-                ask_user user_answer "Ver metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
+                ask_user user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
                         1)
+                        #TODO: arrumar bug com nome q contem ' - ex: Invalid predicate: //game[name='CRUIS'N USA']
                             printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
                             xmlstarlet sel -t \
                             -m "//game[name='$selected_game_name']" \
@@ -632,21 +635,33 @@ main_menu() {
                             ;;
 
                         2)
-                            mv_game "$selected_game_name" "$selected_game_path"
-                            break
+                            duplicate_xml_with_entry "$selected_game_name" "./gamelist.xml" "true" && \
+                                printf "${YELLOW}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+
+                            mv_xml_entry "./gamelist.xml" && \
+                                printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
+
+                            rm_xml_entry "$selected_game_name" && \
+                                printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
+                            STATE="DIR_ACTION"
                             ;;
 
                         3)
-                            cp_game "$selected_game_name" "$selected_game_path"
-                            break
+                            mv_game "$selected_game_name" "$selected_game_path"
+                            STATE="DIR_ACTION"
                             ;;
 
                         4)
-                            rm_game "$selected_game_name" "$selected_game_path"
-                            break
+                            cp_game "$selected_game_name" "$selected_game_path"
+                            STATE="DIR_ACTION"
                             ;;
 
                         5)
+                            rm_game "$selected_game_name" "$selected_game_path"
+                            STATE="DIR_ACTION"
+                            ;;
+
+                        6)
                             STATE="GAMES_MENU"
                             ;;
 
@@ -656,7 +671,8 @@ main_menu() {
                 ask_user user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
                 case "$user_answer" in
                         1)
-                            code --wait ./gamelist.xml && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
+                            code --wait ./gamelist.xml \
+                                && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
                             STATE="GAMELIST_MENU"
                             ;;
 
@@ -675,9 +691,6 @@ main_menu() {
                             ;;
 
                     esac
-                
-
-                ;;
 
         esac
     done
