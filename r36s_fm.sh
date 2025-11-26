@@ -93,7 +93,7 @@ ask_user() {
     shift
     local opt=""
 
-    printf "${RED}O que deseja fazer?${ENDCOLOR}\n"
+    printf "\n${RED}O que deseja fazer?${ENDCOLOR}\n"
     select opt in "$@" "Sair"; do
         case "$opt" in
             "Sair")
@@ -476,10 +476,10 @@ show_gamelist_data() {
     -m "//game/*" \
     -v "name()" -o ": " -v "normalize-space(.)" -n \
     ./gamelist.xml \
-| awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
-BEGIN { game_num = 0 }
-$1 == "path" && NR > 0 { print "\n--- ENTRADA " ++game_num " ---" }
-{ print C $1 E ": " $2 }'
+    | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
+    BEGIN { game_num = 0 }
+    $1 == "path" && NR > 0 { print "\n--- ENTRADA " ++game_num " ---" }
+    { print C $1 E ": " $2 }'
     return 0
 
 }
@@ -519,7 +519,7 @@ main_menu() {
 
             "CONSOLE_MENU")
                 local opt=""
-                printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
+                printf "\n${RED}Selecione uma pasta:${ENDCOLOR}\n"
                 select opt in "${dirs_to_look[@]}" "Voltar" "Sair"; do
                     case "$opt" in
                         "Voltar")
@@ -571,7 +571,7 @@ main_menu() {
             "GAMES_MENU")
                 local opt=""
 
-                printf "${RED}Selecione um jogo:${ENDCOLOR}\n"
+                printf "\n${RED}Selecione um jogo:${ENDCOLOR}\n"
                 select opt in "${file_by_game[@]}" "Voltar" "Sair"; do
                     case "$opt" in
                         "Voltar")
@@ -610,24 +610,43 @@ main_menu() {
             # Está terminando o programa depois da ação (break), pensar sobre 
             # o que "vem a seguir" p/ deixar mais fluido - SATATE=???
             # ADD: opção p/ ver/editar metadados
-                ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
+                ask_user user_answer "Ver metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
                         1)
+                            printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
+                            xmlstarlet sel -t \
+                            -m "//game[name='$selected_game_name']" \
+                            -m "*" \
+                            -v "name()" -o ": " -v "normalize-space(.)" -n \
+                            -b \
+                            ./gamelist.xml \
+                            | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F': ' '{ 
+                            gsub(/&amp;/, "\\&", $2)
+                            gsub(/&lt;/, "<", $2)
+                            gsub(/&gt;/, ">", $2)
+                            gsub(/&quot;/, "\"", $2)
+                            gsub(/&#39;/, "'\''", $2)
+                            print C $1 E ": " $2 
+                            }'
+                            STATE="GAME_ACTION"
+                            ;;
+
+                        2)
                             mv_game "$selected_game_name" "$selected_game_path"
                             break
                             ;;
 
-                        2)
+                        3)
                             cp_game "$selected_game_name" "$selected_game_path"
                             break
                             ;;
 
-                        3)
+                        4)
                             rm_game "$selected_game_name" "$selected_game_path"
                             break
                             ;;
 
-                        4)
+                        5)
                             STATE="GAMES_MENU"
                             ;;
 
