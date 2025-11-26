@@ -9,13 +9,13 @@ set -u
 #####################################################
 
 # Cores para saída no terminal
-readonly RED="\e[31m"
-readonly GREEN="\e[32m"
-readonly YELLOW="\e[33m"
-readonly BLUE="\e[34m"
-readonly PINK="\e[35m"
-readonly CYAN="\e[36m"
-readonly ENDCOLOR="\e[0m"
+readonly RED="\033[31m"
+readonly GREEN="\033[32m"
+readonly YELLOW="\033[33m"
+readonly BLUE="\033[34m"
+readonly PINK="\033[35m"
+readonly CYAN="\033[36m"
+readonly ENDCOLOR="\033[0m"
 
 # Extensões de arquivos de jogos suportadas
 readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z")
@@ -470,8 +470,21 @@ rm_game() {
     rm -f "$tmp_game" && \
         printf "${YELLOW}Arquivo temporário removido com sucesso!${ENDCOLOR}\n"
 }
-STATE="LOOK"
 
+show_gamelist_data() {
+    xmlstarlet sel -t \
+    -m "//game/*" \
+    -v "name()" -o ": " -v "normalize-space(.)" -n \
+    ./gamelist.xml \
+| awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
+BEGIN { game_num = 0 }
+$1 == "path" && NR > 0 { print "\n--- ENTRADA " ++game_num " ---" }
+{ print C $1 E ": " $2 }'
+    return 0
+
+}
+
+STATE="LOOK"
 main_menu() {
     local dirs_list=(*/) # Lista de pastas no diretório atual
     local dirs_with_games=() 
@@ -497,16 +510,17 @@ main_menu() {
 
                 ask_user user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs"
                 if [[ "$user_answer" -eq 1 ]]; then
-                    STATE="CONSOLE_MENU"
+                    dirs_to_look=("${dirs_with_games[@]}")
                 else
-                    STATE="PLACEHOLDER"
+                    dirs_to_look=("${dirs_without_games[@]}")
                 fi
+                    STATE="CONSOLE_MENU"
                 ;;
 
             "CONSOLE_MENU")
                 local opt=""
                 printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
-                select opt in "${dirs_with_games[@]}" "Voltar" "Sair"; do
+                select opt in "${dirs_to_look[@]}" "Voltar" "Sair"; do
                     case "$opt" in
                         "Voltar")
                             STATE="LOOK"
@@ -546,7 +560,7 @@ main_menu() {
                 if [[ "$user_answer" -eq 1 ]]; then
                     STATE="GAMES_MENU"
                 elif [[ "$user_answer" -eq 2 ]]; then
-                    STATE="PLACEHOLDER"
+                    STATE="GAMELIST_MENU"
                 else
                     printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
                     cd "$OLDPWD"
@@ -595,6 +609,7 @@ main_menu() {
             "GAME_ACTION")
             # Está terminando o programa depois da ação (break), pensar sobre 
             # o que "vem a seguir" p/ deixar mais fluido - SATATE=???
+            # ADD: opção p/ ver/editar metadados
                 ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
                         1)
@@ -617,6 +632,32 @@ main_menu() {
                             ;;
 
                     esac
+                ;;
+            "GAMELIST_MENU")
+                ask_user user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
+                case "$user_answer" in
+                        1)
+                            code --wait ./gamelist.xml && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
+                            STATE="GAMELIST_MENU"
+                            ;;
+
+                        2)
+                            show_gamelist_data
+                            STATE="GAMELIST_MENU"
+                            ;;
+
+                        3)
+                            echo "sudo rm ./gamelist.xml"
+                            STATE="GAMELIST_MENU"
+                            ;;
+
+                        4)
+                            STATE="DIR_ACTION"                        
+                            ;;
+
+                    esac
+                
+
                 ;;
 
         esac
