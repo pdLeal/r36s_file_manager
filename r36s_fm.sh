@@ -568,8 +568,7 @@ main() {
    #else # VOLTAR DEPOIS E TERMINAR ESSE CAMINHO
    #    select_dir "${dirs_without_games[@]}"
    fi
-#
-   #
+
    if [[ "$user_answer" -eq 1 ]]; then
        select_game selected_game_name selected_game_path file_by_game 
 
@@ -619,7 +618,7 @@ main_menu() {
 
     while true; do
         case "$STATE" in
-            LOOK)
+            "LOOK")
                 echo "Procurando por pastas contendo ROMs..."
                 look4_roms dirs_list dirs_with_games dirs_without_games
 
@@ -634,13 +633,14 @@ main_menu() {
                 fi
                 ;;
 
-            CONSOLE_MENU)
+            "CONSOLE_MENU")
                 local opt=""
                 printf "${RED}Selecione uma pasta:${ENDCOLOR}\n"
                 select opt in "${dirs_with_games[@]}" "Voltar" "Sair"; do
                     case "$opt" in
                         "Voltar")
                             STATE="LOOK"
+                            break
                             ;;
 
                         "Sair")
@@ -649,19 +649,19 @@ main_menu() {
                             ;;
                         *)
                             echo "$REPLY"
-                            ! is_valid_option "$REPLY" "$#" && continue
+                            ! is_valid_option "$REPLY" "${#dirs_with_games[@]}" && continue
 
                             printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
                             cd -- "$opt"
+                            STATE="DIR_ACTION"
                             break
                             ;;
                     esac
                 done
                 ;;
-                # SAMERDA TÁ BUGANDO, CONTINUAR DAQUI
-                #só está aceitando voltar e sair como opção válida, descobrir o por que
 
-            DIR_ACTION)
+            "DIR_ACTION")
+                # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 game_files=()
                 file_by_game=()
                 games_only_in_xml=()
@@ -684,14 +684,15 @@ main_menu() {
                 fi
                 ;;
 
-            GAMES_MENU)
+            "GAMES_MENU")
                 local opt=""
 
                 printf "${RED}Selecione um jogo:${ENDCOLOR}\n"
                 select opt in "${file_by_game[@]}" "Voltar" "Sair"; do
                     case "$opt" in
                         "Voltar")
-                            STATE="CONSOLE_MENU"
+                            STATE="DIR_ACTION"
+                            break
                             ;;
 
                         "Sair")
@@ -714,13 +715,38 @@ main_menu() {
                             printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
                             printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
                             STATE="GAME_ACTION"
+                            break
                             ;;
+
                     esac
-                    break
                 done
                 ;;
-            GAME_ACTION)
-                echo "ESCOLHER AÇÃO"
+
+            "GAME_ACTION")
+            # Está terminando o programa depois da ação (break), pensar sobre 
+            # o que "vem a seguir" p/ deixar mais fluido - SATATE=???
+                ask_user user_answer "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
+                case "$user_answer" in
+                        1)
+                            mv_game "$selected_game_name" "$selected_game_path"
+                            break
+                            ;;
+
+                        2)
+                            cp_game "$selected_game_name" "$selected_game_path"
+                            break
+                            ;;
+
+                        3)
+                            rm_game "$selected_game_name" "$selected_game_path"
+                            break
+                            ;;
+
+                        4)
+                            STATE="GAMES_MENU"
+                            ;;
+
+                    esac
                 ;;
 
         esac
