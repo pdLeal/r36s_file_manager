@@ -477,10 +477,7 @@ rm_game() {
 }
 
 show_gamelist_data() {
-    xmlstarlet sel -t \
-    -m "//game/*" \
-    -v "name()" -o ": " -v "normalize-space(.)" -n \
-    ./gamelist.xml \
+    xmlstarlet sel -t -m "//game/*" -v "name()" -o ": " -v "normalize-space(.)" -n ./gamelist.xml \
     | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
     BEGIN { game_num = 0 }
     $1 == "path" && NR > 0 { print "\n--- ENTRADA " ++game_num " ---" }
@@ -538,7 +535,7 @@ main_menu() {
                             ;;
                         *)
                             echo "$REPLY"
-                            ! is_valid_option "$REPLY" "${#dirs_with_games[@]}" && continue
+                            ! is_valid_option "$REPLY" "${#dirs_to_look[@]}" && continue
 
                             printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
                             cd -- "$opt"
@@ -617,12 +614,8 @@ main_menu() {
                         1)
                         #TODO: arrumar bug com nome q contem ' - ex: Invalid predicate: //game[name='CRUIS'N USA']
                             printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
-                            xmlstarlet sel -t \
-                            -m "//game[name='$selected_game_name']" \
-                            -m "*" \
-                            -v "name()" -o ": " -v "normalize-space(.)" -n \
-                            -b \
-                            ./gamelist.xml \
+                            xmlstarlet sel -t -m "//game[name='$selected_game_name']" -m "*" \
+                            -v "name()" -o ": " -v "normalize-space(.)" -n -b ./gamelist.xml \
                             | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F': ' '{ 
                             gsub(/&amp;/, "\\&", $2)
                             gsub(/&lt;/, "<", $2)
