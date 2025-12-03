@@ -298,8 +298,6 @@ rm_xml_entry() {
 process_other_files() {
 # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
 # É preciso descobrir se existem e move-los junto
-# TODO: add lógica p/ verificar se os arquivos de other_files existem, pois alguns 
-# podem constar no gamelist.xml sem de fato existirem!
    local game_xml="$1"
    local tg_dir="$2"
    local command="$3"
@@ -331,7 +329,7 @@ process_other_files() {
         local other=""
 
         for other in "${other_files[@]}"; do # Remove duplicatas, pois alguns jogos possuem duas ou mais
-            if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]]; then  # tags q apontam p/ mesmo arquivo ou
+            if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]] && [[ -e "$other" ]]; then  # tags q apontam p/ mesmo arquivo ou
                 seen[$other]=1                          # foram achados novamente pelo segundo mapfile
                 unique+=("$other")
             fi
@@ -343,6 +341,7 @@ process_other_files() {
         printf "${PINK}%s${ENDCOLOR}\n" "${other_files[@]}"
 
         for other in "${other_files[@]}"; do
+
             local sub_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
             sub_dir="${sub_dir#./}" # Remove o prefixo ./
 
@@ -382,6 +381,7 @@ process_other_files() {
             esac
             
         done
+
         printf "${YELLOW}Arquivos relacionados processados com sucesso!${ENDCOLOR}\n"
         return 0
     fi
