@@ -167,6 +167,26 @@ sudo tee "$target" > /dev/null <<EOF
 EOF
 }
 
+escape_xpath_string() {
+# Se não escapar corretamente, jogos como NFL' 95 quebram o XPath
+    local s="$1"
+    if [[ "$s" == *"'"* ]]; then
+        # Divide por aspas simples e concatena
+        local parts=()
+        IFS="'" read -ra chunks <<< "$s"
+        for i in "${!chunks[@]}"; do
+            parts+=("'${chunks[$i]}'")
+            # Insere o caractere de aspas entre partes (menos depois da última)
+            if [[ $i -lt $((${#chunks[@]} - 1)) ]]; then
+                parts+=("\"'\"")
+            fi
+        done
+        printf "concat(%s)" "$(IFS=','; echo "${parts[*]}")"
+    else
+        printf "'%s'" "$s"
+    fi
+}
+
 duplicate_xml_with_entry() {
 # Cria uma cópia do gamelist.xml com a entrada de um jogo anexada como arquivo temporário
     local game="$1"
@@ -189,7 +209,10 @@ duplicate_xml_with_entry() {
 
     # 1) Extrai o <game> para o temporário
     printf "Extraindo entrada do jogo selecionado...\n"
-    xmlstarlet sel -t -c "//game[name='$game']" "./gamelist.xml" > "$tmp_game"
+
+    local safe_xpath
+    safe_xpath=$(escape_xpath_string "$game")
+    xmlstarlet sel -t -c "//game[name=$safe_xpath]" "./gamelist.xml" > "$tmp_game"
 
     if "$open_vscode"; then
         code --wait "$tmp_game"
@@ -260,7 +283,11 @@ rm_xml_entry() {
     local game="$1"
     printf "${CYAN}Removendo entrada do gamelist.xml...${ENDCOLOR}\n"
 
-    if sudo xmlstarlet ed --inplace -d "//game[name='$game']" "./gamelist.xml"; then
+    
+    local safe_xpath
+    safe_xpath=$(escape_xpath_string "$game")    
+
+    if sudo xmlstarlet ed --inplace -d "//game[name=$safe_xpath]" "./gamelist.xml"; then
         return 0
     else
         printf "${BLUE}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
@@ -462,7 +489,10 @@ rm_game() {
         printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_game"
 
     printf "Extraindo entrada do jogo selecionado...\n"
-    xmlstarlet sel -t -c "//game[name='$selected_game']" "./gamelist.xml" > "$tmp_game"
+
+    local safe_xpath
+    safe_xpath=$(escape_xpath_string "$selected_game")
+    xmlstarlet sel -t -c "//game[name=$safe_xpath]" "./gamelist.xml" > "$tmp_game"
 
     rm_xml_entry "$selected_game" && \
         printf "${YELLOW}Entrada removida com sucesso!${ENDCOLOR}\n"
@@ -612,9 +642,11 @@ main_menu() {
                 ask_user user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
                         1)
-                        #TODO: arrumar bug com nome q contem ' - ex: Invalid predicate: //game[name='CRUIS'N USA']
                             printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
-                            xmlstarlet sel -t -m "//game[name='$selected_game_name']" -m "*" \
+                            
+                            local safe_xpath
+                            safe_xpath=$(escape_xpath_string "$selected_game_name")
+                            xmlstarlet sel -t -m "//game[name=$safe_xpath]" -m "*" \
                             -v "name()" -o ": " -v "normalize-space(.)" -n -b ./gamelist.xml \
                             | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F': ' '{ 
                             gsub(/&amp;/, "\\&", $2)
