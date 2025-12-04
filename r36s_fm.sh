@@ -89,11 +89,12 @@ is_valid_option() {
 
 ask_user() {
 # Exibe um menu de opções para o usuário e armazena a escolha em user_answer
-    local -n answer=$1
-    shift
+    local question="${1:-"O que deseja fazer?"}"
+    local -n answer="$2"
+    shift 2 
     local opt=""
 
-    printf "\n${RED}O que deseja fazer?${ENDCOLOR}\n"
+    printf "\n${RED}%s${ENDCOLOR}\n" "$question"
     select opt in "$@" "Sair"; do
         case "$opt" in
             "Sair")
@@ -103,7 +104,7 @@ ask_user() {
             *)
                 ! is_valid_option "$REPLY" "$#" && continue # pula para próxima iteração se a opção fornecida for inválida
                 
-                answer="$REPLY"
+                answer="$opt"
                 break
                 ;;
         esac
@@ -328,9 +329,11 @@ process_other_files() {
         local unique=()
         local other=""
 
-        for other in "${other_files[@]}"; do # Remove duplicatas, pois alguns jogos possuem duas ou mais
-            if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]] && [[ -e "$other" ]]; then  # tags q apontam p/ mesmo arquivo ou
-                seen[$other]=1                          # foram achados novamente pelo segundo mapfile
+        for other in "${other_files[@]}"; do
+        # Remove duplicatas, pois alguns jogos possuem duas ou mais tags q apontam p/ mesmo arquivo ou foram achados novamente pelo segundo mapfile
+        # Tbm checa se o arquivo realmente existe, pq né, num vai processar oq ñ tá lá =)
+            if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]] && [[ -e "$other" ]]; then
+                seen[$other]=1                         
                 unique+=("$other")
             fi
         done
@@ -540,40 +543,33 @@ main_menu() {
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
                 printf "${CYAN}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
 
-                ask_user user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs"
-                if [[ "$user_answer" -eq 1 ]]; then
-                    dirs_to_look=("${dirs_with_games[@]}")
-                else
-                    dirs_to_look=("${dirs_without_games[@]}")
-                fi
-                    STATE="CONSOLE_MENU"
+                ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs"
+                case "$user_answer" in 
+                    "Ver pastas com ROMs")
+                        dirs_to_look=("${dirs_with_games[@]}")
+                        ;;
+                    "Ver pastas sem ROMs")
+                        dirs_to_look=("${dirs_without_games[@]}")
+                        ;;
+                esac    
+                
+                STATE="CONSOLE_MENU"
                 ;;
 
             "CONSOLE_MENU")
-                local opt=""
-                printf "\n${RED}Selecione uma pasta:${ENDCOLOR}\n"
-                select opt in "${dirs_to_look[@]}" "Voltar" "Sair"; do
-                    case "$opt" in
+                ask_user "Selecione uma pasta:" user_answer "${dirs_to_look[@]}" "Voltar"
+                case "$user_answer" in
                         "Voltar")
                             STATE="LOOK"
-                            break
                             ;;
 
-                        "Sair")
-                            echo "Saindo..."
-                            exit 0
-                            ;;
                         *)
-                            echo "$REPLY"
-                            ! is_valid_option "$REPLY" "${#dirs_to_look[@]}" && continue
-
-                            printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$opt"
-                            cd -- "$opt"
+                            printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$user_answer"
+                            cd -- "$user_answer"
                             STATE="DIR_ACTION"
-                            break
                             ;;
+
                     esac
-                done
                 ;;
 
             "DIR_ACTION")
@@ -588,60 +584,53 @@ main_menu() {
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#file_by_game[@]}"
                 printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
 
-                ask_user user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
-                if [[ "$user_answer" -eq 1 ]]; then
-                    STATE="GAMES_MENU"
-                elif [[ "$user_answer" -eq 2 ]]; then
-                    STATE="GAMELIST_MENU"
-                else
-                    printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
-                    cd "$OLDPWD"
-                    STATE="CONSOLE_MENU"
-                fi
+                ask_user "" user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
+                case "$user_answer" in
+                    "Ver jogos")
+                        STATE="GAMES_MENU"
+                        ;;
+                
+                    "Editar gamelist.xml")
+                        STATE="GAMELIST_MENU"
+                        ;;
+                    "Voltar") 
+                        printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                        cd "$OLDPWD"
+                        STATE="CONSOLE_MENU"
+                        ;;
+
+                esac
                 ;;
 
             "GAMES_MENU")
-                local opt=""
+                ask_user "Selecione um jogo:" user_answer "${file_by_game[@]}" "Voltar"
+                case "$user_answer" in
+                    "Voltar")
+                        STATE="DIR_ACTION"
+                        ;;
 
-                printf "\n${RED}Selecione um jogo:${ENDCOLOR}\n"
-                select opt in "${file_by_game[@]}" "Voltar" "Sair"; do
-                    case "$opt" in
-                        "Voltar")
-                            STATE="DIR_ACTION"
-                            break
-                            ;;
+                    *)
+                        selected_game_name="$user_answer"
 
-                        "Sair")
-                            echo "Saindo..."
-                            exit 0
-                            ;;
+                        for file in "${!file_by_game[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
+                            if [[ "${file_by_game[$file]}" == "$selected_game_name" ]]; then
+                                selected_game_path="$file"
+                                break
+                            fi
+                        done
 
-                        *)
-                            ! is_valid_option "$REPLY" "${#file_by_game[@]}" && continue
+                        printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
+                        printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
+                        STATE="GAME_ACTION"
+                        ;;
 
-                            selected_game_name="$opt"
-
-                            for file in "${!file_by_game[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
-                                if [[ "${file_by_game[$file]}" == "$selected_game_name" ]]; then
-                                    selected_game_path="$file"
-                                    break
-                                fi
-                            done
-
-                            printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
-                            printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
-                            STATE="GAME_ACTION"
-                            break
-                            ;;
-
-                    esac
-                done
+                esac
                 ;;
 
             "GAME_ACTION")
-                ask_user user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
+                ask_user "" user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
-                        1)
+                        "Ver metadados")
                             printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
                             
                             local safe_xpath
@@ -659,7 +648,7 @@ main_menu() {
                             STATE="GAME_ACTION"
                             ;;
 
-                        2)
+                        "Editar metadados")
                             duplicate_xml_with_entry "$selected_game_name" "./gamelist.xml" "true" && \
                                 printf "${YELLOW}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
 
@@ -671,52 +660,52 @@ main_menu() {
                             STATE="DIR_ACTION"
                             ;;
 
-                        3)
+                        "Mover jogo")
                             mv_game "$selected_game_name" "$selected_game_path"
                             STATE="DIR_ACTION"
                             ;;
 
-                        4)
+                        "Copiar jogo")
                             cp_game "$selected_game_name" "$selected_game_path"
                             STATE="DIR_ACTION"
                             ;;
 
-                        5)
+                        "Deletar jogo")
                             rm_game "$selected_game_name" "$selected_game_path"
                             STATE="DIR_ACTION"
                             ;;
 
-                        6)
+                        "Voltar")
                             STATE="GAMES_MENU"
                             ;;
 
                     esac
                 ;;
+
             "GAMELIST_MENU")
-                ask_user user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
+                ask_user "" user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
                 case "$user_answer" in
-                        1)
+                        "Usar VS Code")
                             code --wait ./gamelist.xml \
                                 && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
                             STATE="GAMELIST_MENU"
                             ;;
 
-                        2)
+                        "Ver Entradas")
                             show_gamelist_data
                             STATE="GAMELIST_MENU"
                             ;;
 
-                        3)
+                        "Deletar gamelist.xml")
                             echo "sudo rm ./gamelist.xml"
                             STATE="GAMELIST_MENU"
                             ;;
 
-                        4)
+                        "Voltar")
                             STATE="DIR_ACTION"                        
                             ;;
 
                     esac
-
         esac
     done
 
