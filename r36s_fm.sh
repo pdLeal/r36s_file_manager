@@ -590,14 +590,20 @@ main_menu() {
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
                 printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
 
-                ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs"
+                ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo"
                 case "$user_answer" in 
                     "Ver pastas com ROMs")
                         dirs_to_look=("${dirs_with_games[@]}")
-                        ;;
+                    ;;
                     "Ver pastas sem ROMs")
                         dirs_to_look=("${dirs_without_games[@]}")
-                        ;;
+                    ;;
+
+                    "Procurar jogo")
+                        dirs_to_look=("${dirs_with_games[@]}")
+                        STATE="FIND_GAME"
+                        continue
+                    ;;
                 esac    
                 
                 STATE="CONSOLE_MENU"
@@ -637,10 +643,11 @@ main_menu() {
                     "Ver jogos")
                         STATE="GAMES_MENU"
                         ;;
-                
+
                     "Editar gamelist.xml")
                         STATE="GAMELIST_MENU"
                         ;;
+
                     "Voltar") 
                         printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
                         cd "$OLDPWD" || exit 1
@@ -717,23 +724,65 @@ main_menu() {
                             code --wait ./gamelist.xml \
                                 && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
                             STATE="GAMELIST_MENU"
-                            ;;
+                        ;;
 
                         "Ver Entradas")
                             show_gamelist_data
                             STATE="GAMELIST_MENU"
-                            ;;
+                        ;;
 
                         "Deletar gamelist.xml")
                             echo "sudo rm ./gamelist.xml"
                             STATE="GAMELIST_MENU"
-                            ;;
+                        ;;
 
                         "Voltar")
                             STATE="DIR_ACTION"                        
-                            ;;
+                        ;;
 
-                    esac
+                esac
+            ;;
+            "FIND_GAME")
+                local target_game
+                local safe_xpath
+                local lower_target
+
+                read -r -p "Digite o nome do jogo: " target_game
+                safe_xpath=$(escape_xpath_string "$target_game")
+
+                lower_target=$(echo "$target_game" | tr '[:upper:]' '[:lower:]')
+
+                local dir
+                for dir in "${dirs_to_look[@]}"; do
+                    local xml_entrys
+
+                   # printf "Procurando ${GREEN}%s${ENDCOLOR} em ${GREEN}%s${ENDCOLOR}\n" "$target_game" "$dir"
+                    mapfile -t xml_entrys < <(xmlstarlet sel -t \
+                        -m "//game[contains(translate(name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '$lower_target')]" \
+                        -v "name" -n ./$dir/gamelist.xml)
+
+                    ########## CONTINUAR DAQUI ---> tem essas duas ideias (mapfile e while),começar pelo while ##########
+                    ########## ver se é possível já separar quais entradas realmente possuem jogos e quais não ##########
+                    
+                    local path=""
+                    local name=""
+                    while IFS='|' read -r path name; do
+                    # Armazena todas as entradas arquivo/jogo do XML
+                        path="${path#./}"  # Remove o prefixo ./
+                        in_xml["$path"]="$name" 
+                    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
+                                sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
+
+                    for entry in "${xml_entrys[@]}"; do
+
+                        echo "$entry"
+
+                    done
+
+
+                done
+                exit 0
+            ;;
         esac
     done
 
