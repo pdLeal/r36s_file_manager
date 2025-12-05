@@ -293,7 +293,7 @@ rm_xml_entry() {
     local safe_xpath
     safe_xpath=$(escape_xpath_string "$game")    
 
-    if sudo xmlstarlet ed --inplace -d "//game[name=$safe_xpath]" "./gamelist.xml"; then
+    if sudo xmlstarlet ed --inplace -d "(//game[name=$safe_xpath])[1]" "./gamelist.xml"; then
         return 0
     else
         printf "${BLUE}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
@@ -514,15 +514,57 @@ rm_game() {
         printf "${YELLOW}Arquivo temporário removido com sucesso!${ENDCOLOR}\n"
 }
 
+show_game_metadata() {
+    local game="$1"
+    printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$game"
+    
+    local safe_xpath
+    safe_xpath=$(escape_xpath_string "$game")
+    xmlstarlet sel -t -m "//game[name=$safe_xpath]" -m "*" \
+    -v "name()" -o ": " -v "normalize-space(.)" -n -b ./gamelist.xml \
+    | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '{ 
+    gsub(/&amp;/, "\\&", $2)
+    gsub(/&lt;/, "<", $2)
+    gsub(/&gt;/, ">", $2)
+    gsub(/&quot;/, "\"", $2)
+    gsub(/&#39;/, "'\''", $2)
+    print C $1 E ": " $2 
+    }'
+    return 0
+
+}
+
+edit_metadata() {
+    local game="$1"
+
+    duplicate_xml_with_entry "$game" "./gamelist.xml" "true" && \
+        printf "${YELLOW}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+
+    mv_xml_entry "./gamelist.xml" && \
+        printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
+    
+    rm_xml_entry "$game" && \
+        printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"    
+
+}
+
 show_gamelist_data() {
     xmlstarlet sel -t -m "//game/*" -v "name()" -o ": " -v "normalize-space(.)" -n ./gamelist.xml \
     | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
     BEGIN { game_num = 0 }
     $1 == "path" && NR > 0 { print "\n--- ENTRADA " ++game_num " ---" }
-    { print C $1 E ": " $2 }'
+    { 
+        gsub(/&amp;/, "\\&", $2)
+        gsub(/&lt;/, "<", $2)
+        gsub(/&gt;/, ">", $2)
+        gsub(/&quot;/, "\"", $2)
+        gsub(/&#39;/, "'\''", $2)
+        print C $1 E ": " $2 
+    }'
     return 0
 
 }
+
 
 STATE="LOOK"
 main_menu() {
@@ -637,32 +679,12 @@ main_menu() {
                 ask_user "" user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
                         "Ver metadados")
-                            printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
-                            
-                            local safe_xpath
-                            safe_xpath=$(escape_xpath_string "$selected_game_name")
-                            xmlstarlet sel -t -m "//game[name=$safe_xpath]" -m "*" \
-                            -v "name()" -o ": " -v "normalize-space(.)" -n -b ./gamelist.xml \
-                            | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F': ' '{ 
-                            gsub(/&amp;/, "\\&", $2)
-                            gsub(/&lt;/, "<", $2)
-                            gsub(/&gt;/, ">", $2)
-                            gsub(/&quot;/, "\"", $2)
-                            gsub(/&#39;/, "'\''", $2)
-                            print C $1 E ": " $2 
-                            }'
+                            show_game_metadata "$selected_game_name"
                             STATE="GAME_ACTION"
                             ;;
 
                         "Editar metadados")
-                            duplicate_xml_with_entry "$selected_game_name" "./gamelist.xml" "true" && \
-                                printf "${YELLOW}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
-
-                            mv_xml_entry "./gamelist.xml" && \
-                                printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
-
-                            rm_xml_entry "$selected_game_name" && \
-                                printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
+                            edit_metadata "$selected_game_name"
                             STATE="DIR_ACTION"
                             ;;
 
