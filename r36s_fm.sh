@@ -43,17 +43,18 @@ look4_roms() {
     w_games=()
     w_no_games=()
 
-    local first=1 # flag para a primeira iteração
+    #local first=1 # flag para a primeira iteração
     local ext=""
-    local ext_find=""
+    local ext_find=()
 
     # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
+    
     for ext in "${EXTENSIONS[@]}"; do
-        if (( first )); then
-          ext_find+=" -name "*.${ext}" "
-          first=0
+        if (( ${#ext_find[@]} == 0 )); then
+        # Se for a primeira iteração/array vazio
+            ext_find+=(-name "*.${ext}")
         else
-          ext_find+=" -o -name "*.${ext}" "
+            ext_find+=(-o -name "*.${ext}")
         fi
     done
 
@@ -61,15 +62,16 @@ look4_roms() {
     # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
     # Se existir, find imprime o diretório pai (%h) e a condição [-n ...] será verdadeira.
     for dir in "${dirs[@]}"; do
-     if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
-        # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
-        if find "$dir" -maxdepth 1 -type f \( $ext_find \) -print -quit| grep -q .; then
-            w_games+=("$dir")
-        else
-    # OBS: só procura em dirs com gamelist.xml - PENSAR SOBRE OS DIRS SEM ELE DEPOIS
-            w_no_games+=("$dir")
+        if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
+            # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
+            if find "$dir" -type f \( "${ext_find[@]}" \) -print -quit| grep -q .; then
+                w_games+=("$dir")
+            else
+        # OBS: só procura em dirs com gamelist.xml - PENSAR SOBRE OS DIRS SEM ELE DEPOIS
+                w_no_games+=("$dir")
+            fi
+            
         fi
-    fi
     done
 }
 
