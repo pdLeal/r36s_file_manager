@@ -3,6 +3,7 @@
 # Autor: pleal
 # Data de Início: 18/10/2025
 
+# shellcheck disable=SC2059
 set -u
 #####################################################
 # VARIÁVEIS GLOBAIS E CONSTANTES
@@ -82,7 +83,7 @@ is_valid_option() {
     local msg="${3:-"Opção inválida."}"
 
     if [[ ! "$input" =~ ^[0-9]+$ ]] || [[ "$input" -lt 1 ]] || [[ "$input" -gt "$max_option" ]]; then
-        printf "${BLUE}$msg Tente Novamente${ENDCOLOR}\n"
+        printf "${BLUE}%s Tente Novamente${ENDCOLOR}\n" "$msg"
         return 1  # Inválido
     else
         return 0  # Válido
@@ -106,6 +107,7 @@ ask_user() {
             *)
                 ! is_valid_option "$REPLY" "$#" && continue # pula para próxima iteração se a opção fornecida for inválida
                 
+                # shellcheck disable=SC2034
                 answer="$opt"
                 break
                 ;;
@@ -151,8 +153,9 @@ find_only_in_xml() {
 
     for file in "${files[@]}"; do
         if [[ -n "${in_xml["$file"]:-}" ]]; then
+            # shellcheck disable=SC2034
             map["$file"]="${in_xml["$file"]}"
-            unset in_xml["$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
+            unset "${in_xml["$file"]}" # Como o arquivo existe, ñ faz sentido manter no only_in_xml
         fi
     done
     
@@ -253,7 +256,7 @@ XSL
     xsltproc "$tmp_xsl" "$tgt_file" > "$tmp_output_raw"
 
     # 4) Formata o XML de saída corretamente
-    xmlstarlet fo -t --encode utf-8 $tmp_output_raw > "$tmp_output_fmt"
+    xmlstarlet fo -t --encode utf-8 "$tmp_output_raw" > "$tmp_output_fmt"
 
     # 5) (opcional) backup do original
     #cp -a "$tgt_file" "${tgt_file}.bak.$(date +%s)" 
@@ -404,7 +407,7 @@ mv_game() {
     local target_dir=""
 
     while true; do
-        read -p "Digite o diretório de destino: " target_dir
+        read -r -p "Digite o diretório de destino: " target_dir
         if [[ ! -d "$target_dir" ]]; then
             printf "${BLUE}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
             continue
@@ -451,7 +454,7 @@ cp_game() {
     local target_dir=""
 
     while true; do
-        read -p "Digite o diretório de destino: " target_dir
+        read -r -p "Digite o diretório de destino: " target_dir
         if [[ ! -d "$target_dir" ]]; then
             printf "${BLUE}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
             continue
@@ -543,7 +546,7 @@ main_menu() {
                 look4_roms dirs_list dirs_with_games dirs_without_games
 
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
-                printf "${CYAN}%s Pastas possuem apenas "gamelist.xml"${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
+                printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
 
                 ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs"
                 case "$user_answer" in 
@@ -567,7 +570,7 @@ main_menu() {
 
                         *)
                             printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$user_answer"
-                            cd -- "$user_answer"
+                            cd -- "$user_answer" || exit 1
                             STATE="DIR_ACTION"
                             ;;
 
@@ -576,6 +579,7 @@ main_menu() {
 
             "DIR_ACTION")
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
+                # shellcheck disable=SC2034
                 game_files=()
                 file_by_game=()
                 games_only_in_xml=()
@@ -597,7 +601,7 @@ main_menu() {
                         ;;
                     "Voltar") 
                         printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
-                        cd "$OLDPWD"
+                        cd "$OLDPWD" || exit 1
                         STATE="CONSOLE_MENU"
                         ;;
 
