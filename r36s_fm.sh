@@ -94,11 +94,22 @@ ask_user() {
 # Exibe um menu de opções para o usuário e armazena a escolha em user_answer
     local question="${1:-"O que deseja fazer?"}"
     local -n answer="$2"
-    shift 2 
+    shift 2
+    local options=() 
     local opt=""
 
+    if [[ "$STATE" == "GAMES_MENU" ]]; then
+    # Orndena os jogos alfabeticamente sem alterar a ordem dos outros menus
+        mapfile -t options < <(
+            printf "%s\n" "$@" \
+            | grep -v -i -x 'Voltar' \
+            | sort -f && printf "%s\n" "Voltar" )
+    else
+        options=( "$@" )
+    fi
+
     printf "\n${RED}%s${ENDCOLOR}\n" "$question"
-    select opt in "$@" "Sair"; do
+    select opt in "${options[@]}" "Sair"; do
         case "$opt" in
             "Sair")
                 echo "Saindo..."
@@ -158,7 +169,6 @@ find_only_in_xml() {
             unset "${in_xml["$file"]}" # Como o arquivo existe, ñ faz sentido manter no only_in_xml
         fi
     done
-    
 }
 
 create_gamelist() {
@@ -744,43 +754,45 @@ main_menu() {
             ;;
             "FIND_GAME")
                 local target_game
-                local safe_xpath
                 local lower_target
 
                 read -r -p "Digite o nome do jogo: " target_game
-                safe_xpath=$(escape_xpath_string "$target_game")
 
-                lower_target=$(echo "$target_game" | tr '[:upper:]' '[:lower:]')
+                lower_target="${target_game,,}"
 
                 local dir
+                local -A files_found
+
                 for dir in "${dirs_to_look[@]}"; do
-                    local xml_entrys
-
-                   # printf "Procurando ${GREEN}%s${ENDCOLOR} em ${GREEN}%s${ENDCOLOR}\n" "$target_game" "$dir"
-                    mapfile -t xml_entrys < <(xmlstarlet sel -t \
-                        -m "//game[contains(translate(name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '$lower_target')]" \
-                        -v "name" -n ./$dir/gamelist.xml)
-
-                    ########## CONTINUAR DAQUI ---> tem essas duas ideias (mapfile e while),começar pelo while ##########
-                    ########## ver se é possível já separar quais entradas realmente possuem jogos e quais não ##########
-                    
                     local path=""
                     local name=""
+
+                    printf "Procurando no diretório: ${GREEN}%s${ENDCOLOR}\n" "$dir"
                     while IFS='|' read -r path name; do
-                    # Armazena todas as entradas arquivo/jogo do XML
-                        path="${path#./}"  # Remove o prefixo ./
-                        in_xml["$path"]="$name" 
-                    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
-                                sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
 
-                    for entry in "${xml_entrys[@]}"; do
+                        path="${path#./}"
 
-                        echo "$entry"
+                        if [[ -n "${files_found["$dir$path"]:-}" ]]; then
+                            printf "${BLUE}DUPLICATA!!!!!!${ENDCOLOR}\n"
+                            printf "Name: ${CYAN}%s${ENDCOLOR}\nPath: ${PINK}%s${ENDCOLOR}\n\n" "$name" "$path"
+                    
+                        
+                        fi
+                        files_found["$dir$path"]="$name"                        
 
-                    done
 
+                    done < <(xmlstarlet sel -t -m "//game[contains(translate(name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '$lower_target')]" \
+                             -v "path" -o "|" -v "name" -n ./"$dir"/gamelist.xml \
+                             | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
 
                 done
+                printf "${YELLOW}%s${ENDCOLOR} encontrados\n" "${#files_found[@]}"
+                    
+                    for key in "${!files_found[@]}"; do
+                    
+                    printf "Name: ${CYAN}%s${ENDCOLOR}\nPath: ${PINK}%s${ENDCOLOR}\n\n" "${files_found[$key]}" "$key"
+                    
+                    done
                 exit 0
             ;;
         esac
@@ -788,3 +800,11 @@ main_menu() {
 
 }
 main_menu "$@"
+
+###############################################
+                        #match="$(find "./$dir" -type f -name "$path" -print)"
+
+                        #if [[ -n "$match" ]]; then
+                        #    echo "$dir"
+                        #    printf "${RED}%s${ENDCOLOR} existe!\n" "$name"
+                        #fi
