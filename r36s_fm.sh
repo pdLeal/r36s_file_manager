@@ -575,6 +575,43 @@ show_gamelist_data() {
 
 }
 
+find_games() {
+    local -n dirs="$1"
+    local -n games="$2"
+    local target_game
+    local lower_target
+    local dir
+    games=()
+
+    read -r -p "Digite o nome do jogo: " target_game
+
+    lower_target="${target_game,,}"
+
+
+    for dir in "${dirs[@]}"; do
+        local path=""
+        local name=""
+        while IFS='|' read -r path name; do
+
+            path="${path#./}"
+            local game_path="$dir$path"
+
+            if [[ -n "${games["$game_path"]:-}" ]]; then
+                printf "${BLUE}DUPLICATA!!!!!!${ENDCOLOR}\n"
+                printf "Name: ${CYAN}%s${ENDCOLOR}\nPath: ${PINK}%s${ENDCOLOR}\n\n" "$name" "$path"
+                continue                   
+
+            fi
+            games["$game_path"]="$name"                        
+
+
+        done < <(xmlstarlet sel -t -m "//game[contains(translate(name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '$lower_target')]" \
+                    -v "path" -o "|" -v "name" -n ./"$dir"/gamelist.xml \
+                    | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
+
+    done
+
+}
 
 STATE="LOOK"
 main_menu() {
@@ -583,11 +620,12 @@ main_menu() {
     local dirs_without_games=() 
     local user_answer=""
     local game_files=()
-    local -A file_by_game # [chave/arquivo]=>[valor/nome do jogo]
-    local -A games_only_in_xml
+    local -A game_by_file=() # [chave/arquivo]=>[valor/nome do jogo]
+    local -A games_only_in_xml=()
     local selected_game_name=""
     local selected_game_path=""
-    
+    local using_find=0 # flag q controla certas ações ao "Procurar jogos"
+
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
@@ -610,6 +648,7 @@ main_menu() {
                     ;;
 
                     "Procurar jogo")
+                        using_find=1
                         dirs_to_look=("${dirs_with_games[@]}")
                         STATE="FIND_GAME"
                         continue
@@ -617,68 +656,74 @@ main_menu() {
                 esac    
                 
                 STATE="CONSOLE_MENU"
-                ;;
+            ;;
 
             "CONSOLE_MENU")
                 ask_user "Selecione uma pasta:" user_answer "${dirs_to_look[@]}" "Voltar"
                 case "$user_answer" in
                         "Voltar")
                             STATE="LOOK"
-                            ;;
+                        ;;
 
                         *)
                             printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "$user_answer"
                             cd -- "$user_answer" || exit 1
                             STATE="DIR_ACTION"
-                            ;;
+                        ;;
 
                     esac
-                ;;
+            ;;
 
             "DIR_ACTION")
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 # shellcheck disable=SC2034
                 game_files=()
-                file_by_game=()
+                game_by_file=()
                 games_only_in_xml=()
 
                 get_files game_files
-                find_only_in_xml game_files games_only_in_xml file_by_game
+                find_only_in_xml game_files games_only_in_xml game_by_file
 
-                printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#file_by_game[@]}"
+                printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
                 printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
 
                 ask_user "" user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
                 case "$user_answer" in
                     "Ver jogos")
                         STATE="GAMES_MENU"
-                        ;;
+                    ;;
 
                     "Editar gamelist.xml")
                         STATE="GAMELIST_MENU"
-                        ;;
+                    ;;
 
                     "Voltar") 
                         printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
                         cd "$OLDPWD" || exit 1
                         STATE="CONSOLE_MENU"
-                        ;;
+                    ;;
 
                 esac
-                ;;
+            ;;
 
             "GAMES_MENU")
-                ask_user "Selecione um jogo:" user_answer "${file_by_game[@]}" "Voltar"
+                ask_user "Selecione um jogo:" user_answer "${game_by_file[@]}" "Voltar"
                 case "$user_answer" in
                     "Voltar")
+                        if (( using_find )); then
+                            using_find=0
+                            STATE="LOOK"
+                            continue
+                            
+                        fi
                         STATE="DIR_ACTION"
-                        ;;
+                    ;;
 
                     *)
                         selected_game_name="$user_answer"
 
-                        for file in "${!file_by_game[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
-                            if [[ "${file_by_game[$file]}" == "$selected_game_name" ]]; then
+                        for file in "${!game_by_file[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
+                            if [[ "${game_by_file[$file]}" == "$selected_game_name" ]]; then
                                 selected_game_path="$file"
                                 break
                             fi
@@ -686,11 +731,17 @@ main_menu() {
 
                         printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
                         printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
+                       
+                        if (( using_find )); then
+                            printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "${selected_game_path%%/*}"
+                            cd -- "./${selected_game_path%%/*}" || exit 1
+                            
+                        fi
                         STATE="GAME_ACTION"
-                        ;;
+                    ;;
 
                 esac
-                ;;
+            ;;
 
             "GAME_ACTION")
                 ask_user "" user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
@@ -721,11 +772,16 @@ main_menu() {
                             ;;
 
                         "Voltar")
+                            if (( using_find )); then
+                                printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                                cd "$OLDPWD" || exit 1
+                            
+                            fi
                             STATE="GAMES_MENU"
                             ;;
 
                     esac
-                ;;
+            ;;
 
             "GAMELIST_MENU")
                 ask_user "" user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
@@ -752,59 +808,21 @@ main_menu() {
 
                 esac
             ;;
+
             "FIND_GAME")
-                local target_game
-                local lower_target
+                find_games dirs_to_look game_by_file
 
-                read -r -p "Digite o nome do jogo: " target_game
+                if [[ "${#game_by_file[@]}" -lt 1 ]]; then
+                    printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
+                else
+                    printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
+                    STATE="GAMES_MENU"    
 
-                lower_target="${target_game,,}"
-
-                local dir
-                local -A files_found
-
-                for dir in "${dirs_to_look[@]}"; do
-                    local path=""
-                    local name=""
-
-                    printf "Procurando no diretório: ${GREEN}%s${ENDCOLOR}\n" "$dir"
-                    while IFS='|' read -r path name; do
-
-                        path="${path#./}"
-
-                        if [[ -n "${files_found["$dir$path"]:-}" ]]; then
-                            printf "${BLUE}DUPLICATA!!!!!!${ENDCOLOR}\n"
-                            printf "Name: ${CYAN}%s${ENDCOLOR}\nPath: ${PINK}%s${ENDCOLOR}\n\n" "$name" "$path"
-                    
-                        
-                        fi
-                        files_found["$dir$path"]="$name"                        
-
-
-                    done < <(xmlstarlet sel -t -m "//game[contains(translate(name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '$lower_target')]" \
-                             -v "path" -o "|" -v "name" -n ./"$dir"/gamelist.xml \
-                             | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-
-                done
-                printf "${YELLOW}%s${ENDCOLOR} encontrados\n" "${#files_found[@]}"
-                    
-                    for key in "${!files_found[@]}"; do
-                    
-                    printf "Name: ${CYAN}%s${ENDCOLOR}\nPath: ${PINK}%s${ENDCOLOR}\n\n" "${files_found[$key]}" "$key"
-                    
-                    done
-                exit 0
+                fi    
             ;;
+
         esac
     done
 
 }
 main_menu "$@"
-
-###############################################
-                        #match="$(find "./$dir" -type f -name "$path" -print)"
-
-                        #if [[ -n "$match" ]]; then
-                        #    echo "$dir"
-                        #    printf "${RED}%s${ENDCOLOR} existe!\n" "$name"
-                        #fi
