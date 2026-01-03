@@ -44,7 +44,6 @@ look4_roms() {
     w_games=()
     w_no_games=()
 
-    #local first=1 # flag para a primeira iteração
     local ext=""
     local ext_find=()
 
@@ -134,7 +133,7 @@ get_files() {
     local ext=""
 
     for ext in "${EXTENSIONS[@]}"; do
-    found+=( **/*."$ext" )
+    found+=( **/*."$ext" ) # glob expansion responsável pela busca 
     done
 
     shopt -u globstar nullglob
@@ -502,7 +501,7 @@ rm_game() {
     local selected_game="$1"
     local selected_path="$2"
 
-    printf "Criando xml temporário...\n"
+    printf "Criando xml temporário...\n" # Necessário por conta de process_other_files
     tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" && \
         printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_game"
 
@@ -595,7 +594,7 @@ find_games() {
 
             path="${path#./}"
             local game_path="$dir$path"
-
+                        
             if [[ -n "${games["$game_path"]:-}" ]]; then
                 printf "${BLUE}DUPLICATA!!!!!!${ENDCOLOR}\n"
                 printf "Name: ${CYAN}%s${ENDCOLOR}\nPath: ${PINK}%s${ENDCOLOR}\n\n" "$name" "$path"
@@ -609,13 +608,25 @@ find_games() {
                     -v "path" -o "|" -v "name" -n ./"$dir"/gamelist.xml \
                     | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
 
+ 
+###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES
+        #shopt -s globstar nullglob
+        #local all_files=(./$dir**)
+        
+
+
+
+
+###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES            
+       
+
     done
 
 }
 
 STATE="LOOK"
 main_menu() {
-    local dirs_list=(*/) # Lista de pastas no diretório atual
+    local dirs_list=(*/) # Lista de pastas no diretório atual - Glob expansion 
     local dirs_with_games=() 
     local dirs_without_games=() 
     local user_answer=""
@@ -641,15 +652,15 @@ main_menu() {
                 ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo"
                 case "$user_answer" in 
                     "Ver pastas com ROMs")
-                        dirs_to_look=("${dirs_with_games[@]}")
+                        dirs_to_look=( "${dirs_with_games[@]}" )
                     ;;
                     "Ver pastas sem ROMs")
-                        dirs_to_look=("${dirs_without_games[@]}")
+                        dirs_to_look=( "${dirs_without_games[@]}" )
                     ;;
 
                     "Procurar jogo")
                         using_find=1
-                        dirs_to_look=("${dirs_with_games[@]}")
+                        dirs_to_look=( "${dirs_with_games[@]}" )
                         STATE="FIND_GAME"
                         continue
                     ;;
