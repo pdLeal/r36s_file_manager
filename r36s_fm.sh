@@ -588,6 +588,7 @@ find_games() {
 
 
     for dir in "${dirs[@]}"; do
+
         local path=""
         local name=""
         while IFS='|' read -r path name; do
@@ -608,20 +609,33 @@ find_games() {
                     -v "path" -o "|" -v "name" -n ./"$dir"/gamelist.xml \
                     | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
 
- 
-###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES
-        #shopt -s globstar nullglob
-        #local all_files=(./$dir**)
-        
+    done
 
+###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES
+        # achar todos aqrquivos de cada diretório q contenham o nome pesquisado
+        # armazenar e eliminar aqueles q á foram porocessados pela busca no xml
+        # eliminar aqrquivos de msm nome, mas com extensões diferentes
+        # acrescentar o restante na lista de jogos
+
+        #for key in "${!games[@]}"; do
+        #    echo "$key" depois q desbugar, pode apagar
+        #done
+       
+        local file
+        find . -type f -iname "*$lower_target*" -print0 | while IFS= read -r -d '' file; do
+                file=${file#./}
+
+                printf "\n${RED}Testando:${ENDCOLOR} %s\n" "$file"
+
+                if [[ -n "${games["$file"]:-}" ]]; then
+                    printf "Arquivo já encontrado no xml: ${GREEN}%s${ENDCOLOR}\n" "${games["$file"]}"
+                fi
+            done
 
 
 
 ###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES            
        
-
-    done
-
 }
 
 STATE="LOOK"
