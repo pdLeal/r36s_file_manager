@@ -19,7 +19,7 @@ readonly CYAN="\033[36m"
 readonly ENDCOLOR="\033[0m"
 
 # Extensões de arquivos de jogos suportadas
-readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z" "fs")
+readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z")
 
 
 #####################################################
@@ -178,34 +178,45 @@ find_games_not_in_xml() {
 
     local file
     for file in "${files[@]}"; do
-    
+        
         # stat -c %s "$file"
         ### stat é uma ferramenta externa de linha de comando que consulta o sistema de arquivos
         ### e exibi informações/metadados detalhados de arquivos e diretório
         ### como tamanho lógico, qtd de blocos, permissões, timestamps e afins
 
-        name_without_extension="${file%%.*}"
-        
+
+        name_without_extension="${file##*/}"
+
+        name_without_extension="${name_without_extension%%.*}"
+
+        file="${file##*/}"
         file="./$file"
+
+        [[ -n "${games[$file]:-}" ]] && continue
 
         if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
             uniques["$name_without_extension"]="$file"
-            files_size["$file"]=$(stat -c %s "$file")
-        
+            files_size["$file"]=$(stat -c %s "$file" 2>/dev/null || echo 0)
+            # Se a chave ñ existe, o arquivo atual se torna o primeiro valor e seu tamanho é armazenado
         else
             local current_file_size=$(stat -c %s "$file")
             local prev_file="${uniques["$name_without_extension"]}"
-            
+            # Se existe o tamanho do arquivo atual é calculado e o anterior é recuperado
+
             if [[ $current_file_size -gt ${files_size["$prev_file"]:-} ]]; then
                 uniques["$name_without_extension"]="$file"
-
+                files_size["$file"]="$current_file_size"
+                # Os tamanhos dos arquivos são então comparados e o maior é mantido
             fi
 
         fi
     done
-    printf "%s\n" "${uniques[@]}"
-    exit
+    
+    for key in "${!uniques[@]}"; do
+        value="${uniques[$key]}"
 
+        games["$value"]="$key"
+    done
 }
 
 create_gamelist() {
