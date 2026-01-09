@@ -19,7 +19,7 @@ readonly CYAN="\033[36m"
 readonly ENDCOLOR="\033[0m"
 
 # Extensões de arquivos de jogos suportadas
-readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z")
+readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z" "fs")
 
 
 #####################################################
@@ -62,9 +62,9 @@ look4_roms() {
     # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
     # Se existir, find imprime o diretório pai (%h) e a condição [-n ...] será verdadeira.
     for dir in "${dirs[@]}"; do
-        if [ -n "$(find "$dir" -type f -name "gamelist.xml" -printf '%h\n')" ]; then
+        if [ -n "$(find "$dir" -type f -name "gamelist.xml" -print -quit)" ]; then
             # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
-            if find "$dir" -type f \( "${ext_find[@]}" \) -print -quit| grep -q .; then
+            if find "$dir" -type f \( "${ext_find[@]}" \) -print -quit | grep -q .; then
                 w_games+=("$dir")
             else
         # OBS: só procura em dirs com gamelist.xml - PENSAR SOBRE OS DIRS SEM ELE DEPOIS
@@ -141,10 +141,6 @@ get_files() {
 
 find_only_in_xml() {
 # Compara os arquivos encontrados com os do gamelist.xml e identifica quais estão apenas no XML.
-    # Parâmetros:
-    #   $1 - (array, referência) Lista de arquivos encontrados
-    #   $2 - (associative array, referência) Mapa para armazenar jogos apenas no XML
-    #   $3 - (associative array, referência) Mapa para armazenar arquivos encontrados com seus nomes de jogos
     local -n files="$1"
     local -n in_xml="$2"
     local -n map="$3"
@@ -155,19 +151,61 @@ find_only_in_xml() {
     local name=""
     while IFS='|' read -r path name; do
     # Armazena todas as entradas arquivo/jogo do XML
-        path="${path#./}"  # Remove o prefixo ./
+
+        #path="${path#./}"  # Remove o prefixo ./ - REMOVER LINHA DEPOIS DE REAVALIAR A LÓGICA DE ENCONTRAR OS JOGOS
+
         in_xml["$path"]="$name" 
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
         # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
 
     for file in "${files[@]}"; do
+        file="./$file" # O path acima vem com ./, por isso é preciso add p/ compatibilidade
+
         if [[ -n "${in_xml["$file"]:-}" ]]; then
             # shellcheck disable=SC2034
             map["$file"]="${in_xml["$file"]}"
-            unset "${in_xml["$file"]}" # Como o arquivo existe, ñ faz sentido manter no only_in_xml
+            unset in_xml["$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
         fi
     done
+}
+
+find_games_not_in_xml() {
+    local -n files="$1"
+    local -n games="$2"
+    local -A uniques
+    local -A files_size
+
+    local file
+    for file in "${files[@]}"; do
+    
+        # stat -c %s "$file"
+        ### stat é uma ferramenta externa de linha de comando que consulta o sistema de arquivos
+        ### e exibi informações/metadados detalhados de arquivos e diretório
+        ### como tamanho lógico, qtd de blocos, permissões, timestamps e afins
+
+        name_without_extension="${file%%.*}"
+        
+        file="./$file"
+
+        if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
+            uniques["$name_without_extension"]="$file"
+            files_size["$file"]=$(stat -c %s "$file")
+        
+        else
+            local current_file_size=$(stat -c %s "$file")
+            local prev_file="${uniques["$name_without_extension"]}"
+            
+            if [[ $current_file_size -gt ${files_size["$prev_file"]:-} ]]; then
+                uniques["$name_without_extension"]="$file"
+
+            fi
+
+        fi
+    done
+    printf "%s\n" "${uniques[@]}"
+    exit
+
 }
 
 create_gamelist() {
@@ -332,7 +370,7 @@ process_other_files() {
     # TODO: passar selected_game_path EXPLICITAMENTE!!!
     # Alguns jogos possuem arquivos como fileName.iso e fileName.cue q devem ser processados tbm
     local name="${selected_game_path%.*}"
-    mapfile -t -O "${#other_files[@]}" other_files < <(find . -type f -name "$name.*")
+    mapfile -t -O "${#other_files[@]}" other_files < <(find . -type f -path "$name.*")
     
     if [[ "${#other_files[@]}" -eq 0 ]]; then
         printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
@@ -708,6 +746,7 @@ main_menu() {
 
                 get_files game_files
                 find_only_in_xml game_files games_only_in_xml game_by_file
+                find_games_not_in_xml game_files game_by_file
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
                 printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
