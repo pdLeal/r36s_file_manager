@@ -19,7 +19,40 @@ readonly CYAN="\033[36m"
 readonly ENDCOLOR="\033[0m"
 
 # Extensões de arquivos de jogos suportadas
-readonly EXTENSIONS=("nes" "smc" "sfc" "fig" "gb" "NES" "CSO" "gbsfc" "fig" "gb" "gbc" "gba" "bin" "cdi" "md" "smd" "gen" "sms" "gg" "n64" "z64" "v64" "s64" "iso" "cso" "cue" "pbp" "PBP" "pce" "gdi" "chd" "zip" "7z")
+readonly EXTENSIONS=(
+  "nes"
+  "smc"
+  "sfc"
+  "fig"
+  "gb"
+  "gbc"
+  "gba"
+  "bin"
+  "cdi"
+  "md"
+  "smd"
+  "gen"
+  "sms"
+  "gg"
+  "n64"
+  "z64"
+  "v64"
+  "s64"
+  "iso"
+  "cso"
+  "cue"
+  "pbp"
+  "pce"
+  "gdi"
+  "chd"
+  "zip"
+  "7z"
+  "nds"
+  "img"
+  "ccd"
+  "m3u"
+  "wolf"
+)
 
 
 #####################################################
@@ -177,31 +210,40 @@ find_games_not_in_xml() {
     local -A files_size
 
     local file
+    for file in "${!games[@]}"; do
+        name_without_extension="${file##*/}"
+        name_without_extension="${name_without_extension%%.*}"
+        uniques["$name_without_extension"]="1"
+
+    done
+
     for file in "${files[@]}"; do
         
-        # stat -c %s "$file"
+        ### stat -c %s "$file"
         ### stat é uma ferramenta externa de linha de comando que consulta o sistema de arquivos
         ### e exibi informações/metadados detalhados de arquivos e diretório
         ### como tamanho lógico, qtd de blocos, permissões, timestamps e afins
 
 
         name_without_extension="${file##*/}"
-
         name_without_extension="${name_without_extension%%.*}"
 
         file="${file##*/}"
         file="./$file"
 
-        [[ -n "${games[$file]:-}" ]] && continue
+         [[ "${uniques[$name_without_extension]:-}" == "1" ]] && continue
+
+
 
         if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
+        # Para jogos com arquivos de msm nome, mas extensões diferentes, determina qual o principal com base no tamanho 
             uniques["$name_without_extension"]="$file"
             files_size["$file"]=$(stat -c %s "$file" 2>/dev/null || echo 0)
             # Se a chave ñ existe, o arquivo atual se torna o primeiro valor e seu tamanho é armazenado
         else
             local current_file_size=$(stat -c %s "$file")
             local prev_file="${uniques["$name_without_extension"]}"
-            # Se existe o tamanho do arquivo atual é calculado e o anterior é recuperado
+            # Se existe, o tamanho do arquivo atual é calculado e o anterior é recuperado
 
             if [[ $current_file_size -gt ${files_size["$prev_file"]:-} ]]; then
                 uniques["$name_without_extension"]="$file"
@@ -213,6 +255,7 @@ find_games_not_in_xml() {
     done
     
     for key in "${!uniques[@]}"; do
+        [[ "${uniques[$key]:-}" == "1" ]] && continue
         value="${uniques[$key]}"
 
         games["$value"]="$key"
