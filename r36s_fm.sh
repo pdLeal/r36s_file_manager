@@ -208,6 +208,15 @@ find_games_not_in_xml() {
     local -n games="$2"
     local -A uniques
     local -A files_size
+    declare -A blacklist=(
+        [konamigx]=1
+        [kviper]=1
+        [megatech]=1
+        [nss]=1
+        [playch10]=1
+        [skns]=1
+        [neogeo]=1
+    ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
 
     local file
     for file in "${!games[@]}"; do
@@ -231,8 +240,8 @@ find_games_not_in_xml() {
         file="${file##*/}"
         file="./$file"
 
-         [[ "${uniques[$name_without_extension]:-}" == "1" ]] && continue
-
+        [[ "${uniques[$name_without_extension]:-}" == "1" ]] && continue
+        [[ "${blacklist[$name_without_extension]:-}" == "1" ]] && continue
 
 
         if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
@@ -746,6 +755,9 @@ main_menu() {
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
+    
+
+
     while true; do
         case "$STATE" in
             "LOOK")
@@ -754,6 +766,31 @@ main_menu() {
 
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
                 printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
+
+                # VOLTAR AQUI - TENTANDO DESCOBRIR QUAIS JOGOS NÃO FORAM ACHADOS E POR QUE!
+                # neogeo joguin: 147 - achou: 148
+                # mame joguin: 1543 - achou: 1549
+                # nes joguin: 7742 - achou: 6112
+                # psx joguin: 156 - achou: 148
+                
+                # local sum=0
+                # for dir in "${dirs_with_games[@]}"; do
+                #     game_files=()
+                #     game_by_file=()
+                #     games_only_in_xml=()
+                #     cd "$dir"
+                #     printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
+                #     get_files game_files
+                #     find_only_in_xml game_files games_only_in_xml game_by_file
+                #     find_games_not_in_xml game_files game_by_file
+
+                #     printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_by_file[@]}"
+                #     (( sum += ${#game_by_file[@]} ))
+                #     cd - &> /dev/null
+                # done
+                # printf "Total: ${GREEN}%s${ENDCOLOR}\n" "$sum"
+                # exit
+
 
                 ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo"
                 case "$user_answer" in 
