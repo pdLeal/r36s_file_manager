@@ -21,6 +21,7 @@ readonly ENDCOLOR="\033[0m"
 # Extensões de arquivos de jogos suportadas
 readonly EXTENSIONS=(
   "nes"
+#   "NES"
   "smc"
   "sfc"
   "fig"
@@ -42,17 +43,18 @@ readonly EXTENSIONS=(
   "cso"
   "cue"
   "pbp"
+  "PBP"
   "pce"
   "gdi"
   "chd"
-  "zip"
+#   "zip"
   "7z"
   "nds"
   "img"
   "ccd"
   "m3u"
   "wolf"
-)
+) # Deveriam ser normalizadas ao invés de hardcoded upper and lower case, but today is not the day!
 
 
 #####################################################
@@ -204,8 +206,8 @@ find_only_in_xml() {
 }
 
 find_games_not_in_xml() {
-    local -n files="$1"
-    local -n games="$2"
+    local -n files="$1" # array com todos os aruivos do diretório 
+    local -n games="$2" # array associativo de [arquivo] -> [nome]
     local -A uniques
     local -A files_size
     declare -A blacklist=(
@@ -217,15 +219,20 @@ find_games_not_in_xml() {
         [skns]=1
         [neogeo]=1
     ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
-
+    local name_without_extension
+    local current_file_size
+    local prev_file
     local file
+
     for file in "${!games[@]}"; do
+    # Marca os jogos que já foram encontrados no xml
         name_without_extension="${file##*/}"
         name_without_extension="${name_without_extension%%.*}"
         uniques["$name_without_extension"]="1"
 
     done
 
+# SAPOHA DE LÓGICA TÁ QUEBRADA, VOLTAR DAQUI E ARRUMAR ESSE CARALHO!!!
     for file in "${files[@]}"; do
         
         ### stat -c %s "$file"
@@ -240,8 +247,8 @@ find_games_not_in_xml() {
         file="${file##*/}"
         file="./$file"
 
-        [[ "${uniques[$name_without_extension]:-}" == "1" ]] && continue
-        [[ "${blacklist[$name_without_extension]:-}" == "1" ]] && continue
+        [[ "${uniques[$name_without_extension]:-}" == "1" ]] && continue # Se já foi encontrado pelo xml, segue o baile
+        [[ "${blacklist[$name_without_extension]:-}" == "1" ]] && continue # Se tá na blacklist, tbm
 
 
         if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
@@ -258,13 +265,16 @@ find_games_not_in_xml() {
                 uniques["$name_without_extension"]="$file"
                 files_size["$file"]="$current_file_size"
                 # Os tamanhos dos arquivos são então comparados e o maior é mantido
+
             fi
 
         fi
     done
     
+    
+
     for key in "${!uniques[@]}"; do
-        [[ "${uniques[$key]:-}" == "1" ]] && continue
+        [[ "${uniques[$key]:-}" == "1" ]] && continue # Gambiarra q garante q não encontre o jogo e um arquivo de msm nome pq minha lógica tá falha =)
         value="${uniques[$key]}"
 
         games["$value"]="$key"
@@ -767,11 +777,9 @@ main_menu() {
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
                 printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
 
-                # VOLTAR AQUI - TENTANDO DESCOBRIR QUAIS JOGOS NÃO FORAM ACHADOS E POR QUE!
-                # neogeo joguin: 147 - achou: 148
-                # mame joguin: 1543 - achou: 1549
                 # nes joguin: 7742 - achou: 6112
-                # psx joguin: 156 - achou: 148
+                #   zip: 2214 - acho: 2069
+                #   nes: 5443 - achou: 5249
                 
                 # local sum=0
                 # for dir in "${dirs_with_games[@]}"; do
