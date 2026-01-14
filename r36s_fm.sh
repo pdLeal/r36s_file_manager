@@ -21,7 +21,7 @@ readonly ENDCOLOR="\033[0m"
 # Extensões de arquivos de jogos suportadas
 readonly EXTENSIONS=(
   "nes"
-#   "NES"
+  "NES"
   "smc"
   "sfc"
   "fig"
@@ -47,7 +47,7 @@ readonly EXTENSIONS=(
   "pce"
   "gdi"
   "chd"
-#   "zip"
+  "zip"
   "7z"
   "nds"
   "img"
@@ -174,6 +174,30 @@ get_files() {
     shopt -u globstar nullglob
 }
 
+compare_sizes() {
+# Para jogos com arquivos de msm nome, mas extensões diferentes, determina qual o principal com base no tamanho 
+    local prev_size
+    local curr_size
+    
+    if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
+        uniques["$name_without_extension"]="$file"
+        files_size["$file"]=$(stat -c %s "$file" 2>/dev/null || echo 0)
+        # Se a chave ñ existe, o arquivo atual se torna o primeiro valor e seu tamanho é armazenado
+    else
+        local current_file_size=$(stat -c %s "$file")
+        local prev_file="${uniques["$name_without_extension"]}"
+        # Se existe, o tamanho do arquivo atual é calculado e o anterior é recuperado
+
+        if [[ $current_file_size -gt ${files_size["$prev_file"]:-} ]]; then
+            uniques["$name_without_extension"]="$file"
+            files_size["$file"]="$current_file_size"
+            # Os tamanhos dos arquivos são então comparados e o maior é mantido
+
+        fi
+
+    fi
+}
+
 find_only_in_xml() {
 # Compara os arquivos encontrados com os do gamelist.xml e identifica quais estão apenas no XML.
     local -n files="$1"
@@ -193,16 +217,57 @@ find_only_in_xml() {
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
         # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
-
+    
+    
+    local sum=0
+    local without_extension=""
+    local -A seen
+    local prev_size=0
+    local curr_size=0
+    # set -x
     for file in "${files[@]}"; do
-        file="./$file" # O path acima vem com ./, por isso é preciso add p/ compatibilidade
+        #file="./$file" # O "path" acima vem com ./ enquanto o "file" ñ, por isso é preciso add p/ compatibilidade
 
-        if [[ -n "${in_xml["$file"]:-}" ]]; then
+        if [[ -n "${in_xml["./$file"]:-}" ]]; then # Se o arquivo foi encontrado pela busca no xml, add ele ao array de jogos
             # shellcheck disable=SC2034
-            map["$file"]="${in_xml["$file"]}"
-            unset in_xml["$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
+            map["./$file"]="${in_xml["./$file"]}"
+            unset in_xml["./$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
+        
+        else
+            # Se ele não existe, é preciso determinar se é um jogo msm ou um arquivo auxiliar
+                ## Pelo q vi, arquivos auxiliares possuem o msm nome q o arquivo principal, mas com extensão diferente
+            
+            without_extension="${file%%.*}"
+            if [[ -z "${seen["$without_extension"]:-}" ]]; then
+            # Se é o primeiro "semi-arquivo", armazena ele e seu tamanho
+                seen["$without_extension"]="./$file"
+                prev_size=$(stat -c %s "./$file" 2>/dev/null || echo 0)
+                continue
+            
+            fi
+            
+            # Se não, calcula o tamanho do arquivo atual, compara com o anterior e atualiza se for maior
+            curr_size=$(stat -c %s "./$file" 2>/dev/null || echo 0)
+            [[ $prev_size -ge $curr_size ]] && continue
+            seen["$without_extension"]="./$file"
+            prev_size="$curr_size"
+            
+            printf "File is: ${BLUE}%s${ENDCOLOR} - Size is: ${GREEN}%s${ENDCOLOR}\n\n" "${seen["$without_extension"]}" "$prev_size"
+            (( sum += 1 ))
+
         fi
+
     done
+    # CONTINUAR DAQUI, AINDA NÃO ENCONTREA TODOS OS JOGOS E ESTÁ ADD ARQUIVOS INDEVIDOS
+    # É PRECISO PARAR DE PROCESSAR ARQUIVOS DE JOGOS Q JÁ FORAM ENCONTRADOS E DESCOBRIR POR QUE AINDA NÃO ACHA TODOS
+    (( "${#seen[@]}" == 0 )) && continue
+    for file in "${seen[@]}"; do
+        without_extension="${file%%.*}"
+        map["./$file"]="${seen["./$without_extension"]:-}"
+    done
+    # set +x
+      printf "Total is: ${PINK}%d${ENDCOLOR}\n\n" "$sum"
+    # exit
 }
 
 find_games_not_in_xml() {
@@ -231,8 +296,7 @@ find_games_not_in_xml() {
         uniques["$name_without_extension"]="1"
 
     done
-
-# SAPOHA DE LÓGICA TÁ QUEBRADA, VOLTAR DAQUI E ARRUMAR ESSE CARALHO!!!
+    
     for file in "${files[@]}"; do
         
         ### stat -c %s "$file"
@@ -251,24 +315,24 @@ find_games_not_in_xml() {
         [[ "${blacklist[$name_without_extension]:-}" == "1" ]] && continue # Se tá na blacklist, tbm
 
 
-        if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
-        # Para jogos com arquivos de msm nome, mas extensões diferentes, determina qual o principal com base no tamanho 
-            uniques["$name_without_extension"]="$file"
-            files_size["$file"]=$(stat -c %s "$file" 2>/dev/null || echo 0)
-            # Se a chave ñ existe, o arquivo atual se torna o primeiro valor e seu tamanho é armazenado
-        else
-            local current_file_size=$(stat -c %s "$file")
-            local prev_file="${uniques["$name_without_extension"]}"
-            # Se existe, o tamanho do arquivo atual é calculado e o anterior é recuperado
+        # if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
+        # # Para jogos com arquivos de msm nome, mas extensões diferentes, determina qual o principal com base no tamanho 
+        #     uniques["$name_without_extension"]="$file"
+        #     files_size["$file"]=$(stat -c %s "$file" 2>/dev/null || echo 0)
+        #     # Se a chave ñ existe, o arquivo atual se torna o primeiro valor e seu tamanho é armazenado
+        # else
+        #     local current_file_size=$(stat -c %s "$file")
+        #     local prev_file="${uniques["$name_without_extension"]}"
+        #     # Se existe, o tamanho do arquivo atual é calculado e o anterior é recuperado
 
-            if [[ $current_file_size -gt ${files_size["$prev_file"]:-} ]]; then
-                uniques["$name_without_extension"]="$file"
-                files_size["$file"]="$current_file_size"
-                # Os tamanhos dos arquivos são então comparados e o maior é mantido
+        #     if [[ $current_file_size -gt ${files_size["$prev_file"]:-} ]]; then
+        #         uniques["$name_without_extension"]="$file"
+        #         files_size["$file"]="$current_file_size"
+        #         # Os tamanhos dos arquivos são então comparados e o maior é mantido
 
-            fi
+        #     fi
 
-        fi
+        # fi
     done
     
     
@@ -780,6 +844,9 @@ main_menu() {
                 # nes joguin: 7742 - achou: 6112
                 #   zip: 2214 - acho: 2069
                 #   nes: 5443 - achou: 5249
+                # neogeo joguin: 147 - achou: 148
+                # mame joguin: 1543 - achou: 1549
+                # psx joguin: 156 - achou: 148
                 
                 # local sum=0
                 # for dir in "${dirs_with_games[@]}"; do
@@ -845,7 +912,7 @@ main_menu() {
 
                 get_files game_files
                 find_only_in_xml game_files games_only_in_xml game_by_file
-                find_games_not_in_xml game_files game_by_file
+                # find_games_not_in_xml game_files game_by_file
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
                 printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
