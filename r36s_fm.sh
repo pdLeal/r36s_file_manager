@@ -20,8 +20,8 @@ readonly ENDCOLOR="\033[0m"
 
 # Extensões de arquivos de jogos suportadas
 readonly EXTENSIONS=(
-  "nes"
-  "NES"
+#   "nes"
+#   "NES"
   "smc"
   "sfc"
   "fig"
@@ -224,50 +224,77 @@ find_only_in_xml() {
     local -A seen
     local prev_size=0
     local curr_size=0
+    declare -A blacklist=(
+        [konamigx]=1
+        [kviper]=1
+        [megatech]=1
+        [nss]=1
+        [playch10]=1
+        [skns]=1
+        [neogeo]=1
+    ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
+   
     # set -x
+    
+    local -A all_files
+
     for file in "${files[@]}"; do
+        without_extension="${file%%.*}"
+        file="./$file"
+        # printf "File is: ${BLUE}%s${ENDCOLOR} - No Ext is: ${GREEN}%s${ENDCOLOR}\n\n" "$file" "$without_extension"
+
+          all_files["$file"]="$without_extension"        
+        
         #file="./$file" # O "path" acima vem com ./ enquanto o "file" ñ, por isso é preciso add p/ compatibilidade
 
-        if [[ -n "${in_xml["./$file"]:-}" ]]; then # Se o arquivo foi encontrado pela busca no xml, add ele ao array de jogos
+        (( sum += 1 ))
+        if [[ -n "${in_xml["$file"]:-}" ]]; then # Se o arquivo foi encontrado pela busca no xml, add ele ao array de jogos
             # shellcheck disable=SC2034
-            map["./$file"]="${in_xml["./$file"]}"
-            unset in_xml["./$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
-        
+            map["$file"]="${in_xml["$file"]}"
+            unset in_xml["$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
+            seen["$without_extension"]="xml" # Flag q indica q já foi encontra pelo xml
+
         else
             # Se ele não existe, é preciso determinar se é um jogo msm ou um arquivo auxiliar
                 ## Pelo q vi, arquivos auxiliares possuem o msm nome q o arquivo principal, mas com extensão diferente
             
-            without_extension="${file%%.*}"
+            [[ "${seen["$without_extension"]:-}" == "xml" ]] && continue 
+            
             if [[ -z "${seen["$without_extension"]:-}" ]]; then
             # Se é o primeiro "semi-arquivo", armazena ele e seu tamanho
-                seen["$without_extension"]="./$file"
-                prev_size=$(stat -c %s "./$file" 2>/dev/null || echo 0)
+                seen["$without_extension"]="$file"
+                prev_size=$(stat -c %s "$file" 2>/dev/null || echo 0)
                 continue
             
             fi
             
             # Se não, calcula o tamanho do arquivo atual, compara com o anterior e atualiza se for maior
-            curr_size=$(stat -c %s "./$file" 2>/dev/null || echo 0)
+            curr_size=$(stat -c %s "$file" 2>/dev/null || echo 0)
+
             [[ $prev_size -ge $curr_size ]] && continue
-            seen["$without_extension"]="./$file"
+
+            seen["$without_extension"]="$file"
             prev_size="$curr_size"
             
-            printf "File is: ${BLUE}%s${ENDCOLOR} - Size is: ${GREEN}%s${ENDCOLOR}\n\n" "${seen["$without_extension"]}" "$prev_size"
-            (( sum += 1 ))
 
         fi
 
+
     done
-    # CONTINUAR DAQUI, AINDA NÃO ENCONTREA TODOS OS JOGOS E ESTÁ ADD ARQUIVOS INDEVIDOS
-    # É PRECISO PARAR DE PROCESSAR ARQUIVOS DE JOGOS Q JÁ FORAM ENCONTRADOS E DESCOBRIR POR QUE AINDA NÃO ACHA TODOS
-    (( "${#seen[@]}" == 0 )) && continue
-    for file in "${seen[@]}"; do
-        without_extension="${file%%.*}"
-        map["./$file"]="${seen["./$without_extension"]:-}"
+
+    # AINDA NÃO ESTÁ ENCONTRANDO TODOS OS JOGOS, POSSÍVEL ERRO DE PARSING
+
+    for key in "${!seen[@]}"; do
+        # printf "Key is: ${BLUE}%s${ENDCOLOR} - Value is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${seen["$key"]}"
+        ( [[ "${seen["$key"]:-}" == "xml" ]] || [[ -n "${blacklist[$key]:-}" ]] ) && continue
+        
+        map["${seen["$key"]}"]="$key"
+
     done
+
     # set +x
-      printf "Total is: ${PINK}%d${ENDCOLOR}\n\n" "$sum"
-    # exit
+    printf "Total is: ${PINK}%d${ENDCOLOR}\n\n" "$sum"
+    exit
 }
 
 find_games_not_in_xml() {
