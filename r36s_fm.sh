@@ -20,8 +20,8 @@ readonly ENDCOLOR="\033[0m"
 
 # Extensões de arquivos de jogos suportadas
 readonly EXTENSIONS=(
-#   "nes"
-#   "NES"
+  "nes"
+  "NES"
   "smc"
   "sfc"
   "fig"
@@ -234,20 +234,29 @@ find_only_in_xml() {
         [neogeo]=1
     ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
    
-    # set -x
     
     local -A all_files
 
     for file in "${files[@]}"; do
-        without_extension="${file%%.*}"
-        file="./$file"
-        # printf "File is: ${BLUE}%s${ENDCOLOR} - No Ext is: ${GREEN}%s${ENDCOLOR}\n\n" "$file" "$without_extension"
+    # set -x
+        without_extension="${file%.*}"
+
+        if [[ "$without_extension" = *.A1 ]]; then # *.A1 sem "" p/ realizar comparação de padrões
+        # Necessário p/ lidar com os poucos arquivos de extensão dupla A1.cdi - podia ser mais robusto, mas só eu vou usar msm
+            continue
+        
+        fi
+    # set +x
+
+        file="./$file" # O "path" acima vem com ./ enquanto o "file" ñ, por isso é preciso add p/ compatibilidade
+        
+        # printf "File is: ${BLUE}%s${ENDCOLOR}\nNo Ext is: ${GREEN}%s${ENDCOLOR}\n\n" "$file" "$without_extension"
 
           all_files["$file"]="$without_extension"        
         
-        #file="./$file" # O "path" acima vem com ./ enquanto o "file" ñ, por isso é preciso add p/ compatibilidade
-
         (( sum += 1 ))
+
+
         if [[ -n "${in_xml["$file"]:-}" ]]; then # Se o arquivo foi encontrado pela busca no xml, add ele ao array de jogos
             # shellcheck disable=SC2034
             map["$file"]="${in_xml["$file"]}"
@@ -292,9 +301,8 @@ find_only_in_xml() {
 
     done
 
-    # set +x
-    printf "Total is: ${PINK}%d${ENDCOLOR}\n\n" "$sum"
-    exit
+    printf "Total is: ${PINK}%d${ENDCOLOR}\n" "$sum"
+    # exit
 }
 
 find_games_not_in_xml() {
@@ -875,23 +883,24 @@ main_menu() {
                 # mame joguin: 1543 - achou: 1549
                 # psx joguin: 156 - achou: 148
                 
-                # local sum=0
-                # for dir in "${dirs_with_games[@]}"; do
-                #     game_files=()
-                #     game_by_file=()
-                #     games_only_in_xml=()
-                #     cd "$dir"
-                #     printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
-                #     get_files game_files
-                #     find_only_in_xml game_files games_only_in_xml game_by_file
-                #     find_games_not_in_xml game_files game_by_file
+                local sum=0
+                for dir in "${dirs_with_games[@]}"; do
+                # Conta a qtd de jogos por pasta e sommoo o total 
+                    game_files=()
+                    game_by_file=()
+                    games_only_in_xml=()
+                    cd "$dir"
+                    printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
+                    get_files game_files
+                    find_only_in_xml game_files games_only_in_xml game_by_file
+                    # find_games_not_in_xml game_files game_by_file
 
-                #     printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_by_file[@]}"
-                #     (( sum += ${#game_by_file[@]} ))
-                #     cd - &> /dev/null
-                # done
-                # printf "Total: ${GREEN}%s${ENDCOLOR}\n" "$sum"
-                # exit
+                    printf "${CYAN}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_by_file[@]}"
+                    (( sum += ${#game_by_file[@]} ))
+                    cd - &> /dev/null
+                done
+                printf "Total: ${GREEN}%s${ENDCOLOR}\n" "$sum"
+                exit
 
 
                 ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo"
