@@ -210,15 +210,11 @@ find_only_in_xml() {
     local name=""
     while IFS='|' read -r path name; do
     # Armazena todas as entradas arquivo/jogo do XML
-
-        #path="${path#./}"  # Remove o prefixo ./ - REMOVER LINHA DEPOIS DE REAVALIAR A LÓGICA DE ENCONTRAR OS JOGOS
-
         in_xml["$path"]="$name" 
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
         # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
-    
-    
+ 
     local sum=0
     local without_extension=""
     local -A seen
@@ -238,15 +234,15 @@ find_only_in_xml() {
     local -A all_files
 
     for file in "${files[@]}"; do
-    # set -x
         without_extension="${file%.*}"
 
         if [[ "$without_extension" = *.A1 ]]; then # *.A1 sem "" p/ realizar comparação de padrões
-        # Necessário p/ lidar com os poucos arquivos de extensão dupla A1.cdi - podia ser mais robusto, mas só eu vou usar msm
+
+        # Necessário p/ lidar com os poucos arquivos de extensão dupla A1.cdi do dir /dreamcast
+        ## podia ser mais robusto, mas só eu vou usar msm
             continue
         
         fi
-    # set +x
 
         file="./$file" # O "path" acima vem com ./ enquanto o "file" ñ, por isso é preciso add p/ compatibilidade
         
@@ -265,16 +261,26 @@ find_only_in_xml() {
 
         else
             # Se ele não existe, é preciso determinar se é um jogo msm ou um arquivo auxiliar
-                ## Pelo q vi, arquivos auxiliares possuem o msm nome q o arquivo principal, mas com extensão diferente
+            ## Pelo q vi, arquivos auxiliares possuem o msm nome q o arquivo principal, mas com extensão diferente
             
             [[ "${seen["$without_extension"]:-}" == "xml" ]] && continue 
+            
             
             if [[ -z "${seen["$without_extension"]:-}" ]]; then
             # Se é o primeiro "semi-arquivo", armazena ele e seu tamanho
                 seen["$without_extension"]="$file"
                 prev_size=$(stat -c %s "$file" 2>/dev/null || echo 0)
                 continue
-            
+            elif [[ "$PWD" = */nes ]];then
+            # alguns jogos possuem msm nome de arquivo mudando apenas a extensão
+            ## -rwxr-xr-x   1 root root  262160 Jan 10  2021 'Zombie Nation (USA).nes'
+            ## -rwxr-xr-x   1 root root  131293 Oct 31  2021 'Zombie Nation (USA).zip'
+            ### deveria fazer uma validação mais robusta, mas assim como o blacklist, só eu vou usar, vai ficar assim - por enquanto
+               
+                map["$file"]="$without_extension"
+                # printf "%s\n" "$file" >> /tmp/elif.txt 
+                continue
+
             fi
             
             # Se não, calcula o tamanho do arquivo atual, compara com o anterior e atualiza se for maior
@@ -291,7 +297,9 @@ find_only_in_xml() {
 
     done
 
-    # AINDA NÃO ESTÁ ENCONTRANDO TODOS OS JOGOS, POSSÍVEL ERRO DE PARSING
+    # AINDA NÃO ESTÁ ENCONTRANDO 1 JOGO - pensar em como validar jogos via checksum tbm
+    # E msm achando os jogos faltantes, o arquivo selecionada é o msm no menu - 'Zombie Nation (USA).nes' e 'Zombie Nation (USA).nes'
+
 
     for key in "${!seen[@]}"; do
         # printf "Key is: ${BLUE}%s${ENDCOLOR} - Value is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${seen["$key"]}"
@@ -300,84 +308,15 @@ find_only_in_xml() {
         map["${seen["$key"]}"]="$key"
 
     done
+    
 
-    printf "Total is: ${PINK}%d${ENDCOLOR}\n" "$sum"
+    # printf "%s\n" "${all_files[@]}" | sort > /tmp/all.txt
+    # printf "%s\n" "${map[@]}" | sort > /tmp/found.txt
+
+    # comm -23 /tmp/all.txt /tmp/found.txt
+
+    # printf "Total is: ${PINK}%d${ENDCOLOR}\n" "$sum"
     # exit
-}
-
-find_games_not_in_xml() {
-    local -n files="$1" # array com todos os aruivos do diretório 
-    local -n games="$2" # array associativo de [arquivo] -> [nome]
-    local -A uniques
-    local -A files_size
-    declare -A blacklist=(
-        [konamigx]=1
-        [kviper]=1
-        [megatech]=1
-        [nss]=1
-        [playch10]=1
-        [skns]=1
-        [neogeo]=1
-    ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
-    local name_without_extension
-    local current_file_size
-    local prev_file
-    local file
-
-    for file in "${!games[@]}"; do
-    # Marca os jogos que já foram encontrados no xml
-        name_without_extension="${file##*/}"
-        name_without_extension="${name_without_extension%%.*}"
-        uniques["$name_without_extension"]="1"
-
-    done
-    
-    for file in "${files[@]}"; do
-        
-        ### stat -c %s "$file"
-        ### stat é uma ferramenta externa de linha de comando que consulta o sistema de arquivos
-        ### e exibi informações/metadados detalhados de arquivos e diretório
-        ### como tamanho lógico, qtd de blocos, permissões, timestamps e afins
-
-
-        name_without_extension="${file##*/}"
-        name_without_extension="${name_without_extension%%.*}"
-
-        file="${file##*/}"
-        file="./$file"
-
-        [[ "${uniques[$name_without_extension]:-}" == "1" ]] && continue # Se já foi encontrado pelo xml, segue o baile
-        [[ "${blacklist[$name_without_extension]:-}" == "1" ]] && continue # Se tá na blacklist, tbm
-
-
-        # if [[ -z "${uniques[$name_without_extension]:-}" ]]; then
-        # # Para jogos com arquivos de msm nome, mas extensões diferentes, determina qual o principal com base no tamanho 
-        #     uniques["$name_without_extension"]="$file"
-        #     files_size["$file"]=$(stat -c %s "$file" 2>/dev/null || echo 0)
-        #     # Se a chave ñ existe, o arquivo atual se torna o primeiro valor e seu tamanho é armazenado
-        # else
-        #     local current_file_size=$(stat -c %s "$file")
-        #     local prev_file="${uniques["$name_without_extension"]}"
-        #     # Se existe, o tamanho do arquivo atual é calculado e o anterior é recuperado
-
-        #     if [[ $current_file_size -gt ${files_size["$prev_file"]:-} ]]; then
-        #         uniques["$name_without_extension"]="$file"
-        #         files_size["$file"]="$current_file_size"
-        #         # Os tamanhos dos arquivos são então comparados e o maior é mantido
-
-        #     fi
-
-        # fi
-    done
-    
-    
-
-    for key in "${!uniques[@]}"; do
-        [[ "${uniques[$key]:-}" == "1" ]] && continue # Gambiarra q garante q não encontre o jogo e um arquivo de msm nome pq minha lógica tá falha =)
-        value="${uniques[$key]}"
-
-        games["$value"]="$key"
-    done
 }
 
 create_gamelist() {
@@ -820,16 +759,6 @@ find_games() {
                     | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
 
     done
-
-###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES
-        # achar todos aqrquivos de cada diretório q contenham o nome pesquisado
-        # armazenar e eliminar aqueles q á foram porocessados pela busca no xml
-        # eliminar aqrquivos de msm nome, mas com extensões diferentes
-        # acrescentar o restante na lista de jogos
-
-        #for key in "${!games[@]}"; do
-        #    echo "$key" depois q desbugar, pode apagar
-        #done
        
         local file
         find . -type f -iname "*$lower_target*" -print0 | while IFS= read -r -d '' file; do
@@ -842,10 +771,28 @@ find_games() {
                 fi
             done
 
+ 
+}
 
+count_by_dir() {
+    local sum=0
+    # for dir in "${dirs_with_games[@]}"; do
+    # # Conta a qtd de jogos por pasta e soma o total - INACABADA
+    #     game_files=()
+    #     game_by_file=()
+    #     games_only_in_xml=()
+    #     cd "$dir"
+    #     printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
+    #     get_files game_files
+    #     find_only_in_xml game_files games_only_in_xml game_by_file
+    #     # find_games_not_in_xml game_files game_by_file
 
-###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES###TESTES            
-       
+    #     printf "${CYAN}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_by_file[@]}"
+    #     (( sum += ${#game_by_file[@]} ))
+    #     cd - &> /dev/null
+    # done
+    # printf "Total: ${GREEN}%s${ENDCOLOR}\n" "$sum"
+    # exit
 }
 
 STATE="LOOK"
@@ -864,9 +811,6 @@ main_menu() {
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
-    
-
-
     while true; do
         case "$STATE" in
             "LOOK")
@@ -875,33 +819,6 @@ main_menu() {
 
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
                 printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
-
-                # nes joguin: 7742 - achou: 6112
-                #   zip: 2214 - acho: 2069
-                #   nes: 5443 - achou: 5249
-                # neogeo joguin: 147 - achou: 148
-                # mame joguin: 1543 - achou: 1549
-                # psx joguin: 156 - achou: 148
-                
-                local sum=0
-                for dir in "${dirs_with_games[@]}"; do
-                # Conta a qtd de jogos por pasta e sommoo o total 
-                    game_files=()
-                    game_by_file=()
-                    games_only_in_xml=()
-                    cd "$dir"
-                    printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
-                    get_files game_files
-                    find_only_in_xml game_files games_only_in_xml game_by_file
-                    # find_games_not_in_xml game_files game_by_file
-
-                    printf "${CYAN}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_by_file[@]}"
-                    (( sum += ${#game_by_file[@]} ))
-                    cd - &> /dev/null
-                done
-                printf "Total: ${GREEN}%s${ENDCOLOR}\n" "$sum"
-                exit
-
 
                 ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo"
                 case "$user_answer" in 
@@ -948,7 +865,6 @@ main_menu() {
 
                 get_files game_files
                 find_only_in_xml game_files games_only_in_xml game_by_file
-                # find_games_not_in_xml game_files game_by_file
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
                 printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
@@ -987,8 +903,12 @@ main_menu() {
 
                     *)
                         selected_game_name="$user_answer"
+                         printf "Resposta: ${GREEN}%s${ENDCOLOR}\n" "$user_answer"
 
                         for file in "${!game_by_file[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
+                            
+                            # Como ele seleciona pelo nome, arquivos com o msm nome se misturam, utilizar checksum ou similiar p/ corrigir bug
+
                             if [[ "${game_by_file[$file]}" == "$selected_game_name" ]]; then
                                 selected_game_path="$file"
                                 break
@@ -1003,6 +923,7 @@ main_menu() {
                             cd -- "./${selected_game_path%%/*}" || exit 1
                             
                         fi
+                        exit
                         STATE="GAME_ACTION"
                     ;;
 
