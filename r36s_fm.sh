@@ -198,6 +198,61 @@ compare_sizes() {
     fi
 }
 
+get_all_files() {
+# Coleta todos os arquivos com as extensões especificadas e popula o array fornecido
+    shopt -s globstar nullglob
+    local -n found="$1"
+
+    local ext=""
+    local file=""
+
+    for ext in "${EXTENSIONS[@]}"; do
+        for file in **/*."$ext"; do # glob expansion responsável pela busca
+            found["./$file"]=1
+        
+        done
+    
+    done
+
+    shopt -u globstar nullglob
+}
+
+load_xml_entries() {
+    # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
+    local -n entries="$1"
+    local path=""
+    local name=""
+
+    while IFS='|' read -r path name; do
+        entries["$path"]="$name"
+
+    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
+                sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
+        # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
+ 
+}
+
+find_from_entries() {
+    local -n entries="$1"
+    local -n files="$2"
+    local -n game_hash="$3"
+    local -n only_in_xml="$4"
+
+    local path=""
+
+    for path in "${!entries[@]}"; do
+
+        if [[ -n "${files["$path"]:-}" ]]; then
+            game_hash["$path"]="${entries["$path"]}"
+        
+        else
+            only_in_xml["$path"]="${entries["$path"]}"
+        
+        fi
+
+    done
+}
+
 find_only_in_xml() {
 # Compara os arquivos encontrados com os do gamelist.xml e identifica quais estão apenas no XML.
     local -n files="$1"
@@ -863,8 +918,38 @@ main_menu() {
                 game_by_file=()
                 games_only_in_xml=()
 
-                get_files game_files
-                find_only_in_xml game_files games_only_in_xml game_by_file
+
+                # get_files game_files
+                # find_only_in_xml game_files games_only_in_xml game_by_file
+
+
+############# TESTES  ############# TESTES  ############# TESTES  #############
+                local -A xml_entries=()
+                local -A files_not_in_xml=()
+                local -A all_files
+
+
+                get_all_files all_files
+                
+                load_xml_entries xml_entries
+
+                find_from_entries xml_entries all_files game_by_file games_only_in_xml
+
+                # for key in "${!game_by_file[@]}"; do
+                #     printf "Key is: ${BLUE}%s${ENDCOLOR}\nValue is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${game_by_file["$key"]}"
+                    
+
+                # done
+
+                # for file in "${game_files[@]}"; do
+                #     printf "File is: ${RED}%s${ENDCOLOR}\n" "$file"
+                # done
+
+                # exit
+############# TESTES  ############# TESTES  ############# TESTES  #############  
+
+
+
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
                 printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
@@ -902,8 +987,8 @@ main_menu() {
                     ;;
 
                     *)
+                    # REVER ISSO AQUI DEPOIS DE SEPARAR CORRETAMENTE find_only_in_xml
                         selected_game_name="$user_answer"
-                         printf "Resposta: ${GREEN}%s${ENDCOLOR}\n" "$user_answer"
 
                         for file in "${!game_by_file[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
                             
@@ -923,7 +1008,6 @@ main_menu() {
                             cd -- "./${selected_game_path%%/*}" || exit 1
                             
                         fi
-                        exit
                         STATE="GAME_ACTION"
                     ;;
 
