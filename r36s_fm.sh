@@ -232,10 +232,10 @@ load_xml_entries() {
  
 }
 
-find_from_entries() {
+match_entries_to_files() {
     local -n entries="$1"
     local -n files="$2"
-    local -n game_hash="$3"
+    local -n matched="$3"
     local -n only_in_xml="$4"
 
     local path=""
@@ -243,7 +243,7 @@ find_from_entries() {
     for path in "${!entries[@]}"; do
 
         if [[ -n "${files["$path"]:-}" ]]; then
-            game_hash["$path"]="${entries["$path"]}"
+            matched["$path"]="${entries["$path"]}"
         
         else
             only_in_xml["$path"]="${entries["$path"]}"
@@ -251,6 +251,26 @@ find_from_entries() {
         fi
 
     done
+}
+
+find_unlisted_files() {
+    local -n files="$1"
+    local -n unlisted="$2"
+    local -n matched="$3"
+
+    local file=""
+
+    for file in "${!files[@]}"; do
+        if [[ -n "${matched["$file"]:-}" ]]; then
+            continue
+        
+        else
+            unlisted["$file"]=1
+
+        fi
+    
+    done
+
 }
 
 find_only_in_xml() {
@@ -924,22 +944,28 @@ main_menu() {
 
 
 ############# TESTES  ############# TESTES  ############# TESTES  #############
+                local -A all_files=()
                 local -A xml_entries=()
-                local -A files_not_in_xml=()
-                local -A all_files
+                local -A matched_files=()
+                local -A unlisted_files=()
 
 
                 get_all_files all_files
                 
                 load_xml_entries xml_entries
 
-                find_from_entries xml_entries all_files game_by_file games_only_in_xml
+                match_entries_to_files xml_entries all_files matched_files games_only_in_xml
 
-                # for key in "${!game_by_file[@]}"; do
-                #     printf "Key is: ${BLUE}%s${ENDCOLOR}\nValue is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${game_by_file["$key"]}"
+                find_unlisted_files all_files unlisted_files matched_files
+
+                # for key in "${!unlisted_files[@]}"; do
+                #     printf "Key is: ${BLUE}%s${ENDCOLOR}\nValue is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${unlisted_files["$key"]}"
                     
 
                 # done
+
+                # printf "${YELLOW}%s Arquivos fora do xml${ENDCOLOR}\n" "${#unlisted_files[@]}"
+                
 
                 # for file in "${game_files[@]}"; do
                 #     printf "File is: ${RED}%s${ENDCOLOR}\n" "$file"
