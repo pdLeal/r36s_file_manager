@@ -56,6 +56,15 @@ readonly EXTENSIONS=(
   "wolf"
 ) # Deveriam ser normalizadas ao invés de hardcoded upper and lower case, but today is not the day!
 
+# AUX_EXTENSIONS=(
+    #     "srm"
+    #     "sav"
+    #     "state"
+    #     "nv"
+    #     "cfg"
+    #     "txt"
+    #     "pdf"
+# ) # Inutilizada por enquanto, mas acho q pode ser útil depois
 
 #####################################################
 # FUNÇÕES
@@ -257,18 +266,68 @@ find_unlisted_files() {
     local -n files="$1"
     local -n unlisted="$2"
     local -n matched="$3"
+    local -n basenames="$4"
 
     local file=""
+    local base=""
 
     for file in "${!files[@]}"; do
         if [[ -n "${matched["$file"]:-}" ]]; then
-            continue
+            base="${file##*/}"
+            base="${base%.*}" 
+            basenames["$base"]=1
         
         else
-            unlisted["$file"]=1
+            unlisted["$file"]="$file"
 
         fi
     
+    done
+
+}
+
+classify_unlisted_files() {
+    local -n unlisted="$1"
+    local -n basenames="$2"
+    local -n auxiliary="$3"
+    local -n orphans="$4"
+
+    local file=""
+    local base=""
+
+    for file in "${!unlisted[@]}"; do
+
+        base="${file##*/}"
+        base="${base%.*}" 
+
+        if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]]; then
+        # *.A1 sem "" p/ realizar comparação de padrões
+        # Primeiro encontra os arquivos auxiliares dos jogos listados no xml
+            auxiliary["$file"]="$file"
+
+        else
+            orphans["$file"]="$base"
+        fi
+
+    done
+                
+    # exit
+
+}
+
+build_game_library() {
+    local -n matched="$1"
+    local -n orphans="$2"
+    local -n library="$3"
+
+    local path=""
+
+    for path in "${!matched[@]}"; do
+        library["$path"]="${matched[$path]}"
+    done
+
+    for path in "${!orphans[@]}"; do
+        library["$path"]="${orphans[$path]}"
     done
 
 }
@@ -854,16 +913,25 @@ count_by_dir() {
     # for dir in "${dirs_with_games[@]}"; do
     # # Conta a qtd de jogos por pasta e soma o total - INACABADA
     #     game_files=()
-    #     game_by_file=()
+    #     game_library=()
     #     games_only_in_xml=()
     #     cd "$dir"
     #     printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
-    #     get_files game_files
-    #     find_only_in_xml game_files games_only_in_xml game_by_file
-    #     # find_games_not_in_xml game_files game_by_file
+        
+    #     get_all_files all_files
+                
+    #     load_xml_entries xml_entries
 
-    #     printf "${CYAN}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_by_file[@]}"
-    #     (( sum += ${#game_by_file[@]} ))
+    #     match_entries_to_files xml_entries all_files matched_files games_only_in_xml
+
+    #     find_unlisted_files all_files unlisted_files matched_files matched_basenames
+
+    #     classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
+
+    #     build_game_library matched_files orphan_games game_library
+
+    #     printf "${CYAN}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_library[@]}"
+    #     (( sum += ${#game_library[@]} ))
     #     cd - &> /dev/null
     # done
     # printf "Total: ${GREEN}%s${ENDCOLOR}\n" "$sum"
@@ -877,7 +945,7 @@ main_menu() {
     local dirs_without_games=() 
     local user_answer=""
     local game_files=()
-    local -A game_by_file=() # [chave/arquivo]=>[valor/nome do jogo]
+    local -A game_library=() # [chave/arquivo]=>[valor/nome do jogo]
     local -A games_only_in_xml=()
     local selected_game_name=""
     local selected_game_path=""
@@ -935,20 +1003,22 @@ main_menu() {
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 # shellcheck disable=SC2034
                 game_files=()
-                game_by_file=()
+                game_library=()
                 games_only_in_xml=()
 
 
                 # get_files game_files
-                # find_only_in_xml game_files games_only_in_xml game_by_file
+                # find_only_in_xml game_files games_only_in_xml game_library
 
 
 ############# TESTES  ############# TESTES  ############# TESTES  #############
                 local -A all_files=()
                 local -A xml_entries=()
                 local -A matched_files=()
+                local -A matched_basenames=()
                 local -A unlisted_files=()
-
+                local -A auxiliary_files=()
+                local -A orphan_games=() # Jogos que não estão presentes no gamelist.com
 
                 get_all_files all_files
                 
@@ -956,29 +1026,54 @@ main_menu() {
 
                 match_entries_to_files xml_entries all_files matched_files games_only_in_xml
 
-                find_unlisted_files all_files unlisted_files matched_files
+                find_unlisted_files all_files unlisted_files matched_files matched_basenames
 
-                # for key in "${!unlisted_files[@]}"; do
-                #     printf "Key is: ${BLUE}%s${ENDCOLOR}\nValue is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${unlisted_files["$key"]}"
+                classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
+
+                build_game_library matched_files orphan_games game_library
+
+                # for key in "${!orphan_games[@]}"; do
+                #     printf "Key is: ${BLUE}%s${ENDCOLOR}\nValue is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${orphan_games["$key"]}"
                     
-
                 # done
 
-                # printf "${YELLOW}%s Arquivos fora do xml${ENDCOLOR}\n" "${#unlisted_files[@]}"
-                
 
                 # for file in "${game_files[@]}"; do
                 #     printf "File is: ${RED}%s${ENDCOLOR}\n" "$file"
                 # done
 
                 # exit
+
+                # DIR       | QTD ACHADA | QTD CORRETA
+                # cps1      |     28     |    28     
+                # cps2      |     35     |    35     
+                # cps3      |     3      |    3     
+                # dream     |     5      |    5
+                # famicom   |     1456   |    1456
+                # gamegear  |     262    |    262
+                # gb        |     3670   |    3670
+                # gba       |     1073   |    1073
+                # gbc       |     2073   |    2073
+                # mame      |     1549   |    1543 SOBRANDO 6
+                # magadrive |     1219   |    1219
+                # n64       |     84     |    84
+                # nds       |     13     |    13
+                # neogeo    |     148    |    147 SOBRANDO 1
+                # nes       |     7741   |    7742 FALTA 1
+                # pcengine  |     358    |    358
+                # psp       |     31     |    31
+                # psx       |     156    |    157 FALTA 1
+                # sfc       |     451    |    451
+                # snes      |     1283   |    1283
 ############# TESTES  ############# TESTES  ############# TESTES  #############  
 
 
 
 
-                printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
-                printf "${CYAN}%s Jogos estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
+                printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
+                printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
+                printf "${CYAN}%s Entradas estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
+                # printf "${YELLOW}%s Arquivos auxiliares encontrados${ENDCOLOR}\n" "${#auxiliary_files[@]}"
 
                 ask_user "" user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
                 case "$user_answer" in
@@ -1000,7 +1095,7 @@ main_menu() {
             ;;
 
             "GAMES_MENU")
-                ask_user "Selecione um jogo:" user_answer "${game_by_file[@]}" "Voltar"
+                ask_user "Selecione um jogo:" user_answer "${game_library[@]}" "Voltar"
                 case "$user_answer" in
                     "Voltar")
                         if (( using_find )); then
@@ -1016,11 +1111,11 @@ main_menu() {
                     # REVER ISSO AQUI DEPOIS DE SEPARAR CORRETAMENTE find_only_in_xml
                         selected_game_name="$user_answer"
 
-                        for file in "${!game_by_file[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
+                        for file in "${!game_library[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
                             
                             # Como ele seleciona pelo nome, arquivos com o msm nome se misturam, utilizar checksum ou similiar p/ corrigir bug
 
-                            if [[ "${game_by_file[$file]}" == "$selected_game_name" ]]; then
+                            if [[ "${game_library[$file]}" == "$selected_game_name" ]]; then
                                 selected_game_path="$file"
                                 break
                             fi
@@ -1107,12 +1202,12 @@ main_menu() {
             ;;
 
             "FIND_GAME")
-                find_games dirs_to_look game_by_file
+                find_games dirs_to_look game_library
 
-                if [[ "${#game_by_file[@]}" -lt 1 ]]; then
+                if [[ "${#game_library[@]}" -lt 1 ]]; then
                     printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
                 else
-                    printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_by_file[@]}"
+                    printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
                     STATE="GAMES_MENU"    
 
                 fi    
