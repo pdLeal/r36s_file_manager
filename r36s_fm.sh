@@ -292,6 +292,15 @@ classify_unlisted_files() {
     local -n auxiliary="$3"
     local -n orphans="$4"
 
+    declare -A blacklist=(
+        [konamigx]=1
+        [kviper]=1
+        [megatech]=1
+        [nss]=1
+        [playch10]=1
+        [skns]=1
+        [neogeo]=1
+    ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
     local file=""
     local base=""
 
@@ -300,7 +309,7 @@ classify_unlisted_files() {
         base="${file##*/}"
         base="${base%.*}" 
 
-        if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]]; then
+        if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]] || [[ -n "${blacklist[$base]:-}" ]]; then
         # *.A1 sem "" p/ realizar comparação de padrões
         # Primeiro encontra os arquivos auxiliares dos jogos listados no xml
             auxiliary["$file"]="$file"
@@ -1054,11 +1063,11 @@ main_menu() {
                 # gb        |     3670   |    3670
                 # gba       |     1073   |    1073
                 # gbc       |     2073   |    2073
-                # mame      |     1549   |    1543 SOBRANDO 6
+                # mame      |     1543   |    1543
                 # magadrive |     1219   |    1219
                 # n64       |     84     |    84
                 # nds       |     13     |    13
-                # neogeo    |     148    |    147 SOBRANDO 1
+                # neogeo    |     147    |    147 
                 # nes       |     7741   |    7742 FALTA 1
                 # pcengine  |     358    |    358
                 # psp       |     31     |    31
