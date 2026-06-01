@@ -1041,6 +1041,15 @@ main_menu() {
 
                 build_game_library matched_files orphan_games game_library
 
+                # printf "%s\n" "${!all_files[@]}" | sort > /tmp/all.txt
+                # printf "%s\n" "${!game_library[@]}" | sort > /tmp/found.txt
+                # printf "%s\n" "${game_library[@]}"
+
+                # comm -23 /tmp/all.txt /tmp/found.txt
+
+                # printf "Total is: ${PINK}%d${ENDCOLOR}\n" "$sum"
+                # exit
+
                 # for key in "${!orphan_games[@]}"; do
                 #     printf "Key is: ${BLUE}%s${ENDCOLOR}\nValue is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${orphan_games["$key"]}"
                     
@@ -1071,7 +1080,7 @@ main_menu() {
                 # nes       |     7741   |    7742 FALTA 1
                 # pcengine  |     358    |    358
                 # psp       |     31     |    31
-                # psx       |     156    |    157 FALTA 1
+                # psx       |     156    |    156
                 # sfc       |     451    |    451
                 # snes      |     1283   |    1283
 ############# TESTES  ############# TESTES  ############# TESTES  #############  
