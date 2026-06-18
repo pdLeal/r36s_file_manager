@@ -130,6 +130,13 @@ is_valid_option() {
     fi
 }
 
+sort_games() {
+# Orndena os jogos alfabeticamente
+    local -n sorted="$1"
+    shift 1
+    mapfile -t sorted < <( printf "%s\n" "$@" | sort -f )
+}
+
 ask_user() {
 # Exibe um menu de opções para o usuário e armazena a escolha em user_answer
     local question="${1:-"O que deseja fazer?"}"
@@ -138,15 +145,14 @@ ask_user() {
     local options=() 
     local opt=""
 
-    if [[ "$STATE" == "GAMES_MENU" ]]; then
-    # Orndena os jogos alfabeticamente sem alterar a ordem dos outros menus
-        mapfile -t options < <(
-            printf "%s\n" "$@" \
-            | grep -v -i -x 'Voltar' \
-            | sort -f && printf "%s\n" "Voltar" )
-    else
-        options=( "$@" )
-    fi
+    # if [[ "$STATE" == "GAMES_MENU" ]]; then
+    # # Orndena os jogos alfabeticamente sem alterar a ordem dos outros menus
+    #     mapfile -t options < <(
+    #         printf "%s\n" "$@" \
+    #         | grep -v -i -x 'Voltar' \
+    #         | sort -f && printf "%s\n" "Voltar" )
+
+    options=( "$@" )
 
     printf "\n${RED}%s${ENDCOLOR}\n" "$question"
     select opt in "${options[@]}" "Sair"; do
@@ -316,8 +322,6 @@ classify_unlisted_files() {
         fi
 
     done
-                
-    # exit
 
 }
 
@@ -326,6 +330,11 @@ build_game_library() {
     local -n orphans="$2"
     local -n library="$3"
 
+    local -A seen=()
+    local all_games
+    local game_name=""
+    local checksum=""
+    local short_checksum=""
     local path=""
 
     for path in "${!matched[@]}"; do
@@ -333,7 +342,27 @@ build_game_library() {
     done
 
     for path in "${!orphans[@]}"; do
-        library["$path"]="${orphans[$path]}"
+    # Apesar dos arquivos serem únicos, muitos jogos possuem o msm nome (tô olhando pra
+    # vcs do nes). Então é preciso marca-los de alguma forma p/ garantir q cada arquivo
+    # esteja ligado corretamente ao nome do jogo. Ao acrescentar uma parte da hash md5
+    # ao nome, se garante q o nome é "único" e q o usuário tem um marcador visual de
+    # quais jogos possuem nomes iguais.
+        game_name="${orphans[$path]}"
+
+        if [[ -z "${seen[$game_name]:-}" ]]; then
+            library["$path"]="$game_name"
+            seen["$game_name"]=1
+
+        else
+            checksum=$(md5sum "$path")
+            checksum=${checksum%% *}
+            short_checksum=${checksum:0:4}
+
+
+            library["$path"]="$game_name"
+            library["$path"]+=" <<<$short_checksum>>>"
+    
+        fi
     done
 
 }
@@ -942,7 +971,10 @@ main_menu() {
             ;;
 
             "GAMES_MENU")
-                ask_user "Selecione um jogo:" user_answer "${game_library[@]}" "Voltar"
+                sorted_games=()                
+                sort_games sorted_games "${game_library[@]}"
+
+                ask_user "Selecione um jogo:" user_answer "${sorted_games[@]}" "Voltar"
                 case "$user_answer" in
                     "Voltar")
                         if (( using_find )); then
@@ -958,8 +990,8 @@ main_menu() {
                     # REVER ISSO AQUI DEPOIS DE SEPARAR CORRETAMENTE find_only_in_xml
 ################################################################################################################################################
 
-                        printf "user_answer: %s" "$user_answer"
-                        exit
+                        # printf "user_answer: %s" "$reply"
+                        # exit
 
 
 
