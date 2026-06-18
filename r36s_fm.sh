@@ -66,9 +66,6 @@ readonly EXTENSIONS=(
     #     "pdf"
 # ) # Inutilizada por enquanto, mas acho q pode ser útil depois
 
-#####################################################
-# FUNÇÕES
-#####################################################
 
 cleanup() {
     if [[ -n "${tmp_game:-}" ]]; then
@@ -339,127 +336,6 @@ build_game_library() {
         library["$path"]="${orphans[$path]}"
     done
 
-}
-
-find_only_in_xml() {
-# Compara os arquivos encontrados com os do gamelist.xml e identifica quais estão apenas no XML.
-    local -n files="$1"
-    local -n in_xml="$2"
-    local -n map="$3"
-    local file=""
-    
-    # Verificar cada jogo do XML
-    local path=""
-    local name=""
-    while IFS='|' read -r path name; do
-    # Armazena todas as entradas arquivo/jogo do XML
-        in_xml["$path"]="$name" 
-    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
-                sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-        # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
- 
-    local sum=0
-    local without_extension=""
-    local -A seen
-    local prev_size=0
-    local curr_size=0
-    declare -A blacklist=(
-        [konamigx]=1
-        [kviper]=1
-        [megatech]=1
-        [nss]=1
-        [playch10]=1
-        [skns]=1
-        [neogeo]=1
-    ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
-   
-    
-    local -A all_files
-
-    for file in "${files[@]}"; do
-        without_extension="${file%.*}"
-
-        if [[ "$without_extension" = *.A1 ]]; then # *.A1 sem "" p/ realizar comparação de padrões
-
-        # Necessário p/ lidar com os poucos arquivos de extensão dupla A1.cdi do dir /dreamcast
-        ## podia ser mais robusto, mas só eu vou usar msm
-            continue
-        
-        fi
-
-        file="./$file" # O "path" acima vem com ./ enquanto o "file" ñ, por isso é preciso add p/ compatibilidade
-        
-        # printf "File is: ${BLUE}%s${ENDCOLOR}\nNo Ext is: ${GREEN}%s${ENDCOLOR}\n\n" "$file" "$without_extension"
-
-          all_files["$file"]="$without_extension"        
-        
-        (( sum += 1 ))
-
-
-        if [[ -n "${in_xml["$file"]:-}" ]]; then # Se o arquivo foi encontrado pela busca no xml, add ele ao array de jogos
-            # shellcheck disable=SC2034
-            map["$file"]="${in_xml["$file"]}"
-            unset in_xml["$file"] # Como o arquivo existe, ñ faz sentido manter no only_in_xml
-            seen["$without_extension"]="xml" # Flag q indica q já foi encontra pelo xml
-
-        else
-            # Se ele não existe, é preciso determinar se é um jogo msm ou um arquivo auxiliar
-            ## Pelo q vi, arquivos auxiliares possuem o msm nome q o arquivo principal, mas com extensão diferente
-            
-            [[ "${seen["$without_extension"]:-}" == "xml" ]] && continue 
-            
-            
-            if [[ -z "${seen["$without_extension"]:-}" ]]; then
-            # Se é o primeiro "semi-arquivo", armazena ele e seu tamanho
-                seen["$without_extension"]="$file"
-                prev_size=$(stat -c %s "$file" 2>/dev/null || echo 0)
-                continue
-            elif [[ "$PWD" = */nes ]];then
-            # alguns jogos possuem msm nome de arquivo mudando apenas a extensão
-            ## -rwxr-xr-x   1 root root  262160 Jan 10  2021 'Zombie Nation (USA).nes'
-            ## -rwxr-xr-x   1 root root  131293 Oct 31  2021 'Zombie Nation (USA).zip'
-            ### deveria fazer uma validação mais robusta, mas assim como o blacklist, só eu vou usar, vai ficar assim - por enquanto
-               
-                map["$file"]="$without_extension"
-                # printf "%s\n" "$file" >> /tmp/elif.txt 
-                continue
-
-            fi
-            
-            # Se não, calcula o tamanho do arquivo atual, compara com o anterior e atualiza se for maior
-            curr_size=$(stat -c %s "$file" 2>/dev/null || echo 0)
-
-            [[ $prev_size -ge $curr_size ]] && continue
-
-            seen["$without_extension"]="$file"
-            prev_size="$curr_size"
-            
-
-        fi
-
-
-    done
-
-    # AINDA NÃO ESTÁ ENCONTRANDO 1 JOGO - pensar em como validar jogos via checksum tbm
-    # E msm achando os jogos faltantes, o arquivo selecionada é o msm no menu - 'Zombie Nation (USA).nes' e 'Zombie Nation (USA).nes'
-
-
-    for key in "${!seen[@]}"; do
-        # printf "Key is: ${BLUE}%s${ENDCOLOR} - Value is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${seen["$key"]}"
-        ( [[ "${seen["$key"]:-}" == "xml" ]] || [[ -n "${blacklist[$key]:-}" ]] ) && continue
-        
-        map["${seen["$key"]}"]="$key"
-
-    done
-    
-
-    # printf "%s\n" "${all_files[@]}" | sort > /tmp/all.txt
-    # printf "%s\n" "${map[@]}" | sort > /tmp/found.txt
-
-    # comm -23 /tmp/all.txt /tmp/found.txt
-
-    # printf "Total is: ${PINK}%d${ENDCOLOR}\n" "$sum"
-    # exit
 }
 
 create_gamelist() {
@@ -951,11 +827,18 @@ STATE="LOOK"
 main_menu() {
     local dirs_list=(*/) # Lista de pastas no diretório atual - Glob expansion 
     local dirs_with_games=() 
-    local dirs_without_games=() 
+    local dirs_without_games=()
+    local dirs_to_look=() 
     local user_answer=""
-    local game_files=()
-    local -A game_library=() # [chave/arquivo]=>[valor/nome do jogo]
+    local -A all_files=()
+    local -A xml_entries=()
+    local -A matched_files=()
     local -A games_only_in_xml=()
+    local -A unlisted_files=()
+    local -A matched_basenames=()
+    local -A auxiliary_files=()
+    local -A orphan_games=() # Jogos que não estão presentes no gamelist.com
+    local -A game_library=() # [chave/arquivo]=>[valor/nome do jogo]
     local selected_game_name=""
     local selected_game_path=""
     local using_find=0 # flag q controla certas ações ao "Procurar jogos"
@@ -1011,23 +894,16 @@ main_menu() {
             "DIR_ACTION")
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 # shellcheck disable=SC2034
-                game_files=()
-                game_library=()
+                all_files=()
+                xml_entries=()
+                matched_files=()
                 games_only_in_xml=()
+                unlisted_files=()
+                matched_basenames=()
+                auxiliary_files=()
+                orphan_games=()
+                game_library=()
 
-
-                # get_files game_files
-                # find_only_in_xml game_files games_only_in_xml game_library
-
-
-############# TESTES  ############# TESTES  ############# TESTES  #############
-                local -A all_files=()
-                local -A xml_entries=()
-                local -A matched_files=()
-                local -A matched_basenames=()
-                local -A unlisted_files=()
-                local -A auxiliary_files=()
-                local -A orphan_games=() # Jogos que não estão presentes no gamelist.com
 
                 get_all_files all_files
                 
@@ -1040,53 +916,6 @@ main_menu() {
                 classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
 
                 build_game_library matched_files orphan_games game_library
-
-                # printf "%s\n" "${!all_files[@]}" | sort > /tmp/all.txt
-                # printf "%s\n" "${!game_library[@]}" | sort > /tmp/found.txt
-                # printf "%s\n" "${game_library[@]}"
-
-                # comm -23 /tmp/all.txt /tmp/found.txt
-
-                # printf "Total is: ${PINK}%d${ENDCOLOR}\n" "$sum"
-                # exit
-
-                # for key in "${!orphan_games[@]}"; do
-                #     printf "Key is: ${BLUE}%s${ENDCOLOR}\nValue is: ${GREEN}%s${ENDCOLOR}\n\n" "$key" "${orphan_games["$key"]}"
-                    
-                # done
-
-
-                # for file in "${game_files[@]}"; do
-                #     printf "File is: ${RED}%s${ENDCOLOR}\n" "$file"
-                # done
-
-                # exit
-
-                # DIR       | QTD ACHADA | QTD CORRETA
-                # cps1      |     28     |    28     
-                # cps2      |     35     |    35     
-                # cps3      |     3      |    3     
-                # dream     |     5      |    5
-                # famicom   |     1456   |    1456
-                # gamegear  |     262    |    262
-                # gb        |     3670   |    3670
-                # gba       |     1073   |    1073
-                # gbc       |     2073   |    2073
-                # mame      |     1543   |    1543
-                # magadrive |     1219   |    1219
-                # n64       |     84     |    84
-                # nds       |     13     |    13
-                # neogeo    |     147    |    147 
-                # nes       |     7741   |    7742 FALTA 1
-                # pcengine  |     358    |    358
-                # psp       |     31     |    31
-                # psx       |     156    |    156
-                # sfc       |     451    |    451
-                # snes      |     1283   |    1283
-############# TESTES  ############# TESTES  ############# TESTES  #############  
-
-
-
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
                 printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
@@ -1127,6 +956,19 @@ main_menu() {
 
                     *)
                     # REVER ISSO AQUI DEPOIS DE SEPARAR CORRETAMENTE find_only_in_xml
+################################################################################################################################################
+
+                        printf "user_answer: %s" "$user_answer"
+                        exit
+
+
+
+
+
+
+
+
+################################################################################################################################################                    
                         selected_game_name="$user_answer"
 
                         for file in "${!game_library[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
