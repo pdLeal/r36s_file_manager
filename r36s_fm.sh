@@ -145,13 +145,6 @@ ask_user() {
     local options=() 
     local opt=""
 
-    # if [[ "$STATE" == "GAMES_MENU" ]]; then
-    # # Orndena os jogos alfabeticamente sem alterar a ordem dos outros menus
-    #     mapfile -t options < <(
-    #         printf "%s\n" "$@" \
-    #         | grep -v -i -x 'Voltar' \
-    #         | sort -f && printf "%s\n" "Voltar" )
-
     options=( "$@" )
 
     printf "\n${RED}%s${ENDCOLOR}\n" "$question"
@@ -346,7 +339,8 @@ build_game_library() {
     # vcs do nes). Então é preciso marca-los de alguma forma p/ garantir q cada arquivo
     # esteja ligado corretamente ao nome do jogo. Ao acrescentar uma parte da hash md5
     # ao nome, se garante q o nome é "único" e q o usuário tem um marcador visual de
-    # quais jogos possuem nomes iguais.
+    # quais jogos possuem nomes iguais - ñ é a eficiência em pessoa,
+    # mas resolve por enquanto
         game_name="${orphans[$path]}"
 
         if [[ -z "${seen[$game_name]:-}" ]]; then
@@ -987,26 +981,9 @@ main_menu() {
                     ;;
 
                     *)
-                    # REVER ISSO AQUI DEPOIS DE SEPARAR CORRETAMENTE find_only_in_xml
-################################################################################################################################################
-
-                        # printf "user_answer: %s" "$reply"
-                        # exit
-
-
-
-
-
-
-
-
-################################################################################################################################################                    
                         selected_game_name="$user_answer"
 
-                        for file in "${!game_library[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xml
-                            
-                            # Como ele seleciona pelo nome, arquivos com o msm nome se misturam, utilizar checksum ou similiar p/ corrigir bug
-
+                        for file in "${!game_library[@]}"; do # Vale lembrar q a chave/arquivo é igual ao path do gamelist.xmlz
                             if [[ "${game_library[$file]}" == "$selected_game_name" ]]; then
                                 selected_game_path="$file"
                                 break
