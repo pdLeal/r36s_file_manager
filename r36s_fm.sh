@@ -302,8 +302,11 @@ classify_unlisted_files() {
 
     for file in "${!unlisted[@]}"; do
 
+        printf "Arquivo não listado: ${CYAN}%s${ENDCOLOR}\n" "$file"
+                       
         base="${file##*/}"
         base="${base%.*}" 
+        printf "Base: ${CYAN}%s${ENDCOLOR}\n" "$base"
 
         if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]] || [[ -n "${blacklist[$base]:-}" ]]; then
         # *.A1 sem "" p/ realizar comparação de padrões
@@ -315,6 +318,7 @@ classify_unlisted_files() {
         fi
 
     done
+    exit
 
 }
 
@@ -1005,6 +1009,21 @@ main_menu() {
             ;;
 
             "GAME_ACTION")
+##########################################################################################
+                if [[ -z "${matched_files[$selected_game_path]:-}" ]]; then
+                    printf "O jogo ${PINK}%s${ENDCOLOR} não se encontra no gamelist.xml" "$selected_game_name"
+
+                fi
+                exit
+
+
+
+
+
+
+##########################################################################################
+
+
                 ask_user "" user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
                         "Ver metadados")
