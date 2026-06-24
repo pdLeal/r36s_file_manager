@@ -101,7 +101,7 @@ look4_roms() {
 
 
     # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
-    # Se existir, find imprime o diretório pai (%h) e a condição [-n ...] será verdadeira.
+    # Se existir, a condição [-n ...] será verdadeira.
     for dir in "${dirs[@]}"; do
         if [ -n "$(find "$dir" -type f -name "gamelist.xml" -print -quit)" ]; then
             # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
@@ -190,35 +190,80 @@ compare_sizes() {
     fi
 }
 
+# get_all_files() {
+    # # Coleta todos os arquivos com as extensões especificadas e popula o array fornecido
+    #     shopt -s globstar nullglob
+    #     local -n found="$1"
+
+    #     local ext=""
+    #     local file=""
+
+    #     for ext in "${EXTENSIONS[@]}"; do
+    #         for file in **/*."$ext"; do # glob expansion responsável pela busca
+    #             found["./$file"]=1
+            
+    #         done
+        
+    #     done
+
+    #     shopt -u globstar nullglob
+# }
+
 get_all_files() {
-# Coleta todos os arquivos com as extensões especificadas e popula o array fornecido
     shopt -s globstar nullglob
     local -n found="$1"
 
-    local ext=""
     local file=""
 
-    for ext in "${EXTENSIONS[@]}"; do
-        for file in **/*."$ext"; do # glob expansion responsável pela busca
+    for file in **/*; do # glob expansion responsável por buscar recursivamente
+        if [[ -f "$file" ]];then # -f veririfca se de fato é um arquivo válido
             found["./$file"]=1
-        
-        done
-    
+        fi
     done
 
     shopt -u globstar nullglob
 }
 
+# load_xml_entries() {
+    #     # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
+    #     local -n entries="$1"
+    #     local path=""
+    #     local name=""
+
+    #     while IFS='|' read -r path name; do
+    #         entries["$path"]="$name"
+
+    #     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
+    #                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
+    #         # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
+    
+# }
+
 load_xml_entries() {
     # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
     local -n entries="$1"
+    local -n imgs="$2"
+    local -n vdeos="$3"
+    local -n marqs="$4"
+    local -n thumbs="$5"
+
     local path=""
     local name=""
+    local image=""
+    local video=""
+    local marquee=""
+    local thumbnail=""
 
-    while IFS='|' read -r path name; do
+    while IFS='|' read -r path name image video marquee thumbnail; do
         entries["$path"]="$name"
+        imgs["$path"]="$image"
+        vdeos["$path"]="$video"
+        marqs["$path"]="$marquee"
+        thumbs["$path"]="$thumbnail"
+        
 
-    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
+    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -o "|" -v "image" \
+                -o "|" -v "video" -o "|" -v "marquee" -o "|" -v "thumbnail" -n ./gamelist.xml | \
                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
         # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
  
@@ -241,7 +286,6 @@ match_entries_to_files() {
             only_in_xml["$path"]="${entries["$path"]}"
         
         fi
-
     done
 }
 
@@ -914,10 +958,11 @@ main_menu() {
                 orphan_games=()
                 game_library=()
 
+                local -A images videos marquees thumbnails
 
-                get_all_files all_files
+                get_all_files all_files 
                 
-                load_xml_entries xml_entries
+                load_xml_entries xml_entries images videos marquees thumbnails
 
                 match_entries_to_files xml_entries all_files matched_files games_only_in_xml
 
