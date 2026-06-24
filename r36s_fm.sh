@@ -166,19 +166,6 @@ ask_user() {
 
 }
 
-get_files() {
-# Coleta todos os arquivos com as extensões especificadas e popula o array fornecido
-    shopt -s globstar nullglob
-    local -n found="$1"
-    local ext=""
-
-    for ext in "${EXTENSIONS[@]}"; do
-    found+=( **/*."$ext" ) # glob expansion responsável pela busca 
-    done
-
-    shopt -u globstar nullglob
-}
-
 compare_sizes() {
 # Para jogos com arquivos de msm nome, mas extensões diferentes, determina qual o principal com base no tamanho 
     local prev_size
@@ -300,13 +287,9 @@ classify_unlisted_files() {
     local file=""
     local base=""
 
-    for file in "${!unlisted[@]}"; do
-
-        printf "Arquivo não listado: ${CYAN}%s${ENDCOLOR}\n" "$file"
-                       
+    for file in "${!unlisted[@]}"; do 
         base="${file##*/}"
         base="${base%.*}" 
-        printf "Base: ${CYAN}%s${ENDCOLOR}\n" "$base"
 
         if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]] || [[ -n "${blacklist[$base]:-}" ]]; then
         # *.A1 sem "" p/ realizar comparação de padrões
@@ -1009,20 +992,6 @@ main_menu() {
             ;;
 
             "GAME_ACTION")
-##########################################################################################
-                if [[ -z "${matched_files[$selected_game_path]:-}" ]]; then
-                    printf "O jogo ${PINK}%s${ENDCOLOR} não se encontra no gamelist.xml" "$selected_game_name"
-
-                fi
-                exit
-
-
-
-
-
-
-##########################################################################################
-
 
                 ask_user "" user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
                 case "$user_answer" in
