@@ -211,13 +211,13 @@ compare_sizes() {
 
 get_all_files() {
     shopt -s globstar nullglob
-    local -n found="$1"
+    local -n unclassified_files_ref="$1"
 
     local file=""
 
     for file in **/*; do # glob expansion responsável por buscar recursivamente
         if [[ -f "$file" ]];then # -f veririfca se de fato é um arquivo válido
-            found["./$file"]=1
+            unclassified_files_ref["./$file"]=1
         fi
     done
 
@@ -241,11 +241,11 @@ get_all_files() {
 
 load_xml_entries() {
     # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
-    local -n entries="$1"
-    local -n imgs="$2"
-    local -n vdeos="$3"
-    local -n marqs="$4"
-    local -n thumbs="$5"
+    local -n xml_entries_ref="$1"
+    local -n images_ref="$2"
+    local -n videos_ref="$3"
+    local -n marquees_ref="$4"
+    local -n thumbnails_ref="$5"
 
     local path=""
     local name=""
@@ -255,11 +255,11 @@ load_xml_entries() {
     local thumbnail=""
 
     while IFS='|' read -r path name image video marquee thumbnail; do
-        entries["$path"]="$name"
-        imgs["$path"]="$image"
-        vdeos["$path"]="$video"
-        marqs["$path"]="$marquee"
-        thumbs["$path"]="$thumbnail"
+        xml_entries_ref["$path"]="$name"
+        images_ref["$path"]="$image"
+        videos_ref["$path"]="$video"
+        marquees_ref["$path"]="$marquee"
+        thumbnails_ref["$path"]="$thumbnail"
         
 
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -o "|" -v "image" \
@@ -269,21 +269,24 @@ load_xml_entries() {
  
 }
 
-match_entries_to_files() {
-    local -n entries="$1"
-    local -n files="$2"
-    local -n matched="$3"
-    local -n only_in_xml="$4"
+classify_xml_entries() {
+    local -n unclassified_files_ref="$1"
+    local -n xml_entries_ref="$2"
+    local -n matched_files_ref="$3"
+    local -n ghost_entries_ref="$4"
 
     local path=""
 
-    for path in "${!entries[@]}"; do
+    for path in "${!xml_entries_ref[@]}"; do
 
-        if [[ -n "${files["$path"]:-}" ]]; then
-            matched["$path"]="${entries["$path"]}"
+        # Verifica a existência do arquivo e o remove da lista de ñ classificados se +
+        if [[ -n "${unclassified_files_ref["$path"]:-}" ]]; then
+            matched_files_ref["$path"]="${xml_entries_ref["$path"]}"
+            unset unclassified_files_ref[$path]
+            # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${xml_entries_ref[$path]}"
         
         else
-            only_in_xml["$path"]="${entries["$path"]}"
+            ghost_entries_ref["$path"]="${xml_entries_ref["$path"]}"
         
         fi
     done
@@ -853,17 +856,17 @@ count_by_dir() {
     # # Conta a qtd de jogos por pasta e soma o total - INACABADA
     #     game_files=()
     #     game_library=()
-    #     games_only_in_xml=()
+    #     ghost_entries=()
     #     cd "$dir"
     #     printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
         
-    #     get_all_files all_files
+    #     get_all_files unclassified_files
                 
     #     load_xml_entries xml_entries
 
-    #     match_entries_to_files xml_entries all_files matched_files games_only_in_xml
+    #     classify_xml_entries xml_entries unclassified_files matched_files ghost_entries
 
-    #     find_unlisted_files all_files unlisted_files matched_files matched_basenames
+    #     find_unlisted_files unclassified_files unlisted_files matched_files matched_basenames
 
     #     classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
 
@@ -884,10 +887,10 @@ main_menu() {
     local dirs_without_games=()
     local dirs_to_look=() 
     local user_answer=""
-    local -A all_files=()
+    local -A unclassified_files=()
     local -A xml_entries=()
     local -A matched_files=()
-    local -A games_only_in_xml=()
+    local -A ghost_entries=()
     local -A unlisted_files=()
     local -A matched_basenames=()
     local -A auxiliary_files=()
@@ -948,10 +951,10 @@ main_menu() {
             "DIR_ACTION")
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 # shellcheck disable=SC2034
-                all_files=()
+                unclassified_files=()
                 xml_entries=()
                 matched_files=()
-                games_only_in_xml=()
+                ghost_entries=()
                 unlisted_files=()
                 matched_basenames=()
                 auxiliary_files=()
@@ -960,13 +963,13 @@ main_menu() {
 
                 local -A images videos marquees thumbnails
 
-                get_all_files all_files 
+                get_all_files unclassified_files 
                 
                 load_xml_entries xml_entries images videos marquees thumbnails
 
-                match_entries_to_files xml_entries all_files matched_files games_only_in_xml
+                classify_xml_entries unclassified_files xml_entries matched_files ghost_entries
 
-                find_unlisted_files all_files unlisted_files matched_files matched_basenames
+                find_unlisted_files unclassified_files unlisted_files matched_files matched_basenames
 
                 classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
 
@@ -974,7 +977,7 @@ main_menu() {
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
                 printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
-                printf "${CYAN}%s Entradas estão apenas no gamelist.xml${ENDCOLOR}\n" "${#games_only_in_xml[@]}"
+                printf "${CYAN}%s Entradas estão apenas no gamelist.xml${ENDCOLOR}\n" "${#ghost_entries[@]}"
                 # printf "${YELLOW}%s Arquivos auxiliares encontrados${ENDCOLOR}\n" "${#auxiliary_files[@]}"
 
                 ask_user "" user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
