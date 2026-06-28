@@ -242,10 +242,10 @@ get_all_files() {
 load_xml_entries() {
     # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
     local -n xml_unclassified_entries_ref="$1"
-    local -n images_ref="$2"
-    local -n videos_ref="$3"
-    local -n marquees_ref="$4"
-    local -n thumbnails_ref="$5"
+    local -n unclassified_images_ref="$2"
+    local -n unclassified_videos_ref="$3"
+    local -n unclassified_marquees_ref="$4"
+    local -n unclassified_thumbnails_ref="$5"
 
     local path=""
     local name=""
@@ -256,10 +256,10 @@ load_xml_entries() {
 
     while IFS='|' read -r path name image video marquee thumbnail; do
         xml_unclassified_entries_ref["$path"]="$name"
-        images_ref["$path"]="$image"
-        videos_ref["$path"]="$video"
-        marquees_ref["$path"]="$marquee"
-        thumbnails_ref["$path"]="$thumbnail"
+        unclassified_images_ref["$path"]="$image"
+        unclassified_videos_ref["$path"]="$video"
+        unclassified_marquees_ref["$path"]="$marquee"
+        unclassified_thumbnails_ref["$path"]="$thumbnail"
         
 
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -o "|" -v "image" \
@@ -296,39 +296,64 @@ classify_xml_entries() {
 classify_xml_assets() {
     local -n unclassified_files_ref="$1"
     local -n xml_valid_games_ref="$2"
-    local -n assets_ref="$3"
+    local -n unclassified_assets_ref="$3"
+    local -n valid_assets_ref="$4"
+    local -n orphan_assets_ref="$5"
+    local -n ghost_assets_ref="$6"
 
     local path=""
 
-    printf "Assets Antes: ${PINK}%s${ENDCOLOR}\n" "${#assets_ref[@]}"
+    printf "Assets Antes: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_assets_ref[@]}"
     printf "Ñ Classificados Antes: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_files_ref[@]}"
 
-     for path in "${!xml_valid_games_ref[@]}"; do
-        local asset="${assets_ref[$path]:-}"
+     for path in "${!unclassified_assets_ref[@]}"; do
+        local asset="${unclassified_assets_ref[$path]:-}"
 
-        printf "Path: ${PINK}%s${ENDCOLOR} | Asset: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${assets_ref[$path]}"
+        # printf "Unclassified Asset: ${PINK}%s${ENDCOLOR}\n" "$asset"
+        # printf "Path: ${PINK}%s${ENDCOLOR}\n" "$path"
+        # printf "Exist in Unclassified Files: ${PINK}%s${ENDCOLOR}\n" "${unclassified_files_ref["$asset"]:-}"
+        # printf "Is Valid Game: ${PINK}%s${ENDCOLOR}\n" "${xml_valid_games_ref[$path]:-}"
 
+        
+        if [[ -z "$asset" ]]; then
+            unset 'unclassified_assets_ref[$path]'
+            # printf "${CYAN}É vazio${ENDCOLOR}\n\n"
+            
+        elif [[ -n "${unclassified_files_ref["$asset"]:-}" ]]; then
+        # se o arquivo existe, preciso verificar se é de um jogo válido ou não
+            if [[ -n "${xml_valid_games_ref["$path"]:-}" ]]; then
+                valid_assets_ref["$path"]="$asset"
+                # printf "${GREEN}É Válido${ENDCOLOR}\n\n"
 
+            else
+                orphan_assets_ref["$path"]="$asset"
+                # printf "${YELLOW}Asset orfão${ENDCOLOR}\n\n"
 
-        # se assets_ref[$path]="" ou o arquivo apontado por ele não existe, retiro da lista de assets
-        if [[ -z "${assets_ref[$path]:-}" ]] || [[ ! -n "${unclassified_files_ref["$asset"]:-}" ]]; then
-            unset 'assets_ref[$path]'
-
-        else
+            fi
             unset 'unclassified_files_ref[$asset]'
 
+        else
+            ghost_assets_ref["$path"]="$asset"
+            # printf "${RED}Entrada fantasma${ENDCOLOR}\n\n"
+
         fi
+        unset 'unclassified_assets_ref[$path]'
+        # else
+        #     unset 'unclassified_files_ref[$asset]'
+
         # printf "Value: ${CYAN}%s${ENDCOLOR}\n\n" "$asset"
-        # printf "Path: ${PINK}%s${ENDCOLOR} | Asset: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${assets_ref[$path]}"
+        # printf "Path: ${PINK}%s${ENDCOLOR} | Asset: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${unclassified_assets_ref[$path]}"
         # printf "MATCH -> Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n" "$path" "${xml_valid_games_ref[$path]}"
         # printf "IF -> Value: ${PINK}%s${ENDCOLOR}\n\n" "$asset"
         # printf "ELSE -> Value: ${CYAN}%s${ENDCOLOR}\n\n" "$asset"
      
      done
     
-    printf "Assets Depois: ${PINK}%s${ENDCOLOR}\n" "${#assets_ref[@]}"
-    printf "Ñ Classificados Depois: ${PINK}%s${ENDCOLOR}\n\n" "${#unclassified_files_ref[@]}"
-
+    printf "Assets Depois: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_assets_ref[@]}"
+    printf "Ñ Classificados Depois: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_files_ref[@]}"
+    printf "Válidos: ${GREEN}%s${ENDCOLOR}\n" "${#valid_assets_ref[@]}"
+    printf "Orfãos: ${CYAN}%s${ENDCOLOR}\n" "${#orphan_assets_ref[@]}"
+    printf "Fantasmas: ${RED}%s${ENDCOLOR}\n" "${#ghost_assets_ref[@]}"
 
     exit
 
@@ -942,7 +967,12 @@ main_menu() {
     local selected_game_name=""
     local selected_game_path=""
     local using_find=0 # flag q controla certas ações ao "Procurar jogos"
-
+    ### GLOŚSARIO ###
+    # unclassified: existe em algum lugar, mas ainda ñ foi classificado
+    # valid: existe no filesystem e já foi validado
+    # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml
+    # ghost: existe apenas como entrada no gamelist.xml, sem ter um arquivo válido associado
+    ### GLOŚSARIO ###
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
@@ -997,22 +1027,25 @@ main_menu() {
                 unclassified_files=()
                 xml_unclassified_entries=()
                 xml_valid_games=()
-                xml_ghost_entries=()
+                xml_ghost_entries=() # Entradas dentro do XML q ñ possuem um arquivo de jogo válido
                 unlisted_files=()
                 matched_basenames=()
                 auxiliary_files=()
                 orphan_games=()
                 game_library=()
 
-                local -A images videos marquees thumbnails
+                local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
+                local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
+                local -A orphan_images=() orphan_videos=() orphan_marquees=() orphan_thumbnails=()
+                local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
 
                 get_all_files unclassified_files 
                 
-                load_xml_entries xml_unclassified_entries images videos marquees thumbnails
+                load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
 
                 classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries
 
-                classify_xml_assets unclassified_files xml_valid_games images
+                classify_xml_assets unclassified_files xml_valid_games unclassified_images valid_images orphan_images ghost_images
 
                 find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
 
