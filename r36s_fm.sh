@@ -241,7 +241,7 @@ get_all_files() {
 
 load_xml_entries() {
     # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
-    local -n xml_entries_ref="$1"
+    local -n xml_unclassified_entries_ref="$1"
     local -n images_ref="$2"
     local -n videos_ref="$3"
     local -n marquees_ref="$4"
@@ -255,7 +255,7 @@ load_xml_entries() {
     local thumbnail=""
 
     while IFS='|' read -r path name image video marquee thumbnail; do
-        xml_entries_ref["$path"]="$name"
+        xml_unclassified_entries_ref["$path"]="$name"
         images_ref["$path"]="$image"
         videos_ref["$path"]="$video"
         marquees_ref["$path"]="$marquee"
@@ -271,25 +271,68 @@ load_xml_entries() {
 
 classify_xml_entries() {
     local -n unclassified_files_ref="$1"
-    local -n xml_entries_ref="$2"
-    local -n matched_files_ref="$3"
-    local -n ghost_entries_ref="$4"
+    local -n xml_unclassified_entries_ref="$2"
+    local -n xml_valid_games_ref="$3"
+    local -n xml_ghost_entries_ref="$4"
 
     local path=""
 
-    for path in "${!xml_entries_ref[@]}"; do
-
+    for path in "${!xml_unclassified_entries_ref[@]}"; do
         # Verifica a existência do arquivo e o remove da lista de ñ classificados se +
         if [[ -n "${unclassified_files_ref["$path"]:-}" ]]; then
-            matched_files_ref["$path"]="${xml_entries_ref["$path"]}"
-            unset unclassified_files_ref[$path]
-            # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${xml_entries_ref[$path]}"
+            xml_valid_games_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
+            unset 'unclassified_files_ref[$path]'
+            # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${xml_unclassified_entries_ref[$path]}"
         
         else
-            ghost_entries_ref["$path"]="${xml_entries_ref["$path"]}"
+            xml_ghost_entries_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
+            unset 'xml_unclassified_entries_ref[$path]'
         
         fi
     done
+
+}
+
+classify_xml_assets() {
+    local -n unclassified_files_ref="$1"
+    local -n xml_valid_games_ref="$2"
+    local -n assets_ref="$3"
+
+    local path=""
+
+    printf "Assets Antes: ${PINK}%s${ENDCOLOR}\n" "${#assets_ref[@]}"
+    printf "Ñ Classificados Antes: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_files_ref[@]}"
+
+     for path in "${!xml_valid_games_ref[@]}"; do
+        local asset="${assets_ref[$path]:-}"
+
+        printf "Path: ${PINK}%s${ENDCOLOR} | Asset: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${assets_ref[$path]}"
+
+
+
+        # se assets_ref[$path]="" ou o arquivo apontado por ele não existe, retiro da lista de assets
+        if [[ -z "${assets_ref[$path]:-}" ]] || [[ ! -n "${unclassified_files_ref["$asset"]:-}" ]]; then
+            unset 'assets_ref[$path]'
+
+        else
+            unset 'unclassified_files_ref[$asset]'
+
+        fi
+        # printf "Value: ${CYAN}%s${ENDCOLOR}\n\n" "$asset"
+        # printf "Path: ${PINK}%s${ENDCOLOR} | Asset: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${assets_ref[$path]}"
+        # printf "MATCH -> Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n" "$path" "${xml_valid_games_ref[$path]}"
+        # printf "IF -> Value: ${PINK}%s${ENDCOLOR}\n\n" "$asset"
+        # printf "ELSE -> Value: ${CYAN}%s${ENDCOLOR}\n\n" "$asset"
+     
+     done
+    
+    printf "Assets Depois: ${PINK}%s${ENDCOLOR}\n" "${#assets_ref[@]}"
+    printf "Ñ Classificados Depois: ${PINK}%s${ENDCOLOR}\n\n" "${#unclassified_files_ref[@]}"
+
+
+    exit
+
+
 }
 
 find_unlisted_files() {
@@ -856,21 +899,21 @@ count_by_dir() {
     # # Conta a qtd de jogos por pasta e soma o total - INACABADA
     #     game_files=()
     #     game_library=()
-    #     ghost_entries=()
+    #     xml_ghost_entries=()
     #     cd "$dir"
     #     printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
         
     #     get_all_files unclassified_files
                 
-    #     load_xml_entries xml_entries
+    #     load_xml_entries xml_unclassified_entries
 
-    #     classify_xml_entries xml_entries unclassified_files matched_files ghost_entries
+    #     classify_xml_entries xml_unclassified_entries unclassified_files xml_valid_games xml_ghost_entries
 
-    #     find_unlisted_files unclassified_files unlisted_files matched_files matched_basenames
+    #     find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
 
     #     classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
 
-    #     build_game_library matched_files orphan_games game_library
+    #     build_game_library xml_valid_games orphan_games game_library
 
     #     printf "${CYAN}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_library[@]}"
     #     (( sum += ${#game_library[@]} ))
@@ -888,9 +931,9 @@ main_menu() {
     local dirs_to_look=() 
     local user_answer=""
     local -A unclassified_files=()
-    local -A xml_entries=()
-    local -A matched_files=()
-    local -A ghost_entries=()
+    local -A xml_unclassified_entries=()
+    local -A xml_valid_games=()
+    local -A xml_ghost_entries=()
     local -A unlisted_files=()
     local -A matched_basenames=()
     local -A auxiliary_files=()
@@ -952,9 +995,9 @@ main_menu() {
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 # shellcheck disable=SC2034
                 unclassified_files=()
-                xml_entries=()
-                matched_files=()
-                ghost_entries=()
+                xml_unclassified_entries=()
+                xml_valid_games=()
+                xml_ghost_entries=()
                 unlisted_files=()
                 matched_basenames=()
                 auxiliary_files=()
@@ -965,19 +1008,21 @@ main_menu() {
 
                 get_all_files unclassified_files 
                 
-                load_xml_entries xml_entries images videos marquees thumbnails
+                load_xml_entries xml_unclassified_entries images videos marquees thumbnails
 
-                classify_xml_entries unclassified_files xml_entries matched_files ghost_entries
+                classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries
 
-                find_unlisted_files unclassified_files unlisted_files matched_files matched_basenames
+                classify_xml_assets unclassified_files xml_valid_games images
+
+                find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
 
                 classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
 
-                build_game_library matched_files orphan_games game_library
+                build_game_library xml_valid_games orphan_games game_library
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
                 printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
-                printf "${CYAN}%s Entradas estão apenas no gamelist.xml${ENDCOLOR}\n" "${#ghost_entries[@]}"
+                printf "${CYAN}%s Entradas estão apenas no gamelist.xml${ENDCOLOR}\n" "${#xml_ghost_entries[@]}"
                 # printf "${YELLOW}%s Arquivos auxiliares encontrados${ENDCOLOR}\n" "${#auxiliary_files[@]}"
 
                 ask_user "" user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
