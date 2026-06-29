@@ -333,29 +333,29 @@ classify_xml_asset() {
 
 }
 
-find_unlisted_files() {
-    local -n files="$1"
-    local -n unlisted="$2"
-    local -n matched="$3"
-    local -n basenames="$4"
+# find_unlisted_files() {
+    #     local -n files="$1"
+    #     local -n unlisted="$2"
+    #     local -n matched="$3"
+    #     local -n basenames="$4"
 
-    local file=""
-    local base=""
+    #     local file=""
+    #     local base=""
 
-    for file in "${!files[@]}"; do
-        if [[ -n "${matched["$file"]:-}" ]]; then
-            base="${file##*/}"
-            base="${base%.*}" 
-            basenames["$base"]=1
+    #     for file in "${!files[@]}"; do
+    #         if [[ -n "${matched["$file"]:-}" ]]; then
+    #             base="${file##*/}"
+    #             base="${base%.*}" 
+    #             basenames["$base"]=1
+            
+    #         else
+    #             unlisted["$file"]="$file"
+
+    #         fi
         
-        else
-            unlisted["$file"]="$file"
+    #     done
 
-        fi
-    
-    done
-
-}
+# }
 
 classify_unlisted_files() {
     local -n unlisted="$1"
@@ -940,12 +940,14 @@ main_menu() {
     local selected_game_name=""
     local selected_game_path=""
     local using_find=0 # flag q controla certas ações ao "Procurar jogos"
+
     ### GLOŚSARIO ###
     # unclassified: existe em algum lugar, mas ainda ñ foi classificado
     # valid: existe no filesystem e já foi validado
-    # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml
+    # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml ou a entrada ñ possuí o arquivo principal do jogo (no caso de assets)
     # ghost: existe apenas como entrada no gamelist.xml, sem ter um arquivo válido associado
     ### GLOŚSARIO ###
+
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
@@ -1024,6 +1026,12 @@ main_menu() {
                 for name in "${assets_names[@]}"; do
                     classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
                 done
+
+                # TODO NEXT: LIDAR COM OS ARQUIVOS AINDA Ñ CLASSIFICADOS, COMO IMAGENS E JOGOS ORFÃOS!
+
+
+
+
 
                 find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
 
