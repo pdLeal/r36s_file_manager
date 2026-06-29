@@ -293,70 +293,43 @@ classify_xml_entries() {
 
 }
 
-classify_xml_assets() {
+classify_xml_asset() {
     local -n unclassified_files_ref="$1"
-    local -n xml_valid_games_ref="$2"
-    local -n unclassified_assets_ref="$3"
-    local -n valid_assets_ref="$4"
-    local -n orphan_assets_ref="$5"
-    local -n ghost_assets_ref="$6"
+    local -n unclassified_assets_ref="$2"
+    local -n valid_assets_ref="$3"
+    local -n orphan_assets_ref="$4"
+    local -n ghost_assets_ref="$5"
+    local -n xml_valid_games_ref="$6"
 
     local path=""
 
-    printf "Assets Antes: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_assets_ref[@]}"
-    printf "Ñ Classificados Antes: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_files_ref[@]}"
-
      for path in "${!unclassified_assets_ref[@]}"; do
         local asset="${unclassified_assets_ref[$path]:-}"
-
-        # printf "Unclassified Asset: ${PINK}%s${ENDCOLOR}\n" "$asset"
-        # printf "Path: ${PINK}%s${ENDCOLOR}\n" "$path"
-        # printf "Exist in Unclassified Files: ${PINK}%s${ENDCOLOR}\n" "${unclassified_files_ref["$asset"]:-}"
-        # printf "Is Valid Game: ${PINK}%s${ENDCOLOR}\n" "${xml_valid_games_ref[$path]:-}"
-
         
         if [[ -z "$asset" ]]; then
-            unset 'unclassified_assets_ref[$path]'
-            # printf "${CYAN}É vazio${ENDCOLOR}\n\n"
+        # se asset é "", ñ faz nada e descarta do array de assets ao final.
+            : # Comando nulo, ñ faz nada e retorna sucesso
             
         elif [[ -n "${unclassified_files_ref["$asset"]:-}" ]]; then
-        # se o arquivo existe, preciso verificar se é de um jogo válido ou não
+        # se o arquivo existe, preciso verificar se é de um jogo válido ou um arquivo orfão
             if [[ -n "${xml_valid_games_ref["$path"]:-}" ]]; then
                 valid_assets_ref["$path"]="$asset"
-                # printf "${GREEN}É Válido${ENDCOLOR}\n\n"
 
             else
                 orphan_assets_ref["$path"]="$asset"
-                # printf "${YELLOW}Asset orfão${ENDCOLOR}\n\n"
 
             fi
+            # de um jeito ou de outro, o arquivo já foi classificado
             unset 'unclassified_files_ref[$asset]'
 
         else
             ghost_assets_ref["$path"]="$asset"
-            # printf "${RED}Entrada fantasma${ENDCOLOR}\n\n"
 
         fi
+        # ao chegar aqui o asset já foi classificado ou ignorado ("") e deve ser descartado dessa lista 
         unset 'unclassified_assets_ref[$path]'
-        # else
-        #     unset 'unclassified_files_ref[$asset]'
-
-        # printf "Value: ${CYAN}%s${ENDCOLOR}\n\n" "$asset"
-        # printf "Path: ${PINK}%s${ENDCOLOR} | Asset: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${unclassified_assets_ref[$path]}"
-        # printf "MATCH -> Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n" "$path" "${xml_valid_games_ref[$path]}"
-        # printf "IF -> Value: ${PINK}%s${ENDCOLOR}\n\n" "$asset"
-        # printf "ELSE -> Value: ${CYAN}%s${ENDCOLOR}\n\n" "$asset"
      
      done
-    
-    printf "Assets Depois: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_assets_ref[@]}"
-    printf "Ñ Classificados Depois: ${PINK}%s${ENDCOLOR}\n" "${#unclassified_files_ref[@]}"
-    printf "Válidos: ${GREEN}%s${ENDCOLOR}\n" "${#valid_assets_ref[@]}"
-    printf "Orfãos: ${CYAN}%s${ENDCOLOR}\n" "${#orphan_assets_ref[@]}"
-    printf "Fantasmas: ${RED}%s${ENDCOLOR}\n" "${#ghost_assets_ref[@]}"
-
-    exit
-
 
 }
 
@@ -1045,7 +1018,12 @@ main_menu() {
 
                 classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries
 
-                classify_xml_assets unclassified_files xml_valid_games unclassified_images valid_images orphan_images ghost_images
+                local assets_names=( "images" "videos" "marquees" "thumbnails" )
+                local name=""
+                # certeza q tem forma de abstrair classify_xml_asset() p/ q lide com todos os assets de uma vez, mas por enquanto isso serve
+                for name in "${assets_names[@]}"; do
+                    classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
+                done
 
                 find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
 
