@@ -81,7 +81,8 @@ dir_has_gamelist() {
 # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
     # Se existir, a condição [-n ...] será verdadeira.
     local dir="$1"
-    [ -n "$(find "$dir" -type f -name "gamelist.xml" -print -quit)" ]
+    [ -n "$(find "$dir" -type f -name "gamelist.xml" -print -quit)" ] && return 0
+    return 1
 
 }
 
@@ -346,15 +347,12 @@ extract_candidate_roms() {
     local extension=""
 
     for file in "${!unclassified_files_ref[@]}"; do
-        printf "Processando Arquivo: ${PINK}%s${ENDCOLOR}\n" "$file"
         extension="${file##*.}"
-        printf "Extensão: ${YELLOW}%s${ENDCOLOR}\n" "$extension"
-
-        # se extensão == lista_de_extensões
-        #   jogo
-        # se == png
-        #  imagem orfã
-        #  (...)
+        if [[ -n "${EXTENSIONS[$extension]:-}" ]]; then
+            candidate_roms_ref["$file"]=1
+            unset 'unclassified_files_ref[$file]'
+        
+        fi
 
     done
 }
@@ -969,7 +967,7 @@ main_menu() {
     local using_find=0 # flag q controla certas ações ao "Procurar jogos"
 
     ### GLOŚSARIO ###
-    # unclassified: existe em algum lugar, mas ainda ñ foi classificado
+    # unclassified: existe em algum lugar (filesystem ou gamelist.xml), mas ainda ñ foi classificado
     # valid: existe no filesystem e já foi validado
     # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml ou a entrada ñ possuí o arquivo principal do jogo (no caso de assets)
     # ghost: existe apenas como entrada no gamelist.xml, sem ter um arquivo válido associado
