@@ -19,41 +19,41 @@ readonly CYAN="\033[36m"
 readonly ENDCOLOR="\033[0m"
 
 # Extensões de arquivos de jogos suportadas
-readonly EXTENSIONS=(
-  "nes"
-  "NES"
-  "smc"
-  "sfc"
-  "fig"
-  "gb"
-  "gbc"
-  "gba"
-  "bin"
-  "cdi"
-  "md"
-  "smd"
-  "gen"
-  "sms"
-  "gg"
-  "n64"
-  "z64"
-  "v64"
-  "s64"
-  "iso"
-  "cso"
-  "cue"
-  "pbp"
-  "PBP"
-  "pce"
-  "gdi"
-  "chd"
-  "zip"
-  "7z"
-  "nds"
-  "img"
-  "ccd"
-  "m3u"
-  "wolf"
+readonly -A EXTENSIONS=(
+  ["nes"]=1
+  ["NES"]=1
+  ["smc"]=1
+  ["sfc"]=1
+  ["fig"]=1
+  ["gb"]=1
+  ["gbc"]=1
+  ["gba"]=1
+  ["bin"]=1
+  ["cdi"]=1
+  ["md"]=1
+  ["smd"]=1
+  ["gen"]=1
+  ["sms"]=1
+  ["gg"]=1
+  ["n64"]=1
+  ["z64"]=1
+  ["v64"]=1
+  ["s64"]=1
+  ["iso"]=1
+  ["cso"]=1
+  ["cue"]=1
+  ["pbp"]=1
+  ["PBP"]=1
+  ["pce"]=1
+  ["gdi"]=1
+  ["chd"]=1
+  ["zip"]=1
+  ["7z"]=1
+  ["nds"]=1
+  ["img"]=1
+  ["ccd"]=1
+  ["m3u"]=1
+  ["wolf"]=1
 ) # Deveriam ser normalizadas ao invés de hardcoded upper and lower case, but today is not the day!
 
 # AUX_EXTENSIONS=(
@@ -77,20 +77,30 @@ trap cleanup EXIT 2>/dev/null
 
 #####################################################
 
-look4_roms() {
+dir_has_gamelist() {
+# Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
+    # Se existir, a condição [-n ...] será verdadeira.
+    local dir="$1"
+    [ -n "$(find "$dir" -type f -name "gamelist.xml" -print -quit)" ]
+
+}
+
+
+classify_dirs_by_roms() {
 # Procura por arquivos de jogos nas pastas fornecidas
-    local -n dirs=$1
-    local -n w_games=$2
-    local -n w_no_games=$3
+    local -n dirs="$1"
+    local -n w_games="$2"
+    local -n w_no_games="$3"
     w_games=()
     w_no_games=()
 
     local ext=""
     local ext_find=()
+    local dir=""
 
     # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
     
-    for ext in "${EXTENSIONS[@]}"; do
+    for ext in "${!EXTENSIONS[@]}"; do
         if (( ${#ext_find[@]} == 0 )); then
         # Se for a primeira iteração/array vazio
             ext_find+=(-name "*.${ext}")
@@ -99,13 +109,10 @@ look4_roms() {
         fi
     done
 
-
-    # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
-    # Se existir, a condição [-n ...] será verdadeira.
     for dir in "${dirs[@]}"; do
-        if [ -n "$(find "$dir" -type f -name "gamelist.xml" -print -quit)" ]; then
+        if dir_has_gamelist "$dir"; then
             # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
-            if find "$dir" -type f \( "${ext_find[@]}" \) -print -quit | grep -q .; then
+            if [ -n "$(find "$dir" -type f \( "${ext_find[@]}" \) -print -quit)" ]; then
                 w_games+=("$dir")
             else
         # OBS: só procura em dirs com gamelist.xml - PENSAR SOBRE OS DIRS SEM ELE DEPOIS
@@ -256,17 +263,18 @@ load_xml_entries() {
 
     while IFS='|' read -r path name image video marquee thumbnail; do
         xml_unclassified_entries_ref["$path"]="$name"
-        unclassified_images_ref["$path"]="$image"
-        unclassified_videos_ref["$path"]="$video"
-        unclassified_marquees_ref["$path"]="$marquee"
-        unclassified_thumbnails_ref["$path"]="$thumbnail"
+        
+        # as vezes a tag ñ existe ou está vazia, nesses caso ñ é preciso perder tempo armazenando ""
+        [[ -n "$image" ]] && unclassified_images_ref["$path"]="$image"
+        [[ -n "$video" ]] && unclassified_videos_ref["$path"]="$video"
+        [[ -n "$marquee" ]] && unclassified_marquees_ref["$path"]="$marquee"
+        [[ -n "$thumbnail" ]] && unclassified_thumbnails_ref["$path"]="$thumbnail"
         
 
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -o "|" -v "image" \
                 -o "|" -v "video" -o "|" -v "marquee" -o "|" -v "thumbnail" -n ./gamelist.xml | \
                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
         # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
- 
 }
 
 classify_xml_entries() {
@@ -305,12 +313,8 @@ classify_xml_asset() {
 
      for path in "${!unclassified_assets_ref[@]}"; do
         local asset="${unclassified_assets_ref[$path]:-}"
-        
-        if [[ -z "$asset" ]]; then
-        # se asset é "", ñ faz nada e descarta do array de assets ao final.
-            : # Comando nulo, ñ faz nada e retorna sucesso
             
-        elif [[ -n "${unclassified_files_ref["$asset"]:-}" ]]; then
+        if [[ -n "${unclassified_files_ref["$asset"]:-}" ]]; then
         # se o arquivo existe, preciso verificar se é de um jogo válido ou um arquivo orfão
             if [[ -n "${xml_valid_games_ref["$path"]:-}" ]]; then
                 valid_assets_ref["$path"]="$asset"
@@ -323,15 +327,38 @@ classify_xml_asset() {
             unset 'unclassified_files_ref[$asset]'
 
         else
+            # se ñ é um arquivo existente, então é uma entrada/asset fantasma
             ghost_assets_ref["$path"]="$asset"
 
         fi
-        # ao chegar aqui o asset já foi classificado ou ignorado ("") e deve ser descartado dessa lista 
+        # ao chegar aqui o asset já foi classificado e deve ser descartado dessa lista 
         unset 'unclassified_assets_ref[$path]'
      
      done
 
 }
+
+extract_candidate_roms() {
+    local -n unclassified_files_ref="$1"
+    local -n candidate_roms_ref="$2"
+
+    local file=""
+    local extension=""
+
+    for file in "${!unclassified_files_ref[@]}"; do
+        printf "Processando Arquivo: ${PINK}%s${ENDCOLOR}\n" "$file"
+        extension="${file##*.}"
+        printf "Extensão: ${YELLOW}%s${ENDCOLOR}\n" "$extension"
+
+        # se extensão == lista_de_extensões
+        #   jogo
+        # se == png
+        #  imagem orfã
+        #  (...)
+
+    done
+}
+
 
 # find_unlisted_files() {
     #     local -n files="$1"
@@ -357,41 +384,41 @@ classify_xml_asset() {
 
 # }
 
-classify_unlisted_files() {
-    local -n unlisted="$1"
-    local -n basenames="$2"
-    local -n auxiliary="$3"
-    local -n orphans="$4"
+# classify_unlisted_files() {
+    #     local -n unlisted="$1"
+    #     local -n basenames="$2"
+    #     local -n auxiliary="$3"
+    #     local -n orphans="$4"
 
-    declare -A blacklist=(
-        [konamigx]=1
-        [kviper]=1
-        [megatech]=1
-        [nss]=1
-        [playch10]=1
-        [skns]=1
-        [neogeo]=1
-    ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
-    local file=""
-    local base=""
+    #     declare -A blacklist=(
+    #         [konamigx]=1
+    #         [kviper]=1
+    #         [megatech]=1
+    #         [nss]=1
+    #         [playch10]=1
+    #         [skns]=1
+    #         [neogeo]=1
+    #     ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
+    #     local file=""
+    #     local base=""
 
-    for file in "${!unlisted[@]}"; do 
-        base="${file##*/}"
-        base="${base%.*}" 
+    #     for file in "${!unlisted[@]}"; do 
+    #         base="${file##*/}"
+    #         base="${base%.*}" 
 
-        if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]] || [[ -n "${blacklist[$base]:-}" ]]; then
-        # *.A1 sem "" p/ realizar comparação de padrões
-        # Primeiro encontra os arquivos auxiliares dos jogos listados no xml
-            auxiliary["$file"]="$file"
+    #         if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]] || [[ -n "${blacklist[$base]:-}" ]]; then
+    #         # *.A1 sem "" p/ realizar comparação de padrões
+    #         # Primeiro encontra os arquivos auxiliares dos jogos listados no xml
+    #             auxiliary["$file"]="$file"
 
-        else
-            orphans["$file"]="$base"
-        fi
+    #         else
+    #             orphans["$file"]="$base"
+    #         fi
 
-    done
-    exit
+    #     done
+    #     exit
 
-}
+# }
 
 build_game_library() {
     local -n matched="$1"
@@ -955,7 +982,7 @@ main_menu() {
         case "$STATE" in
             "LOOK")
                 echo "Procurando por pastas contendo ROMs..."
-                look4_roms dirs_list dirs_with_games dirs_without_games
+                classify_dirs_by_roms dirs_list dirs_with_games dirs_without_games
 
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
                 printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
@@ -1024,20 +1051,33 @@ main_menu() {
                 local name=""
                 # certeza q tem forma de abstrair classify_xml_asset() p/ q lide com todos os assets de uma vez, mas por enquanto isso serve
                 for name in "${assets_names[@]}"; do
-                    classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
+                    local -n arr_ref="unclassified_${name}"
+                    # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
+                    # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
+                    (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
                 done
 
                 # TODO NEXT: LIDAR COM OS ARQUIVOS AINDA Ñ CLASSIFICADOS, COMO IMAGENS E JOGOS ORFÃOS!
+##############################################################################################################################
+                local -A candidate_roms=()
+                
+                extract_candidate_roms unclassified_files candidate_roms
 
 
 
 
 
-                find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
 
-                classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
+                exit
+##############################################################################################################################
 
-                build_game_library xml_valid_games orphan_games game_library
+
+
+                # find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
+
+                # classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
+
+                # build_game_library xml_valid_games orphan_games game_library
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
                 printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
