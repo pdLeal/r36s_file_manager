@@ -263,7 +263,11 @@ load_xml_entries() {
     local thumbnail=""
 
     while IFS='|' read -r path name image video marquee thumbnail; do
-        xml_unclassified_entries_ref["$path"]="$name"
+        # a tag <image /> aparece vez ou outra e quebra o parse do xmlstarlet,
+        # oq gera uma iteração do loop com todos os valores vazios
+        # poderia só encerraar a iteração, mas podem haver caso em q
+        # a tag path é vazia, mas outras não
+        [[ -n "$path" ]] && xml_unclassified_entries_ref["$path"]="$name"
         
         # as vezes a tag ñ existe ou está vazia, nesses caso ñ é preciso perder tempo armazenando ""
         [[ -n "$image" ]] && unclassified_images_ref["$path"]="$image"
@@ -295,9 +299,9 @@ classify_xml_entries() {
         
         else
             xml_ghost_entries_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
-            unset 'xml_unclassified_entries_ref[$path]'
         
         fi
+        unset 'xml_unclassified_entries_ref[$path]'
     done
 
 }
@@ -339,9 +343,9 @@ classify_xml_asset() {
 
 }
 
-extract_candidate_roms() {
+extract_possible_roms() {
     local -n unclassified_files_ref="$1"
-    local -n candidate_roms_ref="$2"
+    local -n possible_roms_ref="$2"
 
     local file=""
     local extension=""
@@ -349,7 +353,7 @@ extract_candidate_roms() {
     for file in "${!unclassified_files_ref[@]}"; do
         extension="${file##*.}"
         if [[ -n "${EXTENSIONS[$extension]:-}" ]]; then
-            candidate_roms_ref["$file"]=1
+            possible_roms_ref["$file"]=1
             unset 'unclassified_files_ref[$file]'
         
         fi
@@ -357,6 +361,41 @@ extract_candidate_roms() {
     done
 }
 
+group_files() {
+    # Nesse ponto, podem existir arquivos como "Zombie Nation.nes" e "Zombie Nation.zip" ou "Resident Evil.cue" e "Resident Evil.bin",
+    # então p/ classificar corretamente é preciso determinar oq é arquivo principal, oq é complementar, se é o msm jogo,
+    # mas representado de outra forma... achei melhor agrupar os arquivos simalares primeiro p/ só depois classificar
+    local -n files_to_group_ref="$1"
+    local -n grouped_by_basename_ref="$2"
+
+    local file=""
+    local extension=""
+    local base=""
+
+    for file in "${!files_to_group_ref[@]}"; do
+        # printf "Possível rom: ${PINK}%s${ENDCOLOR}\n" "$file"
+        extension="${file##*.}"
+        base="${file##*/}"
+        base="${base%.*}"
+        [[ "$base" == *.A1 ]]  && base="${base%.*}" # Alguns jogos (dreamcast) tem extensão dupla A1.bin e ñ dá pra só tirar td até o ponto na linha acima pq tem jogos com . no nome
+        # poderia já classificar como arquivo complementar, mas pelo bem da consistência, não o farei!
+
+        if [[ -z "${grouped_by_basename_ref["$base"]:-}" ]]; then
+            grouped_by_basename_ref["$base"]="$file"
+
+        else
+            printf "Já visto: ${YELLOW}%s${ENDCOLOR}\n" "$base"
+            grouped_by_basename_ref["$base"]+="|$file"
+        fi
+    
+    done
+
+    # for base in "${!grouped_by_basename_ref[@]}"; do
+    #     printf "Basename: ${YELLOW}%s${ENDCOLOR}\nValue: ${BLUE}%s${ENDCOLOR}\n\n" "$base"  "${grouped_by_basename_ref["$base"]}"  
+    
+    # done
+
+}
 
 # find_unlisted_files() {
     #     local -n files="$1"
@@ -1057,9 +1096,10 @@ main_menu() {
 
                 # TODO NEXT: LIDAR COM OS ARQUIVOS AINDA Ñ CLASSIFICADOS, COMO IMAGENS E JOGOS ORFÃOS!
 ##############################################################################################################################
-                local -A candidate_roms=()
+                local -A possible_roms=() grouped_possible_roms=()
                 
-                extract_candidate_roms unclassified_files candidate_roms
+                extract_possible_roms unclassified_files possible_roms
+                group_files possible_roms grouped_possible_roms
 
 
 
