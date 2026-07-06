@@ -384,7 +384,7 @@ group_files() {
             grouped_by_basename_ref["$base"]="$file"
 
         else
-            printf "Já visto: ${YELLOW}%s${ENDCOLOR}\n" "$base"
+            # printf "Já visto: ${YELLOW}%s${ENDCOLOR}\n" "$base"
             grouped_by_basename_ref["$base"]+="|$file"
         fi
     
@@ -394,6 +394,62 @@ group_files() {
     #     printf "Basename: ${YELLOW}%s${ENDCOLOR}\nValue: ${BLUE}%s${ENDCOLOR}\n\n" "$base"  "${grouped_by_basename_ref["$base"]}"  
     
     # done
+
+}
+
+inspect_group() {
+    local group_ref="$1"
+    for item in "${group[@]}"; do
+        printf "Avaliando: ${BLUE}%s${ENDCOLOR}\n\n" "$item"
+
+    
+    done
+
+
+
+}
+
+classify_possible_roms() {
+    local -n grouped_possible_roms_ref="$1"
+    local -n grouped_valid_games_ref="$2"
+    local -n orphan_games_ref="$3"
+    local -n auxiliary_files_ref="$4"
+
+    local basename=""
+    local candidate_game=""
+    local group=()
+
+    for basename in "${!grouped_possible_roms_ref[@]}"; do
+        printf "Processando Grupo: ${CYAN}%s${ENDCOLOR}\n" "$basename"
+
+        if [[ -n "${grouped_valid_games_ref["$basename"]:-}" ]]; then
+        # se existe no grupo de jogos válidos, então tds os arquvios desse grupo são auxiliares ñ listados pelo xml
+            printf "Arquivo ligado à ${RED}%s${ENDCOLOR}\n\n" "${grouped_valid_games_ref["$basename"]:-}"
+            local path="${grouped_valid_games_ref["$basename"]:-}"
+
+            if [[ -z "${auxiliary_files_ref["$basename"]:-}" ]]; then
+                auxiliary_files_ref["$path"]+="${grouped_possible_roms_ref["$basename"]}"
+
+            else    
+                auxiliary_files_ref["$path"]+="|${grouped_possible_roms_ref["$basename"]}"
+
+            fi
+
+        else
+            IFS='|' read -ra group <<< "${grouped_possible_roms[$basename]}"
+
+            inspect_group group
+            
+        fi
+
+    done
+
+    # for path in "${!auxiliary_files_ref[@]}"; do
+    #     printf "Path: ${PINK}%s${ENDCOLOR}\nAuxiliares: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${auxiliary_files_ref["$path"]}"
+
+    
+    # done
+
 
 }
 
@@ -1096,11 +1152,12 @@ main_menu() {
 
                 # TODO NEXT: LIDAR COM OS ARQUIVOS AINDA Ñ CLASSIFICADOS, COMO IMAGENS E JOGOS ORFÃOS!
 ##############################################################################################################################
-                local -A possible_roms=() grouped_possible_roms=()
+                local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() 
                 
                 extract_possible_roms unclassified_files possible_roms
                 group_files possible_roms grouped_possible_roms
-
+                group_files xml_valid_games grouped_valid_games
+                classify_possible_roms grouped_possible_roms grouped_valid_games orphan_games auxiliary_files
 
 
 
