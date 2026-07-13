@@ -397,15 +397,26 @@ group_files() {
 
 }
 
-inspect_group() {
-    local group_ref="$1"
-    for item in "${group[@]}"; do
-        printf "Avaliando: ${BLUE}%s${ENDCOLOR}\n\n" "$item"
+gather_group_info() {
+    local -n group_ref="$1"
+    local -n num_of_itens_ref="$2"
+    local -n extension_ref="$3"
 
+    local file=""
+    local ext=""
+
+    num_of_itens_ref="${#group_ref[@]}"
+
+    # printf "Qtd: ${GREEN}%s${ENDCOLOR}\n\n" "$num_of_itens_ref"
+
+
+    for file in "${group_ref[@]}"; do
+        # printf "Avaliando: ${BLUE}%s${ENDCOLOR}\n\n" "$file"
+        ext="${file##*.}"
+
+        extension_ref+=("$ext")        
     
     done
-
-
 
 }
 
@@ -414,10 +425,25 @@ classify_possible_roms() {
     local -n grouped_valid_games_ref="$2"
     local -n orphan_games_ref="$3"
     local -n auxiliary_files_ref="$4"
+    local -n config_files_ref="$5"
 
     local basename=""
+    local path=""
     local candidate_game=""
     local group=()
+    local num_of_itens=0
+    local extensions=()
+
+
+    declare -A blacklist=(
+        [konamigx]=1
+        [kviper]=1
+        [megatech]=1
+        [nss]=1
+        [playch10]=1
+        [skns]=1
+        [neogeo]=1
+    )
 
     for basename in "${!grouped_possible_roms_ref[@]}"; do
         printf "Processando Grupo: ${CYAN}%s${ENDCOLOR}\n" "$basename"
@@ -425,7 +451,7 @@ classify_possible_roms() {
         if [[ -n "${grouped_valid_games_ref["$basename"]:-}" ]]; then
         # se existe no grupo de jogos válidos, então tds os arquvios desse grupo são auxiliares ñ listados pelo xml
             printf "Arquivo ligado à ${RED}%s${ENDCOLOR}\n\n" "${grouped_valid_games_ref["$basename"]:-}"
-            local path="${grouped_valid_games_ref["$basename"]:-}"
+            path="${grouped_valid_games_ref["$basename"]:-}"
 
             if [[ -z "${auxiliary_files_ref["$basename"]:-}" ]]; then
                 auxiliary_files_ref["$path"]+="${grouped_possible_roms_ref["$basename"]}"
@@ -435,11 +461,31 @@ classify_possible_roms() {
 
             fi
 
+        elif [[ -n "${blacklist[$basename]:-}" ]]; then
+            path="${grouped_possible_roms_ref["$basename"]:-}"
+
+            printf "${BLUE}%s${ENDCOLOR} é config\nNome: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "$basename"
+            config_files_ref["$path"]="$basename"
+
         else
+            extensions=()
+            
             IFS='|' read -ra group <<< "${grouped_possible_roms[$basename]}"
 
-            inspect_group group
+            gather_group_info group num_of_itens extensions
+
+            if (( "$num_of_itens" == 1 )); then
+                path="${grouped_possible_roms_ref["$basename"]:-}"
+
+                printf "${GREEN}%s${ENDCOLOR} é orfão\nNome: ${YELLOW}%s${ENDCOLOR}\n\n" "$path" "$basename"
+                orphan_games_ref["$path"]="$basename"
+
+            else
+               printf "${RED}%s${ENDCOLOR} tem de ser avaliado\n\n" "${grouped_possible_roms_ref["$basename"]}" 
             
+            fi
+
+           
         fi
 
     done
@@ -1152,12 +1198,12 @@ main_menu() {
 
                 # TODO NEXT: LIDAR COM OS ARQUIVOS AINDA Ñ CLASSIFICADOS, COMO IMAGENS E JOGOS ORFÃOS!
 ##############################################################################################################################
-                local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() 
+                local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
                 
                 extract_possible_roms unclassified_files possible_roms
                 group_files possible_roms grouped_possible_roms
                 group_files xml_valid_games grouped_valid_games
-                classify_possible_roms grouped_possible_roms grouped_valid_games orphan_games auxiliary_files
+                classify_possible_roms grouped_possible_roms grouped_valid_games orphan_games auxiliary_files config_files
 
 
 
