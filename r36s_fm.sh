@@ -448,14 +448,11 @@ gather_group_info() {
 
 classify_possible_roms() {
     local -n grouped_possible_roms_ref="$1"
-    local -n grouped_valid_games_ref="$2"
-    local -n orphan_games_ref="$3"
-    local -n auxiliary_files_ref="$4"
-    local -n config_files_ref="$5"
+    local -n orphan_games_ref="$2"
+    local -n config_files_ref="$3"
 
     local basename=""
     local path=""
-    local candidate_game=""
     local group=()
     local num_of_itens=0
     local extensions=()
@@ -473,46 +470,38 @@ classify_possible_roms() {
     )
 
     for basename in "${!grouped_possible_roms_ref[@]}"; do
-        printf "Processando Grupo: ${CYAN}%s${ENDCOLOR}\n" "$basename"
+        # printf "Processando Grupo: ${CYAN}%s${ENDCOLOR}\n" "$basename"
 
-        if [[ -n "${grouped_valid_games_ref["$basename"]:-}" ]]; then
-        # se existe no grupo de jogos válidos, então tds os arquvios desse grupo são auxiliares ñ listados pelo xml
-            printf "Arquivo ligado à ${RED}%s${ENDCOLOR}\n\n" "${grouped_valid_games_ref["$basename"]:-}"
-            path="${grouped_valid_games_ref["$basename"]:-}"
-
-            if [[ -z "${auxiliary_files_ref["$basename"]:-}" ]]; then
-                auxiliary_files_ref["$path"]+="${grouped_possible_roms_ref["$basename"]}"
-
-            else    
-                auxiliary_files_ref["$path"]+="|${grouped_possible_roms_ref["$basename"]}"
-
-            fi
-
-        elif [[ -n "${blacklist[$basename]:-}" ]]; then
+        if [[ -n "${blacklist[$basename]:-}" ]]; then
             path="${grouped_possible_roms_ref["$basename"]:-}"
 
-            printf "${BLUE}%s${ENDCOLOR} é config\nNome: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "$basename"
+            # printf "${BLUE}%s${ENDCOLOR} é config\nNome: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "$basename"
             config_files_ref["$path"]="$basename"
 
         else
+        # se chegou aqui é orfão. tudo dentro de grouped_possible_roms foi extraído com base no q o ES
+        # mostra ao usuário como jogo. a lógica abaixo serve apenas p/ poder marcar (acrescentando a extensão) possíveis 
+        # duplicatas/estados diferentes (zipado x ñ zipado) p/ informar o usuário. se ele quiser
+        # ele q investigue mais sobre!
             extensions=()
-            extension=""
             
             IFS='|' read -ra group <<< "${grouped_possible_roms_ref[$basename]}"
 
             gather_group_info group num_of_itens extensions
 
             if (( "$num_of_itens" == 1 )); then
-            # nesse ponto, tds os arquivos em grouped_possible_roms já foram validados, por isso se ele ñ
-            # é auxiliar ou config e só tem ele no grupo, é classificadoo direto como rom orfão
                 path="${grouped_possible_roms_ref["$basename"]:-}"
 
                 # printf "${GREEN}%s${ENDCOLOR} é orfão\nNome: ${YELLOW}%s${ENDCOLOR}\n\n" "$path" "$basename"
                 orphan_games_ref["$path"]="$basename"
 
             else
-                # DAQUI
-                printf "${RED}%s${ENDCOLOR} tem de ser avaliado\n\n" "${grouped_possible_roms_ref["$basename"]}" 
+                for extension in "${extensions[@]}"; do
+                    path="$basename.$extension"
+                    # printf "Path: ${GREEN}%s${ENDCOLOR}\nNome: ${YELLOW}%s${ENDCOLOR}\nExt: ${BLUE}%s${ENDCOLOR}\n\n" "$path" "$basename" "$extension"
+                    orphan_games_ref["$path"]="$path"
+                    # o valor aqui é o path como forma de indicar ao usuário possível duplicidade
+                done
             
             fi
 
@@ -520,13 +509,8 @@ classify_possible_roms() {
         fi
 
     done
-
-    # for path in "${!auxiliary_files_ref[@]}"; do
-    #     printf "Path: ${PINK}%s${ENDCOLOR}\nAuxiliares: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${auxiliary_files_ref["$path"]}"
-
-    
-    # done
-
+    # já foram tds classificados, desnecessário manter na memória
+    unset 'grouped_possible_roms_ref'
 
 }
 
@@ -1129,9 +1113,6 @@ main_menu() {
     local -A xml_unclassified_entries=()
     local -A xml_valid_games=()
     local -A xml_ghost_entries=()
-    local -A unlisted_files=()
-    local -A matched_basenames=()
-    local -A auxiliary_files=()
     local -A orphan_games=()
     local -A game_library=() # [chave/arquivo]=>[valor/nome do jogo]
     local selected_game_name=""
@@ -1140,6 +1121,7 @@ main_menu() {
 
     ### GLOŚSARIO ###
     # system: o console - ex: playstaion 1 (psx),gameboy (gb)...
+    # ES: EmulationStation
     # unclassified: existe em algum lugar (filesystem ou gamelist.xml), mas ainda ñ foi classificado
     # valid: existe no filesystem e já foi validado
     # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml ou a entrada ñ possuí o arquivo principal do jogo (no caso de assets)
@@ -1203,12 +1185,8 @@ main_menu() {
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 # shellcheck disable=SC2034
                 unclassified_files=()
-                xml_unclassified_entries=()
                 xml_valid_games=()
                 xml_ghost_entries=() # Entradas dentro do XML q ñ possuem um arquivo de jogo válido
-                unlisted_files=()
-                matched_basenames=()
-                auxiliary_files=()
                 orphan_games=()
                 game_library=()
 
@@ -1238,12 +1216,15 @@ main_menu() {
                 
                 extract_possible_roms valid_system_extensions unclassified_files possible_roms "$user_answer"
                 group_files possible_roms grouped_possible_roms
-                group_files xml_valid_games grouped_valid_games
-                classify_possible_roms grouped_possible_roms grouped_valid_games orphan_games auxiliary_files config_files
+                classify_possible_roms grouped_possible_roms orphan_games config_files
 
 
-
-
+                printf "\n========== Jogos ==========\n"
+                printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
+                printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
+                printf "Entradas fantasma: %d\n" "${#xml_ghost_entries[@]}"
+                printf "Total de jogos   : %d\n" "$(( ${#xml_valid_games[@]} + ${#orphan_games[@]} ))"
+                printf "===========================\n\n"
 
                 exit
 ##############################################################################################################################
