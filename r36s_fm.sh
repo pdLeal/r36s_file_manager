@@ -77,6 +77,103 @@ trap cleanup EXIT 2>/dev/null
 
 #####################################################
 
+
+##############################################################################################################################
+load_systems_info() {
+    local -n system_paths_ref="$1"
+    local -n valid_extensions_ref="$2"
+    local -n valid_system_extensions_ref="$3"
+    local -n systems_by_extension_ref="$4"
+
+    local config_file=""
+    local system_path="" system_name="" extensions=""
+    local extensions_list=()
+    local extension=""
+
+    config_file="$(sudo find ../. -type f \( -name "es_systems.cfg" -o -name "es_systems.xml" \))"
+
+    while IFS='|' read -r system_path system_name extensions; do
+        system_paths_ref["$system_name"]="$system_path"
+
+        read -ra extensions_list <<< "$extensions"
+
+        for extension in "${extensions_list[@]}"; do
+            # Set: sistema + extensão
+            valid_system_extensions_ref["$system_name:$extension"]=1
+
+            # Índice invertido: extensão -> sistemas
+            if [[ -z "${systems_by_extension_ref["$extension"]:-}" ]]; then
+                systems_by_extension_ref["$extension"]="$system_name"
+                valid_extensions_ref["$extension"]=1
+
+            else
+                systems_by_extension_ref["$extension"]+="|$system_name"
+            fi
+        done
+
+    done < <(
+        sed 's/&\([^a-zA-Z#]\)/\&amp;\1/g' "$config_file" |
+        sudo xmlstarlet sel -t \
+            -m "//system" \
+            -v "path" -o "|" \
+            -v "name" -o "|" \
+            -v "extension" \
+            -n - |
+        sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
+        # Primeiro "sed" pré-escapa '&' cru (ex.: "2>&1" dentro de <command>) que não faz parte de
+        # uma entidade XML válida (&amp; &lt; etc.), pois o xmlstarlet falha ao
+        # parsear XML malformado com '&' solto no meio do texto.
+
+
+    ###########################################
+    # DEBUG - Sistema -> Path
+    ##########################################
+
+    # printf "\n=== SYSTEM PATHS ===\n\n"
+
+    # for name in "${!system_paths_ref[@]}"; do
+    #     printf "%-15s -> %s\n" "$name" "${system_paths_ref["$name"]}"
+    # done | sort -f
+
+    # ###########################################
+    # # DEBUG - Set (Sistema + Extensão)
+    # ###########################################
+
+    # printf "\n=== VALID SYSTEM EXTENSIONS ===\n\n"
+
+    # for key in "${!valid_system_extensions_ref[@]}"; do
+    #     printf "%-30s -> %s\n" \
+    #         "$key" \
+    #         "${valid_system_extensions_ref["$key"]}"
+    # done | sort -f
+
+    # ###########################################
+    # # DEBUG - Índice invertido
+    # ###########################################
+
+    # printf "\n=== EXTENSION TO SYSTEM ===\n\n"
+
+    # for extension in "${!systems_by_extension_ref[@]}"; do
+    #     printf "%-10s -> %s\n" \
+    #         "$extension" \
+    #         "${systems_by_extension_ref["$extension"]}"
+    # done | sort -f
+
+    # printf "\n=== VALID EXTENSION ===\n\n"
+
+    # for extension in "${!valid_extensions[@]}"; do
+    #     printf "%-10s -> %s\n" \
+    #         "$extension" \
+    #         "${valid_extensions["$extension"]}"
+    # done | sort -f
+
+    # exit
+}
+
+
+
+##############################################################################################################################
+
 dir_has_gamelist() {
 # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
     # Se existir, a condição [-n ...] será verdadeira.
@@ -99,9 +196,9 @@ classify_dirs_by_roms() {
     local ext_find=()
     local dir=""
 
-    # Converte EXTENSIONS na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
+    # Converte valid_extensions na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
     
-    for ext in "${!EXTENSIONS[@]}"; do
+    for ext in "${!valid_extensions[@]}"; do
         if (( ${#ext_find[@]} == 0 )); then
         # Se for a primeira iteração/array vazio
             ext_find+=(-name "*.${ext}")
@@ -206,7 +303,7 @@ compare_sizes() {
     #     local ext=""
     #     local file=""
 
-    #     for ext in "${EXTENSIONS[@]}"; do
+    #     for ext in "${valid_extensions[@]}"; do
     #         for file in **/*."$ext"; do # glob expansion responsável pela busca
     #             found["./$file"]=1
             
@@ -352,7 +449,7 @@ extract_possible_roms() {
 
     for file in "${!unclassified_files_ref[@]}"; do
         extension="${file##*.}"
-        if [[ -n "${EXTENSIONS[$extension]:-}" ]]; then
+        if [[ -n "${valid_extensions[$extension]:-}" ]]; then
             possible_roms_ref["$file"]=1
             unset 'unclassified_files_ref[$file]'
         
@@ -1117,6 +1214,11 @@ main_menu() {
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
+    local -A system_paths=() valid_extensions=() valid_system_extensions=() systems_by_extension=()
+    load_systems_info system_paths valid_extensions valid_system_extensions systems_by_extension
+
+
+
     while true; do
         case "$STATE" in
             "LOOK")
@@ -1196,7 +1298,6 @@ main_menu() {
                     (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
                 done
 
-                # TODO NEXT: LIDAR COM OS ARQUIVOS AINDA Ñ CLASSIFICADOS, COMO IMAGENS E JOGOS ORFÃOS!
 ##############################################################################################################################
                 local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
                 
