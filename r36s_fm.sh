@@ -18,44 +18,6 @@ readonly PINK="\033[35m"
 readonly CYAN="\033[36m"
 readonly ENDCOLOR="\033[0m"
 
-# Extensões de arquivos de jogos suportadas
-readonly -A EXTENSIONS=(
-  ["nes"]=1
-  ["NES"]=1
-  ["smc"]=1
-  ["sfc"]=1
-  ["fig"]=1
-  ["gb"]=1
-  ["gbc"]=1
-  ["gba"]=1
-  ["bin"]=1
-  ["cdi"]=1
-  ["md"]=1
-  ["smd"]=1
-  ["gen"]=1
-  ["sms"]=1
-  ["gg"]=1
-  ["n64"]=1
-  ["z64"]=1
-  ["v64"]=1
-  ["s64"]=1
-  ["iso"]=1
-  ["cso"]=1
-  ["cue"]=1
-  ["pbp"]=1
-  ["PBP"]=1
-  ["pce"]=1
-  ["gdi"]=1
-  ["chd"]=1
-  ["zip"]=1
-  ["7z"]=1
-  ["nds"]=1
-  ["img"]=1
-  ["ccd"]=1
-  ["m3u"]=1
-  ["wolf"]=1
-) # Deveriam ser normalizadas ao invés de hardcoded upper and lower case, but today is not the day!
-
 # AUX_EXTENSIONS=(
     #     "srm"
     #     "sav"
@@ -77,42 +39,47 @@ trap cleanup EXIT 2>/dev/null
 
 #####################################################
 
-
-##############################################################################################################################
 load_systems_info() {
+# Carrega infos dos systemas, como o caminho da pasta, e, principalmente, a lista de extenssões de cada um
     local -n system_paths_ref="$1"
-    local -n valid_extensions_ref="$2"
-    local -n valid_system_extensions_ref="$3"
-    local -n systems_by_extension_ref="$4"
+    local -n system_names_ref="$2"
+    local -n valid_extensions_ref="$3"
+    local -n valid_system_extensions_ref="$4"
+    local -n systems_by_extension_ref="$5"
 
-    local config_file=""
-    local system_path="" system_name="" extensions=""
+    local systems_config_file=""
+    local system_path="" system_name="" system_dir="" extensions=""
     local extensions_list=()
     local extension=""
 
-    config_file="$(sudo find ../. -type f \( -name "es_systems.cfg" -o -name "es_systems.xml" \))"
+    # TODO: criar um xml com base nesse arquivo p/ caso o usuário ñ tenha acesso a ele
+    systems_config_file="$(sudo find ../. -type f \( -name "es_systems.cfg" -o -name "es_systems.xml" \))"
 
     while IFS='|' read -r system_path system_name extensions; do
-        system_paths_ref["$system_name"]="$system_path"
+        system_dir="${system_path%/*}"
+        system_dir="${system_dir##*/}"
+
+        system_paths_ref["$system_dir"]="$system_path"
+        system_names_ref["$system_dir"]="$system_name"
 
         read -ra extensions_list <<< "$extensions"
 
         for extension in "${extensions_list[@]}"; do
             # Set: sistema + extensão
-            valid_system_extensions_ref["$system_name:$extension"]=1
+            valid_system_extensions_ref["$system_dir:$extension"]=1
 
             # Índice invertido: extensão -> sistemas
             if [[ -z "${systems_by_extension_ref["$extension"]:-}" ]]; then
-                systems_by_extension_ref["$extension"]="$system_name"
+                systems_by_extension_ref["$extension"]="$system_dir"
                 valid_extensions_ref["$extension"]=1
 
             else
-                systems_by_extension_ref["$extension"]+="|$system_name"
+                systems_by_extension_ref["$extension"]+="|$system_dir"
             fi
         done
 
     done < <(
-        sed 's/&\([^a-zA-Z#]\)/\&amp;\1/g' "$config_file" |
+        sed 's/&\([^a-zA-Z#]\)/\&amp;\1/g' "$systems_config_file" |
         sudo xmlstarlet sel -t \
             -m "//system" \
             -v "path" -o "|" \
@@ -123,56 +90,8 @@ load_systems_info() {
         # Primeiro "sed" pré-escapa '&' cru (ex.: "2>&1" dentro de <command>) que não faz parte de
         # uma entidade XML válida (&amp; &lt; etc.), pois o xmlstarlet falha ao
         # parsear XML malformado com '&' solto no meio do texto.
-
-
-    ###########################################
-    # DEBUG - Sistema -> Path
-    ##########################################
-
-    # printf "\n=== SYSTEM PATHS ===\n\n"
-
-    # for name in "${!system_paths_ref[@]}"; do
-    #     printf "%-15s -> %s\n" "$name" "${system_paths_ref["$name"]}"
-    # done | sort -f
-
-    # ###########################################
-    # # DEBUG - Set (Sistema + Extensão)
-    # ###########################################
-
-    # printf "\n=== VALID SYSTEM EXTENSIONS ===\n\n"
-
-    # for key in "${!valid_system_extensions_ref[@]}"; do
-    #     printf "%-30s -> %s\n" \
-    #         "$key" \
-    #         "${valid_system_extensions_ref["$key"]}"
-    # done | sort -f
-
-    # ###########################################
-    # # DEBUG - Índice invertido
-    # ###########################################
-
-    # printf "\n=== EXTENSION TO SYSTEM ===\n\n"
-
-    # for extension in "${!systems_by_extension_ref[@]}"; do
-    #     printf "%-10s -> %s\n" \
-    #         "$extension" \
-    #         "${systems_by_extension_ref["$extension"]}"
-    # done | sort -f
-
-    # printf "\n=== VALID EXTENSION ===\n\n"
-
-    # for extension in "${!valid_extensions[@]}"; do
-    #     printf "%-10s -> %s\n" \
-    #         "$extension" \
-    #         "${valid_extensions["$extension"]}"
-    # done | sort -f
-
-    # exit
+        
 }
-
-
-
-##############################################################################################################################
 
 dir_has_gamelist() {
 # Checa se existe ao menos um arquivo chamado "gamelist.xml" em $dir.
@@ -201,9 +120,9 @@ classify_dirs_by_roms() {
     for ext in "${!valid_extensions[@]}"; do
         if (( ${#ext_find[@]} == 0 )); then
         # Se for a primeira iteração/array vazio
-            ext_find+=(-name "*.${ext}")
+            ext_find+=(-name "*${ext}")
         else
-            ext_find+=(-o -name "*.${ext}")
+            ext_find+=(-o -name "*${ext}")
         fi
     done
 
@@ -441,15 +360,25 @@ classify_xml_asset() {
 }
 
 extract_possible_roms() {
-    local -n unclassified_files_ref="$1"
-    local -n possible_roms_ref="$2"
+    local -n valid_system_extensions_ref="$1"
+    local -n unclassified_files_ref="$2"
+    local -n possible_roms_ref="$3"
+    local system="$4"
 
     local file=""
     local extension=""
+    
+    system="${system%%/*}"
+
+    # for valid in "${!valid_system_extensions_ref[@]}"; do
+    #     printf "Valid: ${PINK}%s${ENDCOLOR}\nValue: ${RED}%s${ENDCOLOR}\n\n" "$valid" "${valid_system_extensions_ref["$valid"]}"
+    # done | sort  -f
 
     for file in "${!unclassified_files_ref[@]}"; do
         extension="${file##*.}"
-        if [[ -n "${valid_extensions[$extension]:-}" ]]; then
+        # verifica se o arquivo possui uma extensão válida p/ o sistema/console escolhido
+        if [[ -n "${valid_system_extensions_ref["$system:.$extension"]:-}" ]]; then
+            # printf "Sys: ${PINK}%s${ENDCOLOR}\nExt: ${RED}%s${ENDCOLOR}\n\n" "$system" "$extension"
             possible_roms_ref["$file"]=1
             unset 'unclassified_files_ref[$file]'
         
@@ -530,6 +459,7 @@ classify_possible_roms() {
     local group=()
     local num_of_itens=0
     local extensions=()
+    local extension=""
 
 
     declare -A blacklist=(
@@ -566,19 +496,23 @@ classify_possible_roms() {
 
         else
             extensions=()
+            extension=""
             
-            IFS='|' read -ra group <<< "${grouped_possible_roms[$basename]}"
+            IFS='|' read -ra group <<< "${grouped_possible_roms_ref[$basename]}"
 
             gather_group_info group num_of_itens extensions
 
             if (( "$num_of_itens" == 1 )); then
+            # nesse ponto, tds os arquivos em grouped_possible_roms já foram validados, por isso se ele ñ
+            # é auxiliar ou config e só tem ele no grupo, é classificadoo direto como rom orfão
                 path="${grouped_possible_roms_ref["$basename"]:-}"
 
-                printf "${GREEN}%s${ENDCOLOR} é orfão\nNome: ${YELLOW}%s${ENDCOLOR}\n\n" "$path" "$basename"
+                # printf "${GREEN}%s${ENDCOLOR} é orfão\nNome: ${YELLOW}%s${ENDCOLOR}\n\n" "$path" "$basename"
                 orphan_games_ref["$path"]="$basename"
 
             else
-               printf "${RED}%s${ENDCOLOR} tem de ser avaliado\n\n" "${grouped_possible_roms_ref["$basename"]}" 
+                # DAQUI
+                printf "${RED}%s${ENDCOLOR} tem de ser avaliado\n\n" "${grouped_possible_roms_ref["$basename"]}" 
             
             fi
 
@@ -1198,13 +1132,14 @@ main_menu() {
     local -A unlisted_files=()
     local -A matched_basenames=()
     local -A auxiliary_files=()
-    local -A orphan_games=() # Jogos que não estão presentes no gamelist.com
+    local -A orphan_games=()
     local -A game_library=() # [chave/arquivo]=>[valor/nome do jogo]
     local selected_game_name=""
     local selected_game_path=""
     local using_find=0 # flag q controla certas ações ao "Procurar jogos"
 
     ### GLOŚSARIO ###
+    # system: o console - ex: playstaion 1 (psx),gameboy (gb)...
     # unclassified: existe em algum lugar (filesystem ou gamelist.xml), mas ainda ñ foi classificado
     # valid: existe no filesystem e já foi validado
     # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml ou a entrada ñ possuí o arquivo principal do jogo (no caso de assets)
@@ -1214,8 +1149,8 @@ main_menu() {
     printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
 
-    local -A system_paths=() valid_extensions=() valid_system_extensions=() systems_by_extension=()
-    load_systems_info system_paths valid_extensions valid_system_extensions systems_by_extension
+    local -A system_paths=() system_names=() valid_extensions=() valid_system_extensions=() systems_by_extension=()
+    load_systems_info system_paths system_names valid_extensions valid_system_extensions systems_by_extension
 
 
 
@@ -1301,7 +1236,7 @@ main_menu() {
 ##############################################################################################################################
                 local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
                 
-                extract_possible_roms unclassified_files possible_roms
+                extract_possible_roms valid_system_extensions unclassified_files possible_roms "$user_answer"
                 group_files possible_roms grouped_possible_roms
                 group_files xml_valid_games grouped_valid_games
                 classify_possible_roms grouped_possible_roms grouped_valid_games orphan_games auxiliary_files config_files
