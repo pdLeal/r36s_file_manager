@@ -575,9 +575,9 @@ classify_possible_roms() {
 # }
 
 build_game_library() {
-    local -n matched="$1"
-    local -n orphans="$2"
-    local -n library="$3"
+    local -n xml_valid_games_ref="$1"
+    local -n orphan_games_ref="$2"
+    local -n game_library_ref="$3"
 
     local -A seen=()
     local all_games
@@ -586,33 +586,39 @@ build_game_library() {
     local short_checksum=""
     local path=""
 
-    for path in "${!matched[@]}"; do
-        library["$path"]="${matched[$path]}"
+    for path in "${!xml_valid_games_ref[@]}"; do
+        game_library_ref["$path"]="${xml_valid_games_ref[$path]}"
     done
 
-    for path in "${!orphans[@]}"; do
+    for path in "${!orphan_games_ref[@]}"; do
+        game_library_ref["$path"]="${orphan_games_ref[$path]}"
+
+
+
+
+
     # Apesar dos arquivos serem únicos, muitos jogos possuem o msm nome (tô olhando pra
     # vcs do nes). Então é preciso marca-los de alguma forma p/ garantir q cada arquivo
     # esteja ligado corretamente ao nome do jogo. Ao acrescentar uma parte da hash md5
     # ao nome, se garante q o nome é "único" e q o usuário tem um marcador visual de
     # quais jogos possuem nomes iguais - ñ é a eficiência em pessoa,
     # mas resolve por enquanto
-        game_name="${orphans[$path]}"
+        # game_name="${orphans[$path]}"
 
-        if [[ -z "${seen[$game_name]:-}" ]]; then
-            library["$path"]="$game_name"
-            seen["$game_name"]=1
+        # if [[ -z "${seen[$game_name]:-}" ]]; then
+        #     library["$path"]="$game_name"
+        #     seen["$game_name"]=1
 
-        else
-            checksum=$(md5sum "$path")
-            checksum=${checksum%% *}
-            short_checksum=${checksum:0:4}
+        # else
+        #     checksum=$(md5sum "$path")
+        #     checksum=${checksum%% *}
+        #     short_checksum=${checksum:0:4}
 
 
-            library["$path"]="$game_name"
-            library["$path"]+=" <<<$short_checksum>>>"
+        #     library["$path"]="$game_name"
+        #     library["$path"]+=" <<<$short_checksum>>>"
     
-        fi
+        # fi
     done
 
 }
@@ -1217,25 +1223,20 @@ main_menu() {
                 extract_possible_roms valid_system_extensions unclassified_files possible_roms "$user_answer"
                 group_files possible_roms grouped_possible_roms
                 classify_possible_roms grouped_possible_roms orphan_games config_files
+                build_game_library xml_valid_games orphan_games game_library
 
 
                 printf "\n========== Jogos ==========\n"
                 printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
                 printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
                 printf "Entradas fantasma: %d\n" "${#xml_ghost_entries[@]}"
-                printf "Total de jogos   : %d\n" "$(( ${#xml_valid_games[@]} + ${#orphan_games[@]} ))"
+                printf "Total de jogos   : %d\n" "${#game_library[@]}"
                 printf "===========================\n\n"
 
-                exit
+                # exit
 ##############################################################################################################################
 
 
-
-                # find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
-
-                # classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
-
-                # build_game_library xml_valid_games orphan_games game_library
 
                 printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
                 printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
