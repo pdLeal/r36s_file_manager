@@ -580,11 +580,12 @@ build_game_library() {
     local -n game_library_ref="$3"
 
     local -A seen=()
-    local all_games
-    local game_name=""
-    local checksum=""
-    local short_checksum=""
     local path=""
+
+    # local all_games
+    # local game_name=""
+    # local checksum=""
+    # local short_checksum=""
 
     for path in "${!xml_valid_games_ref[@]}"; do
         game_library_ref["$path"]="${xml_valid_games_ref[$path]}"
@@ -1079,33 +1080,64 @@ find_games() {
 }
 
 count_by_dir() {
-    local sum=0
-    # for dir in "${dirs_with_games[@]}"; do
-    # # Conta a qtd de jogos por pasta e soma o total - INACABADA
-    #     game_files=()
-    #     game_library=()
-    #     xml_ghost_entries=()
-    #     cd "$dir"
-    #     printf "Analisando ${RED}%s${ENDCOLOR}\n" "$dir"
+# GAMBIARRA P/ DEEBUG - IMMPLEMENTAR CORRETAMENTE DEPOIS!!!
+    local -n dirs_with_games_ref="$1"
+
+    local dir=""
+    local -i total_games=0
+
+    for dir in "${dirs_with_games_ref[@]}"; do
+        cd -- "$dir" || exit 1
+
+        unclassified_files=()
+        xml_unclassified_entries=()
+        xml_valid_games=()
+        xml_ghost_entries=() # Entradas dentro do XML q ñ possuem um arquivo de jogo válido
+        orphan_games=()
+        game_library=()
+
+        local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
+        local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
+        local -A orphan_images=() orphan_videos=() orphan_marquees=() orphan_thumbnails=()
+        local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
+
+        get_all_files unclassified_files 
         
-    #     get_all_files unclassified_files
-                
-    #     load_xml_entries xml_unclassified_entries
+        load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
 
-    #     classify_xml_entries xml_unclassified_entries unclassified_files xml_valid_games xml_ghost_entries
+        classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries
 
-    #     find_unlisted_files unclassified_files unlisted_files xml_valid_games matched_basenames
+        local assets_names=( "images" "videos" "marquees" "thumbnails" )
+        local name=""
+        # certeza q tem forma de abstrair classify_xml_asset() p/ q lide com todos os assets de uma vez, mas por enquanto isso serve
+        for name in "${assets_names[@]}"; do
+            local -n arr_ref="unclassified_${name}"
+            # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
+            # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
+            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
+        done
 
-    #     classify_unlisted_files unlisted_files matched_basenames auxiliary_files orphan_games
+        local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
+        
+        extract_possible_roms valid_system_extensions unclassified_files possible_roms "$dir"
+        group_files possible_roms grouped_possible_roms
+        classify_possible_roms grouped_possible_roms orphan_games config_files
+        build_game_library xml_valid_games orphan_games game_library
 
-    #     build_game_library xml_valid_games orphan_games game_library
+        total_games+="${#game_library[@]}"
 
-    #     printf "${CYAN}%s Jogos Encontrados${ENDCOLOR}\n\n" "${#game_library[@]}"
-    #     (( sum += ${#game_library[@]} ))
-    #     cd - &> /dev/null
-    # done
-    # printf "Total: ${GREEN}%s${ENDCOLOR}\n" "$sum"
-    # exit
+        printf "\n========== ${GREEN}%s${ENDCOLOR} ==========\n" "$dir"
+        printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
+        printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
+        printf "Entradas fantasma: %d\n" "${#xml_ghost_entries[@]}"
+        printf "${CYAN}Total de jogos   : %d${ENDCOLOR}\n" "${#game_library[@]}"
+        printf "===========================\n\n"
+    
+        cd "$OLDPWD" || exit 1
+    done
+
+    printf "Total de jogos   : %d\n" "$total_games"
+    exit
 }
 
 STATE="LOOK"
@@ -1151,7 +1183,7 @@ main_menu() {
                 printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
                 printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
 
-                ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo"
+                ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo" "Relatório Geral"
                 case "$user_answer" in 
                     "Ver pastas com ROMs")
                         dirs_to_look=( "${dirs_with_games[@]}" )
@@ -1164,6 +1196,14 @@ main_menu() {
                         using_find=1
                         dirs_to_look=( "${dirs_with_games[@]}" )
                         STATE="FIND_GAME"
+                        continue
+                    ;;
+
+                    "Relatório Geral")
+                        count_by_dir dirs_with_games
+
+
+                        STATE="LOOK"
                         continue
                     ;;
                 esac    
@@ -1191,6 +1231,7 @@ main_menu() {
                 # Reinicia os arrays p/ evitar bug de duplicar/acumular jogos/arquivos
                 # shellcheck disable=SC2034
                 unclassified_files=()
+                xml_unclassified_entries=()
                 xml_valid_games=()
                 xml_ghost_entries=() # Entradas dentro do XML q ñ possuem um arquivo de jogo válido
                 orphan_games=()
@@ -1238,9 +1279,9 @@ main_menu() {
 
 
 
-                printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
-                printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
-                printf "${CYAN}%s Entradas estão apenas no gamelist.xml${ENDCOLOR}\n" "${#xml_ghost_entries[@]}"
+                # printf "${YELLOW}%s Jogos Encontrados${ENDCOLOR}\n" "${#game_library[@]}"
+                # printf "${PINK}%s Jogos não estão listados no gamelist.xml${ENDCOLOR}\n" "${#orphan_games[@]}"
+                # printf "${CYAN}%s Entradas estão apenas no gamelist.xml${ENDCOLOR}\n" "${#xml_ghost_entries[@]}"
                 # printf "${YELLOW}%s Arquivos auxiliares encontrados${ENDCOLOR}\n" "${#auxiliary_files[@]}"
 
                 ask_user "" user_answer "Ver jogos" "Editar gamelist.xml" "Voltar"
