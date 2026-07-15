@@ -308,6 +308,8 @@ classify_xml_entries() {
 
     local path=""
     local extension=""
+    local -A seen=()
+    local basename=""
 
     system="${system%%/*}"
 
@@ -316,17 +318,29 @@ classify_xml_entries() {
         extension="${path##*.}"
 
         if [[ -n "${unclassified_files_ref["$path"]:-}" ]] && [[ -n "${valid_system_extensions_ref["$system:.$extension"]:-}" ]]; then
-            xml_valid_games_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
+            basename="${xml_unclassified_entries_ref["$path"]}"
+
+            # pode ocorrer de msm estando no xml, dois jogos possuirem o msm basename e como a seleção do jogo é feita pelo nome
+            # acrescentar a extensão nesse caso ajuda evitar bugs e indicar visualmente ao usuário a duplicata de nomes
+            if [[ -z "${seen["$basename"]:-}" ]]; then
+                seen["$basename"]=1
+                xml_valid_games_ref["$path"]="$basename"
+                
+            else
+                xml_valid_games_ref["$path"]="$basename.$extension"
+                # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n" "$path" "$basename"
+
+            fi
             unset 'unclassified_files_ref[$path]'
+
+
         
-            # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n" "$path" "${xml_unclassified_entries_ref[$path]}"
         else
             xml_ghost_entries_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
         
         fi
         unset 'xml_unclassified_entries_ref[$path]'
     done
-    # exit
 
 }
 
