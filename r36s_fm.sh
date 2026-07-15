@@ -1288,8 +1288,10 @@ main_menu() {
                 group_files possible_roms grouped_possible_roms
                 classify_possible_roms grouped_possible_roms orphan_games config_files
                 build_game_library xml_valid_games orphan_games game_library
+                
+                # TODO: falta ainda classificar alguns arquivos, como imgs e afins 
 
-
+                exit
                 printf "\n========== Jogos ==========\n"
                 printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
                 printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
@@ -1297,7 +1299,6 @@ main_menu() {
                 printf "Total de jogos   : %d\n" "${#game_library[@]}"
                 printf "===========================\n\n"
 
-                # exit
 ##############################################################################################################################
 
 
