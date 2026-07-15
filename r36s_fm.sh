@@ -303,22 +303,30 @@ classify_xml_entries() {
     local -n xml_unclassified_entries_ref="$2"
     local -n xml_valid_games_ref="$3"
     local -n xml_ghost_entries_ref="$4"
+    local -n valid_system_extensions_ref="$5"
+    local system="$6"
 
     local path=""
+    local extension=""
+
+    system="${system%%/*}"
 
     for path in "${!xml_unclassified_entries_ref[@]}"; do
-        # Verifica a existência do arquivo e o remove da lista de ñ classificados se +
-        if [[ -n "${unclassified_files_ref["$path"]:-}" ]]; then
+    # Verifica a existência do arquivo e se possuí extensão válida - remove da lista de ñ classificados se +
+        extension="${path##*.}"
+
+        if [[ -n "${unclassified_files_ref["$path"]:-}" ]] && [[ -n "${valid_system_extensions_ref["$system:.$extension"]:-}" ]]; then
             xml_valid_games_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
             unset 'unclassified_files_ref[$path]'
-            # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "${xml_unclassified_entries_ref[$path]}"
         
+            # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n" "$path" "${xml_unclassified_entries_ref[$path]}"
         else
             xml_ghost_entries_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
         
         fi
         unset 'xml_unclassified_entries_ref[$path]'
     done
+    # exit
 
 }
 
@@ -376,6 +384,7 @@ extract_possible_roms() {
 
     for file in "${!unclassified_files_ref[@]}"; do
         extension="${file##*.}"
+
         # verifica se o arquivo possui uma extensão válida p/ o sistema/console escolhido
         if [[ -n "${valid_system_extensions_ref["$system:.$extension"]:-}" ]]; then
             # printf "Sys: ${PINK}%s${ENDCOLOR}\nExt: ${RED}%s${ENDCOLOR}\n\n" "$system" "$extension"
@@ -1105,7 +1114,7 @@ count_by_dir() {
         
         load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
 
-        classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries
+        classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries valid_system_extensions "$dir"
 
         local assets_names=( "images" "videos" "marquees" "thumbnails" )
         local name=""
@@ -1246,7 +1255,7 @@ main_menu() {
                 
                 load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
 
-                classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries
+                classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries valid_system_extensions "$user_answer"
 
                 local assets_names=( "images" "videos" "marquees" "thumbnails" )
                 local name=""
