@@ -18,17 +18,6 @@ readonly PINK="\033[35m"
 readonly CYAN="\033[36m"
 readonly ENDCOLOR="\033[0m"
 
-# AUX_EXTENSIONS=(
-    #     "srm"
-    #     "sav"
-    #     "state"
-    #     "nv"
-    #     "cfg"
-    #     "txt"
-    #     "pdf"
-# ) # Inutilizada por enquanto, mas acho q pode ser útil depois
-
-
 cleanup() {
     if [[ -n "${tmp_game:-}" ]]; then
     echo "Limpando arquivos temporários..."
@@ -91,6 +80,30 @@ load_systems_info() {
         # uma entidade XML válida (&amp; &lt; etc.), pois o xmlstarlet falha ao
         # parsear XML malformado com '&' solto no meio do texto.
         
+}
+
+load_aux_ext_file() {
+    local -n aux_category_ref="$1"
+    local -n aux_description_ref="$2"
+
+    local script_dir="${BASH_SOURCE%/*}"
+    local aux_ext_file="$script_dir/aux_ext.txt"
+    local extension="" category="" description=""
+   
+    while IFS='|' read -r extension category description; do
+        # se "" ou comentário, pula a linha
+        [[ -z "$extension" || "$extension" == \#* ]] && continue
+
+        aux_category_ref["$extension"]="$category"
+        aux_description_ref["$extension"]="$description"
+
+        
+        # printf "Ext: ${PINK}%s${ENDCOLOR}\n" "$extension"
+        # printf "Categ: ${CYAN}%s${ENDCOLOR}\n" "$category"
+        # printf "Desc: ${GREEN}%s${ENDCOLOR}\n\n" "$description"
+
+    done < "$aux_ext_file"
+
 }
 
 dir_has_gamelist() {
@@ -490,6 +503,7 @@ classify_possible_roms() {
         [playch10]=1
         [skns]=1
         [neogeo]=1
+        [Scan_for_new_games]=1
     )
 
     for basename in "${!grouped_possible_roms_ref[@]}"; do
@@ -605,11 +619,6 @@ build_game_library() {
     local -A seen=()
     local path=""
 
-    # local all_games
-    # local game_name=""
-    # local checksum=""
-    # local short_checksum=""
-
     for path in "${!xml_valid_games_ref[@]}"; do
         game_library_ref["$path"]="${xml_valid_games_ref[$path]}"
     done
@@ -617,34 +626,20 @@ build_game_library() {
     for path in "${!orphan_games_ref[@]}"; do
         game_library_ref["$path"]="${orphan_games_ref[$path]}"
 
-
-
-
-
-    # Apesar dos arquivos serem únicos, muitos jogos possuem o msm nome (tô olhando pra
-    # vcs do nes). Então é preciso marca-los de alguma forma p/ garantir q cada arquivo
-    # esteja ligado corretamente ao nome do jogo. Ao acrescentar uma parte da hash md5
-    # ao nome, se garante q o nome é "único" e q o usuário tem um marcador visual de
-    # quais jogos possuem nomes iguais - ñ é a eficiência em pessoa,
-    # mas resolve por enquanto
-        # game_name="${orphans[$path]}"
-
-        # if [[ -z "${seen[$game_name]:-}" ]]; then
-        #     library["$path"]="$game_name"
-        #     seen["$game_name"]=1
-
-        # else
-        #     checksum=$(md5sum "$path")
-        #     checksum=${checksum%% *}
-        #     short_checksum=${checksum:0:4}
-
-
-        #     library["$path"]="$game_name"
-        #     library["$path"]+=" <<<$short_checksum>>>"
-    
-        # fi
     done
 
+}
+
+classify_remaining_files() {
+    local -n unclassified_files_ref="$1"
+    local -n grouped_library_ref="$2"
+    local -n aux_category_ref="$3"
+    local -n aux_description_ref="$4"
+    # CONTINUAR DAQUI
+
+    
+
+    
 }
 
 create_gamelist() {
@@ -1154,7 +1149,13 @@ count_by_dir() {
         printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
         printf "Entradas fantasma: %d\n" "${#xml_ghost_entries[@]}"
         printf "${CYAN}Total de jogos   : %d${ENDCOLOR}\n" "${#game_library[@]}"
+        printf "${RED}Não classificados   : %d${ENDCOLOR}\n" "${#unclassified_files[@]}"
         printf "===========================\n\n"
+        
+        # for file in "${!unclassified_files[@]}"; do
+        #     printf "File: ${PINK}%s${ENDCOLOR}\n" "$file"
+        
+        # done 
     
         cd "$OLDPWD" || exit 1
     done
@@ -1195,7 +1196,8 @@ main_menu() {
     local -A system_paths=() system_names=() valid_extensions=() valid_system_extensions=() systems_by_extension=()
     load_systems_info system_paths system_names valid_extensions valid_system_extensions systems_by_extension
 
-
+    local -A aux_category=() aux_description=()
+    load_aux_ext_file aux_category aux_description
 
     while true; do
         case "$STATE" in
@@ -1282,16 +1284,23 @@ main_menu() {
                 done
 
 ##############################################################################################################################
-                local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
+                local -A possible_roms=() grouped_possible_roms=() grouped_library=() config_files=()
                 
                 extract_possible_roms valid_system_extensions unclassified_files possible_roms "$user_answer"
+
+                # TODO:adicionar validação p/ o caso de não haver roms resttantes p/ serem classificados
                 group_files possible_roms grouped_possible_roms
                 classify_possible_roms grouped_possible_roms orphan_games config_files
+                
                 build_game_library xml_valid_games orphan_games game_library
                 
-                # TODO: falta ainda classificar alguns arquivos, como imgs e afins 
+                # TODO: falta ainda classificar alguns arquivos, como imgs e afins
+                group_files game_library grouped_library
+
+                classify_remaining_files unclassified_files grouped_library aux_category aux_description
 
                 exit
+                
                 printf "\n========== Jogos ==========\n"
                 printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
                 printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"

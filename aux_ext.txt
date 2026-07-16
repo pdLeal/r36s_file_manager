@@ -1,0 +1,111 @@
+# ============================================================================
+# Auxiliary File Extensions
+# Format:
+# extension|CATEGORY|DESCRIPTION
+# ============================================================================
+
+# ----------------------------
+# Save Files
+# ----------------------------
+srm|SAVE|Battery Save RAM
+sav|SAVE|Generic Save File
+eep|SAVE|EEPROM Save
+eeprom|SAVE|EEPROM Save
+fla|SAVE|Flash Save Memory
+flash|SAVE|Flash Save Memory
+mpk|SAVE|Controller Memory Pack
+mcr|SAVE|PlayStation Memory Card
+mc0|SAVE|PlayStation Memory Card
+mc1|SAVE|PlayStation Memory Card
+mc2|SAVE|PlayStation Memory Card
+mc3|SAVE|PlayStation Memory Card
+mcd|SAVE|Mega-CD Backup RAM
+gme|SAVE|DexDrive Memory Card
+mem|SAVE|Generic Memory Card
+dsv|SAVE|Nintendo DS Save
+dss|SAVE|Nintendo DS Save State Save
+nv|SAVE|Arcade NVRAM
+nvram|SAVE|Emulator NVRAM
+ram|SAVE|Persistent RAM
+rtc|SAVE|Real-Time Clock Data
+dif|DIFF|Arcade Differential Data
+
+# ----------------------------
+# Save States
+# ----------------------------
+state|SAVE_STATE|RetroArch Save State
+state.auto|SAVE_STATE|RetroArch Auto Save State
+ss|SAVE_STATE|Generic Save State
+fs|SAVE_STATE|Freeze State
+
+# ----------------------------
+# Cheats
+# ----------------------------
+cht|CHEAT|RetroArch Cheat File
+chx|CHEAT|Emulator Cheat File
+
+# ----------------------------
+# High Scores
+# ----------------------------
+hi|HIGH_SCORE|Arcade High Scores
+
+# ----------------------------
+# Configuration
+# ----------------------------
+cfg|CONFIG|Configuration File
+opt|CONFIG|Core Options
+ini|CONFIG|INI Configuration
+conf|CONFIG|Configuration File
+
+# ----------------------------
+# BIOS / Firmware
+# ----------------------------
+rom|FIRMWARE|Firmware ROM
+bin|FIRMWARE|Firmware Binary
+bios|FIRMWARE|BIOS Image
+
+# ----------------------------
+# Cache / Database
+# ----------------------------
+cache|CACHE|Cache Data
+db|DATABASE|Database
+ldb|DATABASE|Libretro Database
+rdb|DATABASE|RetroArch Database
+idx|INDEX|Index File
+
+# ----------------------------
+# Logs
+# ----------------------------
+log|LOG|Log File
+
+# ----------------------------
+# Rewind / Replay
+# ----------------------------
+replay|REPLAY|RetroArch Replay
+movie|REPLAY|Input Recording
+fm2|REPLAY|FCEUX Movie
+bk2|REPLAY|BizHawk Movie
+m64|REPLAY|Mupen64 Movie
+gmv|REPLAY|Gens Movie
+vbm|REPLAY|VisualBoyAdvance Movie
+
+# ----------------------------
+# Shader Cache
+# ----------------------------
+slangp|SHADER|Shader Preset
+glslp|SHADER|Shader Preset
+cgp|SHADER|Shader Preset
+
+# ----------------------------
+# Miscellaneous
+# ----------------------------
+ips|PATCH|IPS Patch
+bps|PATCH|BPS Patch
+ups|PATCH|UPS Patch
+xdelta|PATCH|xDelta Patch
+ppf|PATCH|PlayStation Patch
+cue|DISC_DESCRIPTOR|CD Layout Descriptor
+m3u|PLAYLIST|Disc Playlist
+ccd|DISC_METADATA|CloneCD Descriptor
+sub|DISC_METADATA|CloneCD Subchannel Data
+mds|DISC_METADATA|Media Descriptor
