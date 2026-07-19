@@ -83,8 +83,6 @@ load_systems_info() {
 }
 
 load_aux_ext_file() {
-    local -n aux_category_ref="$1"
-    local -n aux_description_ref="$2"
 
     local script_dir="${BASH_SOURCE%/*}"
     local aux_ext_file="$script_dir/aux_ext.txt"
@@ -94,8 +92,8 @@ load_aux_ext_file() {
         # se "" ou comentário, pula a linha
         [[ -z "$extension" || "$extension" == \#* ]] && continue
 
-        aux_category_ref["$extension"]="$category"
-        aux_description_ref["$extension"]="$description"
+        AUX_CATEGORY["$extension"]="$category"
+        AUX_DESCRIPTION["$extension"]="$description"
 
         
         # printf "Ext: ${PINK}%s${ENDCOLOR}\n" "$extension"
@@ -630,26 +628,169 @@ build_game_library() {
 
 }
 
+print_assoc_array() {
+# FUNÇÃO DE DEBUG - EXCLUIR DEPOIS
+    local title="$1"
+    local -n array_ref="$2"
+
+    printf "\n%s\n" "===== $title ====="
+
+    if [[ ${#array_ref[@]} -eq 0 ]]; then
+        printf "(empty)\n"
+        return
+    fi
+
+    local key
+    for key in "${!array_ref[@]}"; do
+        printf "%-50s -> %s\n" "$key" "${array_ref[$key]}"
+    done
+}
+
 classify_remaining_files() {
     local -n unclassified_files_ref="$1"
     local -n grouped_library_ref="$2"
-    local -n aux_category_ref="$3"
-    local -n aux_description_ref="$4"
+
+    local -n linked_images_ref="$3" linked_videos_ref="$4" linked_marquees_ref="$5" linked_thumbnails_ref="$6" linked_auxiliary_ref="$7"
+    local -n unlinked_images_ref="$8" unlinked_videos_ref="$9" unlinked_marquees_ref="${10}" unlinked_thumbnails_ref="${11}" unlinked_auxiliary_ref="${12}"
+    local -n linked_config_ref="${13}" unlinked_config_ref="${14}" unknow_files_ref="${15}"
 
     local file=""
+    local path=""
     local basename=""
+    local image_suffix=""
     local extension=""
+    local category=""
     
     for file in "${!unclassified_files_ref[@]}"; do
-        basename="${file##*/}"
-        basename="${basename%.*}"
+        path="${file##*/}"
+
+        basename="${path%.*}"
         [[ "$basename" == *.A1 ]]  && basename="${basename%.*}"
+
         extension="${file##*.}"
+        category="${AUX_CATEGORY["$extension"]:-}"
         
-        printf "File: ${PINK}%s${ENDCOLOR}\n"  "$file"
-        printf "Categ: ${YELLOW}%s${ENDCOLOR}\n"  "${aux_category_ref["$extension"]:-}"
-        printf "Desc: ${RED}%s${ENDCOLOR}\n\n"  "${aux_description_ref["$extension"]:-}"
-        [[ -n "${grouped_library_ref["$basename"]:-}" ]] && printf "${GREEN}BINGO!${ENDCOLOR}\n\n"
+
+        if [[ -n "${grouped_library_ref["$basename"]:-}" ]]; then
+
+            case "$category" in
+                # ========================================================================
+                # Imagens
+                # ========================================================================
+                "IMAGE")
+                    image_suffix="${basename##*-}"
+                    case "$image_suffix" in
+                        "marquee")
+                            linked_marquees_ref["$path"]="$file"
+                        
+                            ;;
+                        "thumb")
+                            linked_thumbnails_ref["$path"]="$file"
+                            
+                            ;;
+                        *)
+                            linked_images_ref["$path"]="$file"
+                           
+                            ;;
+                    esac
+
+                ;;
+
+                # ========================================================================
+                # Videos
+                # ========================================================================
+                "VIDEO")
+                    linked_videos_ref["$path"]="$file"
+
+                ;;
+
+                # ========================================================================
+                # Configuration Files
+                # Arquivos necessários para funcionamento do sistema/emulador, mas que não
+                # representam dados do usuário.
+                # ========================================================================
+                "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
+                    linked_config_ref["$path"]="$file"
+
+                ;;
+
+                # ========================================================================
+                # Auxiliary Files
+                # Arquivos relacionados ao jogo ou ao usuário.
+                # ========================================================================
+                "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | "DISC_DESCRIPTOR" | \
+                "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | "FONT" | "DOCUMENT" | "LOG" |  "BACKUP")
+                    linked_auxiliary_ref["$path"]="$file"
+
+                ;;
+
+                # ========================================================================
+                # Unknown
+                # ========================================================================
+                *)
+                    unknow_files_ref["$path"]="$file"
+                ;;
+            esac
+
+        else
+            case "$category" in
+                # ========================================================================
+                # Imagens
+                # ========================================================================
+                "IMAGE")
+                    image_suffix="${basename##*-}"
+                    case "$image_suffix" in
+                        "marquee")
+                            unlinked_marquees_ref["$path"]="$file"
+                        
+                            ;;
+                        "thumb")
+                            unlinked_thumbnails_ref["$path"]="$file"
+                            
+                            ;;
+                        *)
+                            unlinked_images_ref["$path"]="$file"
+                           
+                            ;;
+                    esac
+
+                ;;
+
+                # ========================================================================
+                # Videos
+                # ========================================================================
+                "VIDEO")
+                    unlinked_videos_ref["$path"]="$file"
+
+                ;;
+
+                # ========================================================================
+                # Configuration Files
+                # ========================================================================
+                "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
+                    unlinked_config_ref["$path"]="$file"
+
+                ;;
+
+                # ========================================================================
+                # Auxiliary Files
+                # ========================================================================
+                "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | "DISC_DESCRIPTOR" | \
+                "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | "FONT" | "DOCUMENT" | "LOG" |  "BACKUP")
+                    unlinked_auxiliary_ref["$path"]="$file"
+
+                ;;
+
+                # ========================================================================
+                # Unknown
+                # ========================================================================
+                *)
+                    unknow_files_ref["$path"]="$file"
+                ;;
+            esac
+            
+        fi
+        unset 'unclassified_files_ref[$file]'
  
     done
 
@@ -1212,8 +1353,8 @@ main_menu() {
     local -A system_paths=() system_names=() valid_extensions=() valid_system_extensions=() systems_by_extension=()
     load_systems_info system_paths system_names valid_extensions valid_system_extensions systems_by_extension
 
-    local -A aux_category=() aux_description=()
-    load_aux_ext_file aux_category aux_description
+    local -Ag AUX_CATEGORY=() AUX_DESCRIPTION=() # globais já q depois de carreegadass só usadas p/ validação/consulta, sem sofrerem qualquer alteração
+    load_aux_ext_file
 
     while true; do
         case "$STATE" in
@@ -1273,15 +1414,25 @@ main_menu() {
                 # shellcheck disable=SC2034
                 unclassified_files=()
                 xml_unclassified_entries=()
+
                 xml_valid_games=()
-                xml_ghost_entries=() # Entradas dentro do XML q ñ possuem um arquivo de jogo válido
+                xml_ghost_entries=()
+
                 orphan_games=()
                 game_library=()
 
                 local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
+
                 local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
-                local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
                 local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
+
+                local -A linked_images=() linked_videos=() linked_marquees=() linked_thumbnails=()
+                local -A linked_auxiliary=() linked_config=()
+
+                local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
+                local -A unlinked_auxiliary=() unlinked_config=()
+
+                local -A unknow_files=()
 
                 get_all_files unclassified_files 
                 
@@ -1296,7 +1447,7 @@ main_menu() {
                     local -n arr_ref="unclassified_${name}"
                     # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
                     # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
-                    (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
+                    (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} unlinked_${name} ghost_${name} xml_valid_games
                 done
 
 ##############################################################################################################################
@@ -1313,7 +1464,29 @@ main_menu() {
                 # TODO: falta ainda classificar alguns arquivos, como imgs e afins
                 group_files game_library grouped_library
 
-                classify_remaining_files unclassified_files grouped_library aux_category aux_description
+                classify_remaining_files unclassified_files grouped_library \
+                                         linked_images linked_videos linked_marquees linked_thumbnails linked_auxiliary \
+                                         unlinked_images unlinked_videos unlinked_marquees unlinked_thumbnails unlinked_auxiliary \
+                                         linked_config unlinked_config unknow_files
+
+
+                # print_assoc_array "Linked Images"       linked_images
+                # print_assoc_array "Linked Videos"       linked_videos
+                # print_assoc_array "Linked Marquees"     linked_marquees
+                # print_assoc_array "Linked Thumbnails"   linked_thumbnails
+                # print_assoc_array "Linked Auxiliary"    linked_auxiliary
+                # print_assoc_array "Linked Config"       linked_config
+
+                # print_assoc_array "Unlinked Images"     unlinked_images
+                # print_assoc_array "Unlinked Videos"     unlinked_videos
+                # print_assoc_array "Unlinked Marquees"   unlinked_marquees
+                # print_assoc_array "Unlinked Thumbnails" unlinked_thumbnails
+                # print_assoc_array "Unlinked Auxiliary"  unlinked_auxiliary
+                # print_assoc_array "Unlinked Config"     unlinked_config
+
+                # print_assoc_array "Unknown Files"       unknow_files
+
+                # print_assoc_array "Unclassified Files"       unclassified_files
 
                 exit
                 
