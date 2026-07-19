@@ -361,7 +361,7 @@ classify_xml_asset() {
     local -n unclassified_files_ref="$1"
     local -n unclassified_assets_ref="$2"
     local -n valid_assets_ref="$3"
-    local -n orphan_assets_ref="$4"
+    local -n unlinked_assets_ref="$4"
     local -n ghost_assets_ref="$5"
     local -n xml_valid_games_ref="$6"
 
@@ -376,7 +376,7 @@ classify_xml_asset() {
                 valid_assets_ref["$path"]="$asset"
 
             else
-                orphan_assets_ref["$path"]="$asset"
+                unlinked_assets_ref["$path"]="$asset"
 
             fi
             # de um jeito ou de outro, o arquivo já foi classificado
@@ -635,9 +635,23 @@ classify_remaining_files() {
     local -n grouped_library_ref="$2"
     local -n aux_category_ref="$3"
     local -n aux_description_ref="$4"
-    # CONTINUAR DAQUI
 
+    local file=""
+    local basename=""
+    local extension=""
     
+    for file in "${!unclassified_files_ref[@]}"; do
+        basename="${file##*/}"
+        basename="${basename%.*}"
+        [[ "$basename" == *.A1 ]]  && basename="${basename%.*}"
+        extension="${file##*.}"
+        
+        printf "File: ${PINK}%s${ENDCOLOR}\n"  "$file"
+        printf "Categ: ${YELLOW}%s${ENDCOLOR}\n"  "${aux_category_ref["$extension"]:-}"
+        printf "Desc: ${RED}%s${ENDCOLOR}\n\n"  "${aux_description_ref["$extension"]:-}"
+        [[ -n "${grouped_library_ref["$basename"]:-}" ]] && printf "${GREEN}BINGO!${ENDCOLOR}\n\n"
+ 
+    done
 
     
 }
@@ -1116,7 +1130,7 @@ count_by_dir() {
 
         local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
         local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
-        local -A orphan_images=() orphan_videos=() orphan_marquees=() orphan_thumbnails=()
+        local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
         local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
 
         get_all_files unclassified_files 
@@ -1185,8 +1199,10 @@ main_menu() {
     # system: o console - ex: playstaion 1 (psx),gameboy (gb)...
     # ES: EmulationStation
     # unclassified: existe em algum lugar (filesystem ou gamelist.xml), mas ainda ñ foi classificado
-    # valid: existe no filesystem e já foi validado
-    # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml ou a entrada ñ possuí o arquivo principal do jogo (no caso de assets)
+    # valid: existe no filesystem e já foi validado via gamelist.xml
+    # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml (só p/ jogos)
+    # linked: ñ está no gamelist.xml, mas pertence a um jogo conhecido (válido ou órfão).
+    # unlinked: ñ está no gamelist.xml e não foi possível associá-lo a nenhum jogo.
     # ghost: existe apenas como entrada no gamelist.xml, sem ter um arquivo válido associado
     ### GLOŚSARIO ###
 
@@ -1264,7 +1280,7 @@ main_menu() {
 
                 local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
                 local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
-                local -A orphan_images=() orphan_videos=() orphan_marquees=() orphan_thumbnails=()
+                local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
                 local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
 
                 get_all_files unclassified_files 

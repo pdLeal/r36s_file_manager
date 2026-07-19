@@ -39,6 +39,12 @@ ss|SAVE_STATE|Generic Save State
 fs|SAVE_STATE|Freeze State
 
 # ----------------------------
+# Metadata
+# ----------------------------
+xml|METADATA|XML Metadata File
+old|BACKUP|Backup File
+
+# ----------------------------
 # Cheats
 # ----------------------------
 cht|CHEAT|RetroArch Cheat File
@@ -109,3 +115,64 @@ m3u|PLAYLIST|Disc Playlist
 ccd|DISC_METADATA|CloneCD Descriptor
 sub|DISC_METADATA|CloneCD Subchannel Data
 mds|DISC_METADATA|Media Descriptor
+
+# ----------------------------
+# Images
+# ----------------------------
+png|IMAGE|Portable Network Graphics Image
+jpg|IMAGE|JPEG Image
+jpeg|IMAGE|JPEG Image
+bmp|IMAGE|Bitmap Image
+gif|IMAGE|GIF Image
+webp|IMAGE|WebP Image
+tif|IMAGE|TIFF Image
+tiff|IMAGE|TIFF Image
+
+# ----------------------------
+# Videos
+# ----------------------------
+mp4|VIDEO|MPEG-4 Video
+avi|VIDEO|AVI Video
+mkv|VIDEO|Matroska Video
+mov|VIDEO|QuickTime Video
+wmv|VIDEO|Windows Media Video
+flv|VIDEO|Flash Video
+webm|VIDEO|WebM Video
+mpg|VIDEO|MPEG Video
+mpeg|VIDEO|MPEG Video
+m4v|VIDEO|MPEG-4 Video
+
+# ----------------------------
+# Audio
+# ----------------------------
+mp3|AUDIO|MP3 Audio
+ogg|AUDIO|Ogg Vorbis Audio
+oga|AUDIO|Ogg Audio
+wav|AUDIO|Waveform Audio
+flac|AUDIO|FLAC Audio
+aac|AUDIO|AAC Audio
+m4a|AUDIO|MPEG-4 Audio
+opus|AUDIO|Opus Audio
+
+# ----------------------------
+# Artwork
+# ----------------------------
+svg|ARTWORK|Scalable Vector Graphic
+psd|ARTWORK|Adobe Photoshop Document
+xcf|ARTWORK|GIMP Image
+ai|ARTWORK|Adobe Illustrator Artwork
+
+# ----------------------------
+# Fonts
+# ----------------------------
+ttf|FONT|TrueType Font
+otf|FONT|OpenType Font
+fon|FONT|Bitmap Font
+
+# ----------------------------
+# Documents
+# ----------------------------
+txt|DOCUMENT|Text File
+pdf|DOCUMENT|Portable Document Format
+nfo|DOCUMENT|Information File
+md|DOCUMENT|Markdown Document
