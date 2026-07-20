@@ -1,15 +1,89 @@
 #!/usr/bin/env bash
-# r36s_fm.sh - Gerenciador de arquivos de jogos para R36s
-# Autor: pleal
-# Data de Início: 18/10/2025
+
+# ==============================================================================
+# r36s_fm.sh
+#
+# File manager for the R36s handheld console.
+#
+# This script analyzes both the filesystem and EmulationStation metadata
+# (gamelist.xml) to identify, validate, classify and organize ROMs together
+# with their related assets and auxiliary files.
+#
+# Author: pleal
+# Project started: 18-10-2025
+# ==============================================================================
+
+# ==============================================================================
+# TERMINOLOGY
+#
+# system
+#   A console or platform supported by EmulationStation.
+#   Examples: NES, SNES, PSX, Dreamcast.
+#
+# ES (EmulationStation)
+#   Frontend responsible for managing game metadata through gamelist.xml.
+#
+# group
+#   A collection of files sharing the same basename.
+#   Groups represent a single game candidate during the classification process.
+#
+# unclassified
+#   An item that exists either in the filesystem or in gamelist.xml but has
+#   not yet been classified by the pipeline.
+#
+# valid
+#   An item that exists in the filesystem and has been successfully validated
+#   against gamelist.xml.
+# 
+#   • Games are valid when they have a matching XML entry.
+#   • Assets are valid when they have a matching XML entry and belong to a
+#     valid game.
+#
+# orphan
+#   A game that exists in the filesystem but has no corresponding entry in
+#   gamelist.xml.
+#
+# linked
+#   An asset or auxiliary file that has no XML entry of its own but was
+#   successfully associated with a known game (valid or orphan).
+#
+# unlinked
+#   An asset or auxiliary file that could not be associated with any known
+#   game.
+#
+# ghost
+#   A gamelist.xml entry that does not have a corresponding game in the
+#   filesystem.
+#
+#
+# CLASSIFICATION MODEL
+#
+#                 Filesystem                 gamelist.xml
+#                     │                           │
+#                     └──────────────┬────────────┘
+#                                    │
+#                             Classification
+#                                    │
+#            ┌───────────────┬───────────────┬───────────────┐
+#            │               │               │               │
+#          valid          orphan          ghost       unclassified
+#            │               │
+#            └───────┬───────┘
+#                    │
+#              Associated files
+#                    │
+#             ┌──────┴──────┐
+#             │             │
+#          linked      unlinked
+#
+# ==============================================================================
 
 # shellcheck disable=SC2059
 set -u
-#####################################################
-# VARIÁVEIS GLOBAIS E CONSTANTES
-#####################################################
 
-# Cores para saída no terminal
+# ==============================================================================
+#  GLOBAL CONSTANTS
+# Terminal color output
 readonly RED="\033[31m"
 readonly GREEN="\033[32m"
 readonly YELLOW="\033[33m"
@@ -17,6 +91,7 @@ readonly BLUE="\033[34m"
 readonly PINK="\033[35m"
 readonly CYAN="\033[36m"
 readonly ENDCOLOR="\033[0m"
+# ==============================================================================
 
 cleanup() {
     if [[ -n "${tmp_game:-}" ]]; then
@@ -29,41 +104,44 @@ trap cleanup EXIT 2>/dev/null
 #####################################################
 
 load_systems_info() {
-# Carrega infos dos systemas, como o caminho da pasta, e, principalmente, a lista de extenssões de cada um
-    local -n system_paths_ref="$1"
-    local -n system_names_ref="$2"
-    local -n valid_extensions_ref="$3"
-    local -n valid_system_extensions_ref="$4"
-    local -n systems_by_extension_ref="$5"
-
+# Loads the EmulationStation system database and builds lookup tables
+# used throughout the classification pipeline.
     local systems_config_file=""
     local system_path="" system_name="" system_dir="" extensions=""
     local extensions_list=()
     local extension=""
 
-    # TODO: criar um xml com base nesse arquivo p/ caso o usuário ñ tenha acesso a ele
+    # TODO:
+    # Provide a built-in fallback system database when the user's
+    # EmulationStation configuration is unavailable.
     systems_config_file="$(sudo find ../. -type f \( -name "es_systems.cfg" -o -name "es_systems.xml" \))"
 
+    # Parse every system defined in the EmulationStation configuration file.
     while IFS='|' read -r system_path system_name extensions; do
         system_dir="${system_path%/*}"
         system_dir="${system_dir##*/}"
 
-        system_paths_ref["$system_dir"]="$system_path"
-        system_names_ref["$system_dir"]="$system_name"
+        SYSTEM_PATHS["$system_dir"]="$system_path"
+        SYSTEM_NAMES["$system_dir"]="$system_name"
 
         read -ra extensions_list <<< "$extensions"
 
+        # Build lookup tables for fast extension-based queries.
         for extension in "${extensions_list[@]}"; do
-            # Set: sistema + extensão
-            valid_system_extensions_ref["$system_dir:$extension"]=1
+            VALID_SYSTEM_EXTENSIONS["$system_dir:$extension"]=1
 
-            # Índice invertido: extensão -> sistemas
-            if [[ -z "${systems_by_extension_ref["$extension"]:-}" ]]; then
-                systems_by_extension_ref["$extension"]="$system_dir"
-                valid_extensions_ref["$extension"]=1
+            if [[ -z "${SYSTEMS_BY_EXTENSION["$extension"]:-}" ]]; then
+                VALID_EXTENSIONS["$extension"]=1
+
+                # NOTE:
+                # SYSTEMS_BY_EXTENSION IS NOT CURREENTLY USED by the application.
+                # Keep it only if future features require reverse extension lookups;
+                # otherwise, remove it to avoid unnecessary processing and maintenance.
+                SYSTEMS_BY_EXTENSION["$extension"]="$system_dir"
 
             else
-                systems_by_extension_ref["$extension"]+="|$system_dir"
+                SYSTEMS_BY_EXTENSION["$extension"]+="|$system_dir"
+
             fi
         done
 
@@ -76,32 +154,27 @@ load_systems_info() {
             -v "extension" \
             -n - |
         sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-        # Primeiro "sed" pré-escapa '&' cru (ex.: "2>&1" dentro de <command>) que não faz parte de
-        # uma entidade XML válida (&amp; &lt; etc.), pois o xmlstarlet falha ao
-        # parsear XML malformado com '&' solto no meio do texto.
-        
+
+    # Pre-escape raw '&' characters that are not part of a valid XML entity.
+    # Some EmulationStation configurations contain commands such as "2>&1",
+    # which would otherwise cause xmlstarlet to fail while parsing the XML.
 }
 
 load_aux_ext_file() {
+# Loads the auxiliary file extension database used during classification.
 
     local script_dir="${BASH_SOURCE%/*}"
     local aux_ext_file="$script_dir/aux_ext.txt"
     local extension="" category="" description=""
-   
+
     while IFS='|' read -r extension category description; do
-        # se "" ou comentário, pula a linha
+        # Skip empty lines and comments.
         [[ -z "$extension" || "$extension" == \#* ]] && continue
 
         AUX_CATEGORY["$extension"]="$category"
         AUX_DESCRIPTION["$extension"]="$description"
 
-        
-        # printf "Ext: ${PINK}%s${ENDCOLOR}\n" "$extension"
-        # printf "Categ: ${CYAN}%s${ENDCOLOR}\n" "$category"
-        # printf "Desc: ${GREEN}%s${ENDCOLOR}\n\n" "$description"
-
     done < "$aux_ext_file"
-
 }
 
 dir_has_gamelist() {
@@ -115,10 +188,13 @@ dir_has_gamelist() {
 
 
 classify_dirs_by_roms() {
-# Procura por arquivos de jogos nas pastas fornecidas
+    # Classifies directories based on whether they contain at least one
+    # detectable ROM file.
+
     local -n dirs="$1"
     local -n w_games="$2"
     local -n w_no_games="$3"
+
     w_games=()
     w_no_games=()
 
@@ -126,27 +202,33 @@ classify_dirs_by_roms() {
     local ext_find=()
     local dir=""
 
-    # Converte valid_extensions na string "-name '*.nes' -o -name '*.chd' -o -name '*.zip'" p/ ser usado no find
-    
-    for ext in "${!valid_extensions[@]}"; do
+    # Build the find expression from the list of valid ROM extensions.
+    # "-name '*.nes' -o -name '*.chd' -o -name '*.zip'..."
+    for ext in "${!VALID_EXTENSIONS[@]}"; do
         if (( ${#ext_find[@]} == 0 )); then
-        # Se for a primeira iteração/array vazio
             ext_find+=(-name "*${ext}")
         else
             ext_find+=(-o -name "*${ext}")
         fi
     done
 
+    # TODO:
+    # Refine ROM detection for systems whose primary files are project or
+    # configuration files (e.g. EasyRPG, ScummVM). Extension-based detection
+    # alone may produce false positives.
+
     for dir in "${dirs[@]}"; do
         if dir_has_gamelist "$dir"; then
-            # Procura por pelo menos 1 arquivo com as extensões especificadas e popula os arrays correspondentes
+
+            # Search for at least one matching ROM file.
             if [ -n "$(find "$dir" -type f \( "${ext_find[@]}" \) -print -quit)" ]; then
                 w_games+=("$dir")
             else
-        # OBS: só procura em dirs com gamelist.xml - PENSAR SOBRE OS DIRS SEM ELE DEPOIS
+                # TODO:
+                # Decide how directories without detectable ROMs should be
+                # handled when gamelist.xml is present.
                 w_no_games+=("$dir")
             fi
-            
         fi
     done
 }
@@ -225,25 +307,6 @@ compare_sizes() {
     fi
 }
 
-# get_all_files() {
-    # # Coleta todos os arquivos com as extensões especificadas e popula o array fornecido
-    #     shopt -s globstar nullglob
-    #     local -n found="$1"
-
-    #     local ext=""
-    #     local file=""
-
-    #     for ext in "${valid_extensions[@]}"; do
-    #         for file in **/*."$ext"; do # glob expansion responsável pela busca
-    #             found["./$file"]=1
-            
-    #         done
-        
-    #     done
-
-    #     shopt -u globstar nullglob
-# }
-
 get_all_files() {
     shopt -s globstar nullglob
     local -n unclassified_files_ref="$1"
@@ -258,21 +321,6 @@ get_all_files() {
 
     shopt -u globstar nullglob
 }
-
-# load_xml_entries() {
-    #     # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
-    #     local -n entries="$1"
-    #     local path=""
-    #     local name=""
-
-    #     while IFS='|' read -r path name; do
-    #         entries["$path"]="$name"
-
-    #     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -n ./gamelist.xml | \
-    #                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-    #         # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
-    
-# }
 
 load_xml_entries() {
     # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
@@ -314,8 +362,7 @@ classify_xml_entries() {
     local -n xml_unclassified_entries_ref="$2"
     local -n xml_valid_games_ref="$3"
     local -n xml_ghost_entries_ref="$4"
-    local -n valid_system_extensions_ref="$5"
-    local system="$6"
+    local system="$5"
 
     local path=""
     local extension=""
@@ -328,7 +375,7 @@ classify_xml_entries() {
     # Verifica a existência do arquivo e se possuí extensão válida - remove da lista de ñ classificados se +
         extension="${path##*.}"
 
-        if [[ -n "${unclassified_files_ref["$path"]:-}" ]] && [[ -n "${valid_system_extensions_ref["$system:.$extension"]:-}" ]]; then
+        if [[ -n "${unclassified_files_ref["$path"]:-}" ]] && [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$extension"]:-}" ]]; then
             basename="${xml_unclassified_entries_ref["$path"]}"
 
             # pode ocorrer de msm estando no xml, dois jogos possuirem o msm basename e como a seleção do jogo é feita pelo nome
@@ -393,25 +440,24 @@ classify_xml_asset() {
 }
 
 extract_possible_roms() {
-    local -n valid_system_extensions_ref="$1"
-    local -n unclassified_files_ref="$2"
-    local -n possible_roms_ref="$3"
-    local system="$4"
+    local -n unclassified_files_ref="$1"
+    local -n possible_roms_ref="$2"
+    local system="$3"
 
     local file=""
     local extension=""
     
     system="${system%%/*}"
 
-    # for valid in "${!valid_system_extensions_ref[@]}"; do
-    #     printf "Valid: ${PINK}%s${ENDCOLOR}\nValue: ${RED}%s${ENDCOLOR}\n\n" "$valid" "${valid_system_extensions_ref["$valid"]}"
+    # for valid in "${!VALID_SYSTEM_EXTENSIONS[@]}"; do
+    #     printf "Valid: ${PINK}%s${ENDCOLOR}\nValue: ${RED}%s${ENDCOLOR}\n\n" "$valid" "${VALID_SYSTEM_EXTENSIONS["$valid"]}"
     # done | sort  -f
 
     for file in "${!unclassified_files_ref[@]}"; do
         extension="${file##*.}"
 
         # verifica se o arquivo possui uma extensão válida p/ o sistema/console escolhido
-        if [[ -n "${valid_system_extensions_ref["$system:.$extension"]:-}" ]]; then
+        if [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$extension"]:-}" ]]; then
             # printf "Sys: ${PINK}%s${ENDCOLOR}\nExt: ${RED}%s${ENDCOLOR}\n\n" "$system" "$extension"
             possible_roms_ref["$file"]=1
             unset 'unclassified_files_ref[$file]'
@@ -549,66 +595,6 @@ classify_possible_roms() {
 
 }
 
-# find_unlisted_files() {
-    #     local -n files="$1"
-    #     local -n unlisted="$2"
-    #     local -n matched="$3"
-    #     local -n basenames="$4"
-
-    #     local file=""
-    #     local base=""
-
-    #     for file in "${!files[@]}"; do
-    #         if [[ -n "${matched["$file"]:-}" ]]; then
-    #             base="${file##*/}"
-    #             base="${base%.*}" 
-    #             basenames["$base"]=1
-            
-    #         else
-    #             unlisted["$file"]="$file"
-
-    #         fi
-        
-    #     done
-
-# }
-
-# classify_unlisted_files() {
-    #     local -n unlisted="$1"
-    #     local -n basenames="$2"
-    #     local -n auxiliary="$3"
-    #     local -n orphans="$4"
-
-    #     declare -A blacklist=(
-    #         [konamigx]=1
-    #         [kviper]=1
-    #         [megatech]=1
-    #         [nss]=1
-    #         [playch10]=1
-    #         [skns]=1
-    #         [neogeo]=1
-    #     ) # Existem formas mais robustas de separar jogos de arquivos de sistemas e afins, porém ñ é o foco no momento.
-    #     local file=""
-    #     local base=""
-
-    #     for file in "${!unlisted[@]}"; do 
-    #         base="${file##*/}"
-    #         base="${base%.*}" 
-
-    #         if [[ -n "${basenames["$base"]:-}" ]] || [[ "$base" == *.A1 ]] || [[ -n "${blacklist[$base]:-}" ]]; then
-    #         # *.A1 sem "" p/ realizar comparação de padrões
-    #         # Primeiro encontra os arquivos auxiliares dos jogos listados no xml
-    #             auxiliary["$file"]="$file"
-
-    #         else
-    #             orphans["$file"]="$base"
-    #         fi
-
-    #     done
-    #     exit
-
-# }
-
 build_game_library() {
     local -n xml_valid_games_ref="$1"
     local -n orphan_games_ref="$2"
@@ -652,7 +638,7 @@ classify_remaining_files() {
 
     local -n linked_images_ref="$3" linked_videos_ref="$4" linked_marquees_ref="$5" linked_thumbnails_ref="$6" linked_auxiliary_ref="$7"
     local -n unlinked_images_ref="$8" unlinked_videos_ref="$9" unlinked_marquees_ref="${10}" unlinked_thumbnails_ref="${11}" unlinked_auxiliary_ref="${12}"
-    local -n linked_config_ref="${13}" unlinked_config_ref="${14}" unknow_files_ref="${15}"
+    local -n linked_config_ref="${13}" unlinked_config_ref="${14}" unknown_files_ref="${15}"
 
     local file=""
     local path=""
@@ -672,7 +658,7 @@ classify_remaining_files() {
         # .state pode conter digitos ao final (.state1 ou .state99),  a linha abaixo servee p/ retirar os digitos
         # pooderia acrescentar no arquivo auxiliar state1, state2...state99, mas muito empenho 
         [[ "$extension" == state+([0-9]) ]] && extension="${extension%%+([[:digit:]])}"
-        shopt -u
+        shopt -u extglob
         category="${AUX_CATEGORY["$extension"]:-}"
         
 
@@ -733,7 +719,7 @@ classify_remaining_files() {
                 # Unknown
                 # ========================================================================
                 *)
-                    unknow_files_ref["$path"]="$file"
+                    unknown_files_ref["$path"]="$file"
                 ;;
             esac
 
@@ -790,7 +776,7 @@ classify_remaining_files() {
                 # Unknown
                 # ========================================================================
                 *)
-                    unknow_files_ref["$path"]="$file"
+                    unknown_files_ref["$path"]="$file"
                 ;;
             esac
             
@@ -1270,7 +1256,7 @@ count_by_dir() {
         unclassified_files=()
         xml_unclassified_entries=()
         xml_valid_games=()
-        xml_ghost_entries=() # Entradas dentro do XML q ñ possuem um arquivo de jogo válido
+        xml_ghost_entries=() 
         orphan_games=()
         game_library=()
 
@@ -1283,7 +1269,7 @@ count_by_dir() {
         
         load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
 
-        classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries valid_system_extensions "$dir"
+        classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries "$dir"
 
         local assets_names=( "images" "videos" "marquees" "thumbnails" )
         local name=""
@@ -1297,7 +1283,7 @@ count_by_dir() {
 
         local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
         
-        extract_possible_roms valid_system_extensions unclassified_files possible_roms "$dir"
+        extract_possible_roms unclassified_files possible_roms "$dir"
         group_files possible_roms grouped_possible_roms
         classify_possible_roms grouped_possible_roms orphan_games config_files
         build_game_library xml_valid_games orphan_games game_library
@@ -1324,79 +1310,153 @@ count_by_dir() {
     exit
 }
 
+# Initial aplcation state
 STATE="LOOK"
+
 main_menu() {
-    local dirs_list=(*/) # Lista de pastas no diretório atual - Glob expansion 
-    local dirs_with_games=() 
-    local dirs_without_games=()
-    local dirs_to_look=() 
+    # --------------------------------------------------------------------------
+    # USER INTERACTION
+    # --------------------------------------------------------------------------
     local user_answer=""
+    local selected_game_name=""
+    local selected_game_path=""
+    local using_find=0 # Indicates whether execution originated from the "Find Games" workflow.
+
+    # --------------------------------------------------------------------------
+    # DIRECTORY DISCOVERY
+    # --------------------------------------------------------------------------
+    local dirs_list=(*/) # Immediate subdirectories in the current working directory.
+    local dirs_with_games=()
+    local dirs_without_games=()
+    local dirs_to_look=()
+
+    # --------------------------------------------------------------------------
+    # GAME CLASSIFICATION PIPELINE
+    # --------------------------------------------------------------------------
     local -A unclassified_files=()
+
     local -A xml_unclassified_entries=()
     local -A xml_valid_games=()
     local -A xml_ghost_entries=()
+
     local -A orphan_games=()
-    local -A game_library=() # [chave/arquivo]=>[valor/nome do jogo]
-    local selected_game_name=""
-    local selected_game_path=""
-    local using_find=0 # flag q controla certas ações ao "Procurar jogos"
 
-    ### GLOŚSARIO ###
-    # system: o console - ex: playstaion 1 (psx),gameboy (gb)...
-    # ES: EmulationStation
-    # unclassified: existe em algum lugar (filesystem ou gamelist.xml), mas ainda ñ foi classificado
-    # valid: existe no filesystem e já foi validado via gamelist.xml
-    # orphan: existe no filesystem, porém ñ tem entrada no gamelist.xml (só p/ jogos)
-    # linked: ñ está no gamelist.xml, mas pertence a um jogo conhecido (válido ou órfão).
-    # unlinked: ñ está no gamelist.xml e não foi possível associá-lo a nenhum jogo.
-    # ghost: existe apenas como entrada no gamelist.xml, sem ter um arquivo válido associado
-    ### GLOŚSARIO ###
+    # Maps a game file path to its display name.
+    local -A game_library=()
 
-    printf "Avaliando Diretório:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
-    printf "${YELLOW}%s Pastas Encontradas${ENDCOLOR}\n" "${#dirs_list[@]}"
+    # --------------------------------------------------------------------------
+    # XML ASSETS
+    # --------------------------------------------------------------------------
+    local -A unclassified_images=()
+    local -A unclassified_videos=()
+    local -A unclassified_marquees=()
+    local -A unclassified_thumbnails=()
 
-    local -A system_paths=() system_names=() valid_extensions=() valid_system_extensions=() systems_by_extension=()
-    load_systems_info system_paths system_names valid_extensions valid_system_extensions systems_by_extension
+    local -A valid_images=()
+    local -A valid_videos=()
+    local -A valid_marquees=()
+    local -A valid_thumbnails=()
 
-    local -Ag AUX_CATEGORY=() AUX_DESCRIPTION=() # globais já q depois de carreegadass só usadas p/ validação/consulta, sem sofrerem qualquer alteração
+    local -A ghost_images=()
+    local -A ghost_videos=()
+    local -A ghost_marquees=()
+    local -A ghost_thumbnails=()
+
+    # --------------------------------------------------------------------------
+    # FILES ASSOCIATED WITH KNOWN GAMES
+    # --------------------------------------------------------------------------
+    local -A linked_images=()
+    local -A linked_videos=()
+    local -A linked_marquees=()
+    local -A linked_thumbnails=()
+
+    local -A linked_auxiliary=()
+    local -A linked_config=()
+
+    # --------------------------------------------------------------------------
+    # FILES NOT ASSOCIATED WITH ANY GAME
+    # --------------------------------------------------------------------------
+    local -A unlinked_images=()
+    local -A unlinked_videos=()
+    local -A unlinked_marquees=()
+    local -A unlinked_thumbnails=()
+
+    local -A unlinked_auxiliary=()
+    local -A unlinked_config=()
+
+    # --------------------------------------------------------------------------
+    # UNKNOWN FILES
+    # --------------------------------------------------------------------------
+    local -A unknown_files=()
+
+    # --------------------------------------------------------------------------
+    # SYSTEM DATABASE
+    # --------------------------------------------------------------------------
+    # Loaded once and treated as read-only lookup tables throughout the application.
+    local -Ag SYSTEM_PATHS=()
+    local -Ag SYSTEM_NAMES=()
+    local -Ag VALID_EXTENSIONS=()
+    local -Ag VALID_SYSTEM_EXTENSIONS=()
+    local -Ag SYSTEMS_BY_EXTENSION=()
+
+    local -Ag AUX_CATEGORY=()
+    local -Ag AUX_DESCRIPTION=()
+
+    printf "Evaluating Directory:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
+    printf "${YELLOW}%s Directories Found${ENDCOLOR}\n" "${#dirs_list[@]}"
+
+
+    printf "Loading systems data...\n"
+    load_systems_info
     load_aux_ext_file
 
     while true; do
         case "$STATE" in
             "LOOK")
-                echo "Procurando por pastas contendo ROMs..."
+            # Discover available systems and select the next workflow.
+
+                echo "Scanning directories for ROMs..."
+
+                # Separate directories based on whether they contain game files.
                 classify_dirs_by_roms dirs_list dirs_with_games dirs_without_games
 
-                printf "${YELLOW}%s Pastas contendo ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}" 
-                printf "${CYAN}%s Pastas possuem apenas 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}" 
+                printf "${YELLOW}%s Directories containing ROMs${ENDCOLOR}\n" "${#dirs_with_games[@]}"
+                printf "${CYAN}%s Directories containing only 'gamelist.xml'${ENDCOLOR}\n" "${#dirs_without_games[@]}"
 
-                ask_user "" user_answer "Ver pastas com ROMs" "Ver pastas sem ROMs" "Procurar jogo" "Relatório Geral"
-                case "$user_answer" in 
-                    "Ver pastas com ROMs")
+                ask_user "" user_answer \
+                    "Browse Directories with ROMs" \
+                    "Browse Directories without ROMs" \
+                    "Find Game" \
+                    "Overall Report"
+
+                case "$user_answer" in
+                    "Browse Directories with ROMs")
                         dirs_to_look=( "${dirs_with_games[@]}" )
                     ;;
-                    "Ver pastas sem ROMs")
+
+                    "Browse Directories without ROMs")
                         dirs_to_look=( "${dirs_without_games[@]}" )
                     ;;
 
-                    "Procurar jogo")
+                    "Find Game")
                         using_find=1
                         dirs_to_look=( "${dirs_with_games[@]}" )
                         STATE="FIND_GAME"
                         continue
                     ;;
 
-                    "Relatório Geral")
+                    "Overall Report")
+                    # Generate an overview of all detected systems.
                         count_by_dir dirs_with_games
-
 
                         STATE="LOOK"
                         continue
                     ;;
-                esac    
-                
+
+                esac
+
                 STATE="CONSOLE_MENU"
-            ;;
+                ;;
 
             "CONSOLE_MENU")
                 ask_user "Selecione uma pasta:" user_answer "${dirs_to_look[@]}" "Voltar"
@@ -1426,24 +1486,20 @@ main_menu() {
                 orphan_games=()
                 game_library=()
 
-                local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
-
-                local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
-                local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
-
-                local -A linked_images=() linked_videos=() linked_marquees=() linked_thumbnails=()
-                local -A linked_auxiliary=() linked_config=()
-
-                local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
-                local -A unlinked_auxiliary=() unlinked_config=()
-
-                local -A unknow_files=()
-
+                unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
+                valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
+                ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
+                linked_images=() linked_videos=() linked_marquees=() linked_thumbnails=()
+                linked_auxiliary=() linked_config=()
+                unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
+                unlinked_auxiliary=() unlinked_config=()
+                unknown_files=()
+                
                 get_all_files unclassified_files 
                 
                 load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
 
-                classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries valid_system_extensions "$user_answer"
+                classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries "$user_answer"
 
                 local assets_names=( "images" "videos" "marquees" "thumbnails" )
                 local name=""
@@ -1458,7 +1514,7 @@ main_menu() {
 ##############################################################################################################################
                 local -A possible_roms=() grouped_possible_roms=() grouped_library=() config_files=()
                 
-                extract_possible_roms valid_system_extensions unclassified_files possible_roms "$user_answer"
+                extract_possible_roms unclassified_files possible_roms "$user_answer"
 
                 # TODO:adicionar validação p/ o caso de não haver roms resttantes p/ serem classificados
                 group_files possible_roms grouped_possible_roms
@@ -1472,26 +1528,26 @@ main_menu() {
                 classify_remaining_files unclassified_files grouped_library \
                                          linked_images linked_videos linked_marquees linked_thumbnails linked_auxiliary \
                                          unlinked_images unlinked_videos unlinked_marquees unlinked_thumbnails unlinked_auxiliary \
-                                         linked_config unlinked_config unknow_files
+                                         linked_config unlinked_config unknown_files
 
 
-                # print_assoc_array "Linked Images"       linked_images
-                # print_assoc_array "Linked Videos"       linked_videos
-                # print_assoc_array "Linked Marquees"     linked_marquees
-                # print_assoc_array "Linked Thumbnails"   linked_thumbnails
-                # print_assoc_array "Linked Auxiliary"    linked_auxiliary
-                # print_assoc_array "Linked Config"       linked_config
+                print_assoc_array "Linked Images"       linked_images
+                print_assoc_array "Linked Videos"       linked_videos
+                print_assoc_array "Linked Marquees"     linked_marquees
+                print_assoc_array "Linked Thumbnails"   linked_thumbnails
+                print_assoc_array "Linked Auxiliary"    linked_auxiliary
+                print_assoc_array "Linked Config"       linked_config
 
-                # print_assoc_array "Unlinked Images"     unlinked_images
-                # print_assoc_array "Unlinked Videos"     unlinked_videos
-                # print_assoc_array "Unlinked Marquees"   unlinked_marquees
-                # print_assoc_array "Unlinked Thumbnails" unlinked_thumbnails
-                # print_assoc_array "Unlinked Auxiliary"  unlinked_auxiliary
-                # print_assoc_array "Unlinked Config"     unlinked_config
+                print_assoc_array "Unlinked Images"     unlinked_images
+                print_assoc_array "Unlinked Videos"     unlinked_videos
+                print_assoc_array "Unlinked Marquees"   unlinked_marquees
+                print_assoc_array "Unlinked Thumbnails" unlinked_thumbnails
+                print_assoc_array "Unlinked Auxiliary"  unlinked_auxiliary
+                print_assoc_array "Unlinked Config"     unlinked_config
 
-                # print_assoc_array "Unknown Files"       unknow_files
+                print_assoc_array "Unknown Files"       unknown_files
 
-                # print_assoc_array "Unclassified Files"       unclassified_files
+                print_assoc_array "Unclassified Files"       unclassified_files
 
                 exit
                 
