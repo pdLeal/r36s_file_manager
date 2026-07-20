@@ -668,6 +668,11 @@ classify_remaining_files() {
         [[ "$basename" == *.A1 ]]  && basename="${basename%.*}"
 
         extension="${file##*.}"
+        shopt -s extglob
+        # .state pode conter digitos ao final (.state1 ou .state99),  a linha abaixo servee p/ retirar os digitos
+        # pooderia acrescentar no arquivo auxiliar state1, state2...state99, mas muito empenho 
+        [[ "$extension" == state+([0-9]) ]] && extension="${extension%%+([[:digit:]])}"
+        shopt -u
         category="${AUX_CATEGORY["$extension"]:-}"
         
 
