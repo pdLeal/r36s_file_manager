@@ -269,272 +269,26 @@ ask_user() {
 
 }
 
-count_by_dir() {
-# GAMBIARRA P/ DEEBUG - IMMPLEMENTAR CORRETAMENTE DEPOIS!!!
-    local -n dirs_with_games_ref="$1"
-
-    local dir=""
-    local -i total_games=0
-
-    for dir in "${dirs_with_games_ref[@]}"; do
-        cd -- "$dir" || exit 1
-
-        unclassified_files=()
-        xml_unclassified_entries=()
-        xml_valid_games=()
-        xml_ghost_entries=() 
-        orphan_games=()
-        game_library=()
-
-        local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
-        local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
-        local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
-        local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
-
-        get_all_files unclassified_files 
-        
-        load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
-
-        classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries "$dir"
-
-        local assets_names=( "images" "videos" "marquees" "thumbnails" )
-        local name=""
-        # certeza q tem forma de abstrair classify_xml_asset() p/ q lide com todos os assets de uma vez, mas por enquanto isso serve
-        for name in "${assets_names[@]}"; do
-            local -n arr_ref="unclassified_${name}"
-            # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
-            # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
-            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
-        done
-
-        local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
-        
-        extract_possible_roms unclassified_files possible_roms "$dir"
-        group_files possible_roms grouped_possible_roms
-        classify_possible_roms grouped_possible_roms orphan_games config_files
-        build_game_library xml_valid_games orphan_games game_library
-
-        total_games+="${#game_library[@]}"
-
-        printf "\n========== ${GREEN}%s${ENDCOLOR} ==========\n" "$dir"
-        printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
-        printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
-        printf "Entradas fantasma: %d\n" "${#xml_ghost_entries[@]}"
-        printf "${CYAN}Total de jogos   : %d${ENDCOLOR}\n" "${#game_library[@]}"
-        printf "${RED}Não classificados   : %d${ENDCOLOR}\n" "${#unclassified_files[@]}"
-        printf "===========================\n\n"
-        
-        # for file in "${!unclassified_files[@]}"; do
-        #     printf "File: ${PINK}%s${ENDCOLOR}\n" "$file"
-        
-        # done 
-    
-        cd "$OLDPWD" || exit 1
-    done
-
-    printf "Total de jogos   : %d\n" "$total_games"
-}
-
-reset_analysis_state() {
-# Resets all analysis arrays before running the directory pipeline.
-    # File discovery.
-    unclassified_files=()
-    xml_unclassified_entries=()
-
-    # Game classification.
-    xml_valid_games=()
-    xml_ghost_entries=()
-    orphan_games=()
-    game_library=()
-
-    # XML asset classification.
-    unclassified_images=()
-    unclassified_videos=()
-    unclassified_marquees=()
-    unclassified_thumbnails=()
-
-    valid_images=()
-    valid_videos=()
-    valid_marquees=()
-    valid_thumbnails=()
-
-    ghost_images=()
-    ghost_videos=()
-    ghost_marquees=()
-    ghost_thumbnails=()
-
-    # Filesystem asset classification.
-    linked_images=()
-    linked_videos=()
-    linked_marquees=()
-    linked_thumbnails=()
-
-    unlinked_images=()
-    unlinked_videos=()
-    unlinked_marquees=()
-    unlinked_thumbnails=()
-
-    # Auxiliary and configuration files.
-    linked_auxiliary=()
-    unlinked_auxiliary=()
-
-    linked_config=()
-    unlinked_config=()
-
-    # Uncategorized files.
-    unknown_files=()
-}
-
-analyze_directory() {
-# Executes the complete directory analysis pipeline.
-    local system_dir="$1"
-
-    # Collect all files from the selected directory.
-    get_all_files unclassified_files
-
-    # Load and classify gamelist.xml entries.
-    load_xml_entries \
-        xml_unclassified_entries \
-        unclassified_images \
-        unclassified_videos \
-        unclassified_marquees \
-        unclassified_thumbnails
-
-    classify_xml_entries \
-        unclassified_files \
-        xml_unclassified_entries \
-        xml_valid_games \
-        xml_ghost_entries \
-        "$system_dir"
-
-    # Classify assets referenced by gamelist.xml.
-    local assets_names=( "images" "videos" "marquees" "thumbnails" )
-    local name=""
-
-    for name in "${assets_names[@]}"; do
-        local -n arr_ref="unclassified_${name}"
-
-        # Skip empty asset collections.
-        (( ${#arr_ref[@]} == 0 )) && continue
-
-        classify_xml_asset \
-            unclassified_files \
-            "unclassified_${name}" \
-            "valid_${name}" \
-            "unlinked_${name}" \
-            "ghost_${name}" \
-            xml_valid_games
-    done
-
-    # Identify and classify ROM files.
-    local -A possible_roms=()
-    local -A grouped_possible_roms=()
-    local -A grouped_library=()
-    local -A config_files=()
-
-    extract_possible_roms \
-        unclassified_files \
-        possible_roms \
-        "$system_dir"
-        
-    if (( ${#possible_roms[@]} > 0 )); then
-        group_files possible_roms grouped_possible_roms
-
-        classify_possible_roms \
-            grouped_possible_roms \
-            orphan_games \
-            config_files
-    fi
-
-    # Build the complete game library.
-    build_game_library \
-        xml_valid_games \
-        orphan_games \
-        game_library
-
-
-    # Classify all remaining files.
-    group_files game_library grouped_library
-
-    classify_remaining_files \
-        unclassified_files \
-        grouped_library \
-        linked_images linked_videos linked_marquees linked_thumbnails linked_auxiliary \
-        unlinked_images unlinked_videos unlinked_marquees unlinked_thumbnails unlinked_auxiliary \
-        linked_config unlinked_config unknown_files
-}
-
-print_summary_line() {
-# Prints a formatted summary line.
-    local label="$1"
-    local value="$2"
-    local color="${3:-}"
-
-    printf "  %-30s " "${label}:"
-
-    if [[ -n "$color" ]]; then
-        printf "%b%6d%b\n" "$color" "$value" "$ENDCOLOR"
-    else
-        printf "%6d\n" "$value"
-    fi
-}
-
-print_directory_summary() {
-# Displays a summary of the current directory analysis.
-    printf "\n${CYAN}============================================================${ENDCOLOR}\n"
-    printf "${CYAN}                 DIRECTORY ANALYSIS SUMMARY${ENDCOLOR}\n"
-    printf "${CYAN}============================================================${ENDCOLOR}\n"
-
-    printf "\n${YELLOW}────────────── Games ──────────────${ENDCOLOR}\n"
-
-    print_summary_line "Library Size"      "${#game_library[@]}"
-    print_summary_line "XML Games"         "${#xml_valid_games[@]}"
-
-    local color=""
-
-    color=""
-    (( ${#orphan_games[@]} > 0 )) && color="$YELLOW"
-    print_summary_line "Orphan Games" "${#orphan_games[@]}" "$color"
-
-    color=""
-    (( ${#xml_ghost_entries[@]} > 0 )) && color="$RED"
-    print_summary_line "Ghost XML Entries" "${#xml_ghost_entries[@]}" "$color"
-
-    printf "\n${YELLOW}────────────── Assets ─────────────${ENDCOLOR}\n"
-
-    print_summary_line "Linked Images"       "${#linked_images[@]}"
-    print_summary_line "Linked Videos"       "${#linked_videos[@]}"
-    print_summary_line "Linked Marquees"     "${#linked_marquees[@]}"
-    print_summary_line "Linked Thumbnails"   "${#linked_thumbnails[@]}"
-
-    print_summary_line "Unlinked Images"     "${#unlinked_images[@]}"
-    print_summary_line "Unlinked Videos"     "${#unlinked_videos[@]}"
-    print_summary_line "Unlinked Marquees"   "${#unlinked_marquees[@]}"
-    print_summary_line "Unlinked Thumbnails" "${#unlinked_thumbnails[@]}"
-
-    printf "\n${YELLOW}────────── Support Files ──────────${ENDCOLOR}\n"
-
-    print_summary_line "Linked Auxiliary"    "${#linked_auxiliary[@]}"
-    print_summary_line "Unlinked Auxiliary"  "${#unlinked_auxiliary[@]}"
-    print_summary_line "Linked Config"       "${#linked_config[@]}"
-    print_summary_line "Unlinked Config"     "${#unlinked_config[@]}"
-
-    printf "\n${YELLOW}────────────── Other ──────────────${ENDCOLOR}\n"
-
-    print_summary_line "Unknown Files" "${#unknown_files[@]}"
-
-    printf "\n${CYAN}============================================================${ENDCOLOR}\n"
-}
-
 get_all_files() {
+# Collect all files from the current directory.
+    # ============================================================================
+    # Every discovered file is initially considered unclassified. Later pipeline
+    # stages progressively move entries from this collection into their respective
+    # categories.
+    # ============================================================================
+
     shopt -s globstar nullglob
+
     local -n unclassified_files_ref="$1"
 
     local file=""
 
-    for file in **/*; do # glob expansion responsável por buscar recursivamente
-        if [[ -f "$file" ]];then # -f veririfca se de fato é um arquivo válido
+    # Iterate through every file under the current directory
+    for file in **/*; do
+        if [[ -f "$file" ]];then # Ignore directories and keep only regular files
             unclassified_files_ref["./$file"]=1
+            # The associative array is used as a set, where keys are file paths and values are placeholders.
+            # Presence of a key indicates that the file has not yet been classified.
         fi
     done
 
@@ -833,24 +587,6 @@ build_game_library() {
 
 }
 
-print_assoc_array() {
-# FUNÇÃO DE DEBUG - EXCLUIR DEPOIS
-    local title="$1"
-    local -n array_ref="$2"
-
-    printf "\n%s\n" "===== $title ====="
-
-    if [[ ${#array_ref[@]} -eq 0 ]]; then
-        printf "(empty)\n"
-        return
-    fi
-
-    local key
-    for key in "${!array_ref[@]}"; do
-        printf "%-50s -> %s\n" "$key" "${array_ref[$key]}"
-    done
-}
-
 classify_remaining_files() {
     local -n unclassified_files_ref="$1"
     local -n grouped_library_ref="$2"
@@ -1005,6 +741,263 @@ classify_remaining_files() {
     done
 
     
+}
+
+reset_analysis_state() {
+# Resets all analysis arrays before running the directory pipeline.
+    # File discovery.
+    unclassified_files=()
+    xml_unclassified_entries=()
+
+    # Game classification.
+    xml_valid_games=()
+    xml_ghost_entries=()
+    orphan_games=()
+    game_library=()
+
+    # XML asset classification.
+    unclassified_images=()
+    unclassified_videos=()
+    unclassified_marquees=()
+    unclassified_thumbnails=()
+
+    valid_images=()
+    valid_videos=()
+    valid_marquees=()
+    valid_thumbnails=()
+
+    ghost_images=()
+    ghost_videos=()
+    ghost_marquees=()
+    ghost_thumbnails=()
+
+    # Filesystem asset classification.
+    linked_images=()
+    linked_videos=()
+    linked_marquees=()
+    linked_thumbnails=()
+
+    unlinked_images=()
+    unlinked_videos=()
+    unlinked_marquees=()
+    unlinked_thumbnails=()
+
+    # Auxiliary and configuration files.
+    linked_auxiliary=()
+    unlinked_auxiliary=()
+
+    linked_config=()
+    unlinked_config=()
+
+    # Uncategorized files.
+    unknown_files=()
+}
+
+analyze_directory() {
+# Executes the complete directory analysis pipeline.
+    local system_dir="$1"
+
+    # Collect all files from the selected directory.
+    get_all_files unclassified_files
+
+    # Load and classify gamelist.xml entries.
+    load_xml_entries \
+        xml_unclassified_entries \
+        unclassified_images \
+        unclassified_videos \
+        unclassified_marquees \
+        unclassified_thumbnails
+
+    classify_xml_entries \
+        unclassified_files \
+        xml_unclassified_entries \
+        xml_valid_games \
+        xml_ghost_entries \
+        "$system_dir"
+
+    # Classify assets referenced by gamelist.xml.
+    local assets_names=( "images" "videos" "marquees" "thumbnails" )
+    local name=""
+
+    for name in "${assets_names[@]}"; do
+        local -n arr_ref="unclassified_${name}"
+
+        # Skip empty asset collections.
+        (( ${#arr_ref[@]} == 0 )) && continue
+
+        classify_xml_asset \
+            unclassified_files \
+            "unclassified_${name}" \
+            "valid_${name}" \
+            "unlinked_${name}" \
+            "ghost_${name}" \
+            xml_valid_games
+    done
+
+    # Identify and classify ROM files.
+    local -A possible_roms=()
+    local -A grouped_possible_roms=()
+    local -A grouped_library=()
+    local -A config_files=()
+
+    extract_possible_roms \
+        unclassified_files \
+        possible_roms \
+        "$system_dir"
+        
+    if (( ${#possible_roms[@]} > 0 )); then
+        group_files possible_roms grouped_possible_roms
+
+        classify_possible_roms \
+            grouped_possible_roms \
+            orphan_games \
+            config_files
+    fi
+
+    # Build the complete game library.
+    build_game_library \
+        xml_valid_games \
+        orphan_games \
+        game_library
+
+
+    # Classify all remaining files.
+    group_files game_library grouped_library
+
+    classify_remaining_files \
+        unclassified_files \
+        grouped_library \
+        linked_images linked_videos linked_marquees linked_thumbnails linked_auxiliary \
+        unlinked_images unlinked_videos unlinked_marquees unlinked_thumbnails unlinked_auxiliary \
+        linked_config unlinked_config unknown_files
+}
+
+print_summary_line() {
+# Prints a formatted summary line.
+    local label="$1"
+    local value="$2"
+    local color="${3:-}"
+
+    printf "  %-30s " "${label}:"
+
+    if [[ -n "$color" ]]; then
+        printf "%b%6d%b\n" "$color" "$value" "$ENDCOLOR"
+    else
+        printf "%6d\n" "$value"
+    fi
+}
+
+print_directory_summary() {
+# Displays a summary of the current directory analysis.
+    printf "\n${CYAN}============================================================${ENDCOLOR}\n"
+    printf "${CYAN}                 DIRECTORY ANALYSIS SUMMARY${ENDCOLOR}\n"
+    printf "${CYAN}============================================================${ENDCOLOR}\n"
+
+    printf "\n${YELLOW}────────────── Games ──────────────${ENDCOLOR}\n"
+
+    print_summary_line "Library Size"      "${#game_library[@]}"
+    print_summary_line "XML Games"         "${#xml_valid_games[@]}"
+
+    local color=""
+
+    color=""
+    (( ${#orphan_games[@]} > 0 )) && color="$YELLOW"
+    print_summary_line "Orphan Games" "${#orphan_games[@]}" "$color"
+
+    color=""
+    (( ${#xml_ghost_entries[@]} > 0 )) && color="$RED"
+    print_summary_line "Ghost XML Entries" "${#xml_ghost_entries[@]}" "$color"
+
+    printf "\n${YELLOW}────────────── Assets ─────────────${ENDCOLOR}\n"
+
+    print_summary_line "Linked Images"       "${#linked_images[@]}"
+    print_summary_line "Linked Videos"       "${#linked_videos[@]}"
+    print_summary_line "Linked Marquees"     "${#linked_marquees[@]}"
+    print_summary_line "Linked Thumbnails"   "${#linked_thumbnails[@]}"
+
+    print_summary_line "Unlinked Images"     "${#unlinked_images[@]}"
+    print_summary_line "Unlinked Videos"     "${#unlinked_videos[@]}"
+    print_summary_line "Unlinked Marquees"   "${#unlinked_marquees[@]}"
+    print_summary_line "Unlinked Thumbnails" "${#unlinked_thumbnails[@]}"
+
+    printf "\n${YELLOW}────────── Support Files ──────────${ENDCOLOR}\n"
+
+    print_summary_line "Linked Auxiliary"    "${#linked_auxiliary[@]}"
+    print_summary_line "Unlinked Auxiliary"  "${#unlinked_auxiliary[@]}"
+    print_summary_line "Linked Config"       "${#linked_config[@]}"
+    print_summary_line "Unlinked Config"     "${#unlinked_config[@]}"
+
+    printf "\n${YELLOW}────────────── Other ──────────────${ENDCOLOR}\n"
+
+    print_summary_line "Unknown Files" "${#unknown_files[@]}"
+
+    printf "\n${CYAN}============================================================${ENDCOLOR}\n"
+}
+
+count_by_dir() {
+# GAMBIARRA P/ DEEBUG - IMMPLEMENTAR CORRETAMENTE DEPOIS!!!
+    local -n dirs_with_games_ref="$1"
+
+    local dir=""
+    local -i total_games=0
+
+    for dir in "${dirs_with_games_ref[@]}"; do
+        cd -- "$dir" || exit 1
+
+        unclassified_files=()
+        xml_unclassified_entries=()
+        xml_valid_games=()
+        xml_ghost_entries=() 
+        orphan_games=()
+        game_library=()
+
+        local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
+        local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
+        local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
+        local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
+
+        get_all_files unclassified_files 
+        
+        load_xml_entries xml_unclassified_entries unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
+
+        classify_xml_entries unclassified_files xml_unclassified_entries xml_valid_games xml_ghost_entries "$dir"
+
+        local assets_names=( "images" "videos" "marquees" "thumbnails" )
+        local name=""
+        # certeza q tem forma de abstrair classify_xml_asset() p/ q lide com todos os assets de uma vez, mas por enquanto isso serve
+        for name in "${assets_names[@]}"; do
+            local -n arr_ref="unclassified_${name}"
+            # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
+            # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
+            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
+        done
+
+        local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
+        
+        extract_possible_roms unclassified_files possible_roms "$dir"
+        group_files possible_roms grouped_possible_roms
+        classify_possible_roms grouped_possible_roms orphan_games config_files
+        build_game_library xml_valid_games orphan_games game_library
+
+        total_games+="${#game_library[@]}"
+
+        printf "\n========== ${GREEN}%s${ENDCOLOR} ==========\n" "$dir"
+        printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
+        printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
+        printf "Entradas fantasma: %d\n" "${#xml_ghost_entries[@]}"
+        printf "${CYAN}Total de jogos   : %d${ENDCOLOR}\n" "${#game_library[@]}"
+        printf "${RED}Não classificados   : %d${ENDCOLOR}\n" "${#unclassified_files[@]}"
+        printf "===========================\n\n"
+        
+        # for file in "${!unclassified_files[@]}"; do
+        #     printf "File: ${PINK}%s${ENDCOLOR}\n" "$file"
+        
+        # done 
+    
+        cd "$OLDPWD" || exit 1
+    done
+
+    printf "Total de jogos   : %d\n" "$total_games"
 }
 
 sort_games() {
