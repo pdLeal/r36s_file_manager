@@ -484,41 +484,25 @@ group_files() {
     done
 }
 
-gather_group_info() {
-    local -n group_ref="$1"
-    local -n num_of_itens_ref="$2"
-    local -n extension_ref="$3"
-
-    local file=""
-    local ext=""
-
-    num_of_itens_ref="${#group_ref[@]}"
-
-    # printf "Qtd: ${GREEN}%s${ENDCOLOR}\n\n" "$num_of_itens_ref"
-
-
-    for file in "${group_ref[@]}"; do
-        # printf "Avaliando: ${BLUE}%s${ENDCOLOR}\n\n" "$file"
-        ext="${file##*.}"
-
-        extension_ref+=("$ext")        
-    
-    done
-
-}
-
 classify_possible_roms() {
-    local -n grouped_possible_roms_ref="$1"
+# Classify ROM candidates that were not referenced by the gamelist.xml.
+    # =========================================================================
+    # Files are first grouped by their base filename. Each group is then
+    # classified either as a configuration file or as an orphan game.
+    # =========================================================================
+
+    local -n possible_roms_ref="$1"
     local -n orphan_games_ref="$2"
-    local -n config_files_ref="$3"
+    local -n unlinked_configs_ref="$3"
 
-    local basename=""
+    local -A grouped_possible_roms=()
+
+    local group_key=""
     local path=""
+    local file=""
     local group=()
-    local num_of_itens=0
-    local extensions=()
     local extension=""
-
+    local display_name=""
 
     declare -A blacklist=(
         [konamigx]=1
@@ -531,47 +515,40 @@ classify_possible_roms() {
         [Scan_for_nedirs_with_games_ref]=1
     )
 
-    for basename in "${!grouped_possible_roms_ref[@]}"; do
-        # printf "Processando Grupo: ${CYAN}%s${ENDCOLOR}\n" "$basename"
+    # Group ROM candidates by their base filename.
+    group_files possible_roms_ref grouped_possible_roms
 
-        if [[ -n "${blacklist[$basename]:-}" ]]; then
-            path="${grouped_possible_roms_ref["$basename"]:-}"
+    for group_key in "${!grouped_possible_roms[@]}"; do
 
-            # printf "${BLUE}%s${ENDCOLOR} é config\nNome: ${CYAN}%s${ENDCOLOR}\n\n" "$path" "$basename"
-            config_files_ref["$path"]="$basename"
+        if [[ -n "${blacklist[$group_key]:-}" ]]; then
+            path="${grouped_possible_roms[$group_key]}"
+            unlinked_configs_ref["$path"]="$group_key"
 
         else
-        # se chegou aqui é orfão. tudo dentro de grouped_possible_roms foi extraído com base no q o ES
-        # mostra ao usuário como jogo. a lógica abaixo serve apenas p/ poder marcar (acrescentando a extensão) possíveis 
-        # duplicatas/estados diferentes (zipado x ñ zipado) p/ informar o usuário. se ele quiser
-        # ele q investigue mais sobre!
-            extensions=()
-            
-            IFS='|' read -ra group <<< "${grouped_possible_roms_ref[$basename]}"
+            IFS='|' read -ra group <<< "${grouped_possible_roms[$group_key]}"
 
-            gather_group_info group num_of_itens extensions
-
-            if (( "$num_of_itens" == 1 )); then
-                path="${grouped_possible_roms_ref["$basename"]:-}"
-
-                orphan_games_ref["$path"]="$basename"
+            if (( ${#group[@]} == 1 )); then
+                path="${group[0]}"
+                orphan_games_ref["$path"]="$group_key"
 
             else
-                for extension in "${extensions[@]}"; do
-                    path="$basename.$extension"
-                    orphan_games_ref["$path"]="$path"
-                    # o valor aqui é o path como forma de indicar ao usuário possível duplicidade
+                # Multiple files in the same group likely represent different
+                # versions or formats of the same game. Append the extension to
+                # distinguish them in the output.
+                for file in "${group[@]}"; do
+                    path="$file"
+                    extension="${file##*.}"
+                    display_name="$group_key.$extension"
+
+                    orphan_games_ref["$path"]="$display_name"
                 done
-            
             fi
-
-           
         fi
-
     done
-    # já foram tds classificados, desnecessário manter na memória
-    unset 'grouped_possible_roms_ref'
 
+    # Temporary grouping structures are no longer needed and all the files were classified.
+    unset 'grouped_possible_roms'
+    unset 'possible_roms_ref'
 }
 
 build_game_library() {
@@ -599,7 +576,7 @@ classify_remaining_files() {
 
     local -n linked_images_ref="$3" linked_videos_ref="$4" linked_marquees_ref="$5" linked_thumbnails_ref="$6" linked_auxiliary_ref="$7"
     local -n unlinked_images_ref="$8" unlinked_videos_ref="$9" unlinked_marquees_ref="${10}" unlinked_thumbnails_ref="${11}" unlinked_auxiliary_ref="${12}"
-    local -n linked_config_ref="${13}" unlinked_config_ref="${14}" unknown_files_ref="${15}"
+    local -n linked_configs_ref="${13}" unlinked_configs_ref="${14}" unknown_files_ref="${15}"
 
     local file=""
     local path=""
@@ -662,7 +639,7 @@ classify_remaining_files() {
                 # representam dados do usuário.
                 # ========================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    linked_config_ref["$path"]="$file"
+                    linked_configs_ref["$path"]="$file"
 
                 ;;
 
@@ -720,7 +697,7 @@ classify_remaining_files() {
                 # Configuration Files
                 # ========================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    unlinked_config_ref["$path"]="$file"
+                    unlinked_configs_ref["$path"]="$file"
 
                 ;;
 
@@ -792,8 +769,8 @@ reset_analysis_state() {
     linked_auxiliary=()
     unlinked_auxiliary=()
 
-    linked_config=()
-    unlinked_config=()
+    linked_configs=()
+    unlinked_configs=()
 
     # Uncategorized files.
     unknown_files=()
@@ -842,7 +819,6 @@ analyze_directory() {
 
     # Identify and classify ROM files.
     local -A possible_roms=()
-    local -A grouped_possible_roms=()
     local -A grouped_library=()
     local -A config_files=()
 
@@ -852,12 +828,10 @@ analyze_directory() {
         "$system_dir"
         
     if (( ${#possible_roms[@]} > 0 )); then
-        group_files possible_roms grouped_possible_roms
-
         classify_possible_roms \
-            grouped_possible_roms \
+            possible_roms \
             orphan_games \
-            config_files
+            unlinked_configs
     fi
 
     # Build the complete game library.
@@ -875,7 +849,7 @@ analyze_directory() {
         grouped_library \
         linked_images linked_videos linked_marquees linked_thumbnails linked_auxiliary \
         unlinked_images unlinked_videos unlinked_marquees unlinked_thumbnails unlinked_auxiliary \
-        linked_config unlinked_config unknown_files
+        linked_configs unlinked_configs unknown_files
 }
 
 print_summary_line() {
@@ -938,8 +912,8 @@ print_directory_summary() {
 
     print_summary_line "Linked Auxiliary"    "${#linked_auxiliary[@]}"
     print_summary_line "Unlinked Auxiliary"  "${#unlinked_auxiliary[@]}"
-    print_summary_line "Linked Config"       "${#linked_config[@]}"
-    print_summary_line "Unlinked Config"     "${#unlinked_config[@]}"
+    print_summary_line "Linked Config"       "${#linked_configs[@]}"
+    print_summary_line "Unlinked Config"     "${#unlinked_configs[@]}"
 
     printf "\n${YELLOW}────────────── Other ──────────────${ENDCOLOR}\n"
 
@@ -1537,7 +1511,7 @@ main_menu() {
     local -A linked_thumbnails=()
 
     local -A linked_auxiliary=()
-    local -A linked_config=()
+    local -A linked_configs=()
 
     # --------------------------------------------------------------------------
     # FILES NOT ASSOCIATED WITH ANY GAME
@@ -1548,7 +1522,7 @@ main_menu() {
     local -A unlinked_thumbnails=()
 
     local -A unlinked_auxiliary=()
-    local -A unlinked_config=()
+    local -A unlinked_configs=()
 
     # --------------------------------------------------------------------------
     # UNKNOWN FILES
