@@ -150,7 +150,7 @@ load_systems_info() {
         sudo xmlstarlet sel -t \
             -m "//system" \
             -v "path" -o "|" \
-            -v "name" -o "|" \
+            -v "fullname" -o "|" \
             -v "extension" \
             -n - |
         sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
@@ -296,7 +296,8 @@ get_all_files() {
 }
 
 load_xml_entries() {
-    # Verifica cada entrada do gamelist.xml no diretório atual e armazena os campos path/name
+# Loads gamelist.xml metadata and stores exactly as they appear, preserving the relative
+# path format (e.g. "./game.zip") used throughout the pipeline.
     local -n xml_unclassified_entries_ref="$1"
     local -n unclassified_images_ref="$2"
     local -n unclassified_videos_ref="$3"
@@ -311,13 +312,11 @@ load_xml_entries() {
     local thumbnail=""
 
     while IFS='|' read -r path name image video marquee thumbnail; do
-        # a tag <image /> aparece vez ou outra e quebra o parse do xmlstarlet,
-        # oq gera uma iteração do loop com todos os valores vazios
-        # poderia só encerraar a iteração, mas podem haver caso em q
-        # a tag path é vazia, mas outras não
+        # xmlstarlet may emit rows containing empty fields when optional XML elements
+        # are missing. So, ignore entries without a valid ROM path.
         [[ -n "$path" ]] && xml_unclassified_entries_ref["$path"]="$name"
         
-        # as vezes a tag ñ existe ou está vazia, nesses caso ñ é preciso perder tempo armazenando ""
+        # Store only existing asset paths to avoid unnecessary empty entries.
         [[ -n "$image" ]] && unclassified_images_ref["$path"]="$image"
         [[ -n "$video" ]] && unclassified_videos_ref["$path"]="$video"
         [[ -n "$marquee" ]] && unclassified_marquees_ref["$path"]="$marquee"
@@ -327,10 +326,16 @@ load_xml_entries() {
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -o "|" -v "image" \
                 -o "|" -v "video" -o "|" -v "marquee" -o "|" -v "thumbnail" -n ./gamelist.xml | \
                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-        # Se ñ tratar os &...; o xmlstarlet retorna como $amp; e ñ bate com o nome do arquivo
+        # Decode XML entities (e.g. $amp) so asset paths match the actual filesystem names.
 }
 
 classify_xml_entries() {
+# Match XML entries against the discovered files.
+    # =========================================================================
+    # Entries with an existing file and a valid extension are classified as
+    # valid games. Otherwise, they are treated as ghost entries.
+    # =========================================================================
+
     local -n unclassified_files_ref="$1"
     local -n xml_unclassified_entries_ref="$2"
     local -n xml_valid_games_ref="$3"
@@ -339,43 +344,48 @@ classify_xml_entries() {
 
     local path=""
     local extension=""
-    local -A seen=()
-    local basename=""
+    local game_name=""
+    local -A processed_game_names=()
 
+    # Normalize the directory name to match VALID_SYSTEM_EXTENSIONS keys.
     system="${system%%/*}"
 
     for path in "${!xml_unclassified_entries_ref[@]}"; do
-    # Verifica a existência do arquivo e se possuí extensão válida - remove da lista de ñ classificados se +
         extension="${path##*.}"
 
-        if [[ -n "${unclassified_files_ref["$path"]:-}" ]] && [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$extension"]:-}" ]]; then
-            basename="${xml_unclassified_entries_ref["$path"]}"
+        if [[ -n "${unclassified_files_ref["$path"]:-}" ]] &&
+           [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$extension"]:-}" ]]; then
 
-            # pode ocorrer de msm estando no xml, dois jogos possuirem o msm basename e como a seleção do jogo é feita pelo nome
-            # acrescentar a extensão nesse caso ajuda evitar bugs e indicar visualmente ao usuário a duplicata de nomes
-            if [[ -z "${seen["$basename"]:-}" ]]; then
-                seen["$basename"]=1
-                xml_valid_games_ref["$path"]="$basename"
-                
+            game_name="${xml_unclassified_entries_ref["$path"]}"
+
+            # When multiple ROMs share the same display name, append the file
+            # extension to keep their names unique and expose the duplicate.
+            if [[ -z "${processed_game_names["$game_name"]:-}" ]]; then
+                xml_valid_games_ref["$path"]="$game_name"
+                processed_game_names["$game_name"]=1
+
             else
-                xml_valid_games_ref["$path"]="$basename.$extension"
-                # printf "Path: ${PINK}%s${ENDCOLOR} | Value: ${CYAN}%s${ENDCOLOR}\n" "$path" "$basename"
+                xml_valid_games_ref["$path"]="$game_name.$extension"
 
             fi
+
             unset 'unclassified_files_ref[$path]'
 
-
-        
         else
-            xml_ghost_entries_ref["$path"]="${xml_unclassified_entries_ref["$path"]}"
-        
+            xml_ghost_entries_ref["$path"]="$game_name"
         fi
+
         unset 'xml_unclassified_entries_ref[$path]'
     done
-
 }
 
 classify_xml_asset() {
+# Classify assets referenced by the gamelist.xml.
+    # =========================================================================
+    # Existing assets are classified according to the validity of their
+    # associated game entry. Missing assets are treated as ghost assets.
+    # =========================================================================
+
     local -n unclassified_files_ref="$1"
     local -n unclassified_assets_ref="$2"
     local -n valid_assets_ref="$3"
@@ -384,96 +394,94 @@ classify_xml_asset() {
     local -n xml_valid_games_ref="$6"
 
     local path=""
+    local asset_path=""
 
-     for path in "${!unclassified_assets_ref[@]}"; do
-        local asset="${unclassified_assets_ref[$path]:-}"
-            
-        if [[ -n "${unclassified_files_ref["$asset"]:-}" ]]; then
-        # se o arquivo existe, preciso verificar se é de um jogo válido ou um arquivo orfão
+    for path in "${!unclassified_assets_ref[@]}"; do
+        asset_path="${unclassified_assets_ref[$path]}"
+
+        if [[ -n "${unclassified_files_ref["$asset_path"]:-}" ]]; then
+
             if [[ -n "${xml_valid_games_ref["$path"]:-}" ]]; then
-                valid_assets_ref["$path"]="$asset"
+                valid_assets_ref["$path"]="$asset_path"
 
             else
-                unlinked_assets_ref["$path"]="$asset"
+                unlinked_assets_ref["$path"]="$asset_path"
 
             fi
-            # de um jeito ou de outro, o arquivo já foi classificado
-            unset 'unclassified_files_ref[$asset]'
+
+            # The asset file has now been classified.
+            unset 'unclassified_files_ref[$asset_path]'
 
         else
-            # se ñ é um arquivo existente, então é uma entrada/asset fantasma
-            ghost_assets_ref["$path"]="$asset"
-
+            # The referenced asset does not exist on disk.
+            ghost_assets_ref["$path"]="$asset_path"
         fi
-        # ao chegar aqui o asset já foi classificado e deve ser descartado dessa lista 
-        unset 'unclassified_assets_ref[$path]'
-     
-     done
 
+        # Remove the processed XML reference.
+        unset 'unclassified_assets_ref[$path]'
+    done
 }
 
 extract_possible_roms() {
+# Identify ROM candidates among the remaining unclassified files.
+    # =========================================================================
+    # Files are selected solely by their extension. Additional validation is
+    # performed in later pipeline stages.
+    # =========================================================================
+
     local -n unclassified_files_ref="$1"
     local -n possible_roms_ref="$2"
     local system="$3"
 
-    local file=""
+    local path=""
     local extension=""
-    
+
+    # Normalize the directory name to match VALID_SYSTEM_EXTENSIONS keys.
     system="${system%%/*}"
 
-    # for valid in "${!VALID_SYSTEM_EXTENSIONS[@]}"; do
-    #     printf "Valid: ${PINK}%s${ENDCOLOR}\nValue: ${RED}%s${ENDCOLOR}\n\n" "$valid" "${VALID_SYSTEM_EXTENSIONS["$valid"]}"
-    # done | sort  -f
+    for path in "${!unclassified_files_ref[@]}"; do
+        extension="${path##*.}"
 
-    for file in "${!unclassified_files_ref[@]}"; do
-        extension="${file##*.}"
-
-        # verifica se o arquivo possui uma extensão válida p/ o sistema/console escolhido
         if [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$extension"]:-}" ]]; then
-            # printf "Sys: ${PINK}%s${ENDCOLOR}\nExt: ${RED}%s${ENDCOLOR}\n\n" "$system" "$extension"
-            possible_roms_ref["$file"]=1
-            unset 'unclassified_files_ref[$file]'
-        
+            possible_roms_ref["$path"]=1
+            unset 'unclassified_files_ref[$path]'
         fi
-
     done
 }
 
 group_files() {
-    # Nesse ponto, podem existir arquivos como "Zombie Nation.nes" e "Zombie Nation.zip" ou "Resident Evil.cue" e "Resident Evil.bin",
-    # então p/ classificar corretamente é preciso determinar oq é arquivo principal, oq é complementar, se é o msm jogo,
-    # mas representado de outra forma... achei melhor agrupar os arquivos simalares primeiro p/ só depois classificar
+# Group files sharing the same base filename.
+    # =========================================================================
+    # Some games are distributed as multiple files or in different formats.
+    # Grouping related files allows later pipeline stages to determine which
+    # files belong to the same game.
+    #
+    # NOTE:
+    # This is the only stage where the pipeline temporarily switches from using
+    # ROM paths as keys to using grouping keys. Each key represents a group of
+    # related files, while the value stores the corresponding file paths.
+    # =========================================================================
+
     local -n files_to_group_ref="$1"
-    local -n grouped_by_basename_ref="$2"
+    local -n grouped_files_ref="$2"
 
     local file=""
-    local extension=""
-    local base=""
+    local group_key=""
 
     for file in "${!files_to_group_ref[@]}"; do
-        # printf "Possível rom: ${PINK}%s${ENDCOLOR}\n" "$file"
-        extension="${file##*.}"
-        base="${file##*/}"
-        base="${base%.*}"
-        [[ "$base" == *.A1 ]]  && base="${base%.*}" # Alguns jogos (dreamcast) tem extensão dupla A1.bin e ñ dá pra só tirar td até o ponto na linha acima pq tem jogos com . no nome
-        # poderia já classificar como arquivo complementar, mas pelo bem da consistência, não o farei!
+        group_key="${file##*/}"
+        group_key="${group_key%.*}"
 
-        if [[ -z "${grouped_by_basename_ref["$base"]:-}" ]]; then
-            grouped_by_basename_ref["$base"]="$file"
+        # Preserve multi-part suffixes such as ".A1.bin" by removing only the
+        # final extension before applying this special case.
+        [[ "$group_key" == *.A1 ]] && group_key="${group_key%.*}"
 
+        if [[ -z "${grouped_files_ref["$group_key"]:-}" ]]; then
+            grouped_files_ref["$group_key"]="$file"
         else
-            # printf "Já visto: ${YELLOW}%s${ENDCOLOR}\n" "$base"
-            grouped_by_basename_ref["$base"]+="|$file"
+            grouped_files_ref["$group_key"]+="|$file"
         fi
-    
     done
-
-    # for base in "${!grouped_by_basename_ref[@]}"; do
-    #     printf "Basename: ${YELLOW}%s${ENDCOLOR}\nValue: ${BLUE}%s${ENDCOLOR}\n\n" "$base"  "${grouped_by_basename_ref["$base"]}"  
-    
-    # done
-
 }
 
 gather_group_info() {
@@ -546,13 +554,11 @@ classify_possible_roms() {
             if (( "$num_of_itens" == 1 )); then
                 path="${grouped_possible_roms_ref["$basename"]:-}"
 
-                # printf "${GREEN}%s${ENDCOLOR} é orfão\nNome: ${YELLOW}%s${ENDCOLOR}\n\n" "$path" "$basename"
                 orphan_games_ref["$path"]="$basename"
 
             else
                 for extension in "${extensions[@]}"; do
                     path="$basename.$extension"
-                    # printf "Path: ${GREEN}%s${ENDCOLOR}\nNome: ${YELLOW}%s${ENDCOLOR}\nExt: ${BLUE}%s${ENDCOLOR}\n\n" "$path" "$basename" "$extension"
                     orphan_games_ref["$path"]="$path"
                     # o valor aqui é o path como forma de indicar ao usuário possível duplicidade
                 done
@@ -889,9 +895,12 @@ print_summary_line() {
 
 print_directory_summary() {
 # Displays a summary of the current directory analysis.
-    printf "\n${CYAN}============================================================${ENDCOLOR}\n"
-    printf "${CYAN}                 DIRECTORY ANALYSIS SUMMARY${ENDCOLOR}\n"
-    printf "${CYAN}============================================================${ENDCOLOR}\n"
+    local system_dir="$1"
+    system_dir="${system_dir%/}"
+
+    printf "\n${PINK}============================================================${ENDCOLOR}\n"
+    printf "${PINK}                 %s SUMMARY${ENDCOLOR}\n" "${SYSTEM_NAMES["$system_dir"]:-}"
+    printf "${PINK}============================================================${ENDCOLOR}\n"
 
     printf "\n${YELLOW}────────────── Games ──────────────${ENDCOLOR}\n"
 
@@ -910,11 +919,16 @@ print_directory_summary() {
 
     printf "\n${YELLOW}────────────── Assets ─────────────${ENDCOLOR}\n"
 
+    print_summary_line "Valid Images"       "${#valid_images[@]}"
+    print_summary_line "Valid Videos"       "${#valid_videos[@]}"
+    print_summary_line "Valid Marquees"     "${#valid_marquees[@]}"
+    print_summary_line "Valid Thumbnails"   "${#valid_thumbnails[@]}"
+    echo ""
     print_summary_line "Linked Images"       "${#linked_images[@]}"
     print_summary_line "Linked Videos"       "${#linked_videos[@]}"
     print_summary_line "Linked Marquees"     "${#linked_marquees[@]}"
     print_summary_line "Linked Thumbnails"   "${#linked_thumbnails[@]}"
-
+    echo ""
     print_summary_line "Unlinked Images"     "${#unlinked_images[@]}"
     print_summary_line "Unlinked Videos"     "${#unlinked_videos[@]}"
     print_summary_line "Unlinked Marquees"   "${#unlinked_marquees[@]}"
@@ -931,7 +945,7 @@ print_directory_summary() {
 
     print_summary_line "Unknown Files" "${#unknown_files[@]}"
 
-    printf "\n${CYAN}============================================================${ENDCOLOR}\n"
+    printf "\n${PINK}============================================================${ENDCOLOR}\n"
 }
 
 count_by_dir() {
@@ -1652,7 +1666,7 @@ main_menu() {
 
                 analyze_directory "$user_answer"
 
-                print_directory_summary
+                print_directory_summary "$user_answer"
                 
                 ask_user "" user_answer \
                     "Browse Games" \
