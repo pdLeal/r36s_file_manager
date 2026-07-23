@@ -1674,14 +1674,14 @@ main_menu() {
                         selected_system_dir="$user_answer"
                         printf "Entering directory ${GREEN}%s${ENDCOLOR}\n" "$selected_system_dir"
                         cd -- "$selected_system_dir" || exit 1
-                        STATE="DIR_ACTION"
+                        STATE="SYSTEM_DASHBOARD"
                     ;;
                 esac
 
                 PREV_STATE="CONSOLE_MENU"
             ;;
 
-            "DIR_ACTION")
+            "SYSTEM_DASHBOARD")
             # Analyzes the selected directory, builds the game library,
             # and presents the available management options.
 
@@ -1698,28 +1698,30 @@ main_menu() {
                 fi
 
                 print_directory_summary "$selected_system_dir"
-                
-                # TODO: adicionar opções p/ visualizar asset e outros arquivos:
-                    # ver tds os jogos
-                    # ver xml jogos
-                    # ver orphan jogos
-                    # ver  ghost games
-                    # ir p/ menu de assets
-                    # ir p/ menus de aux e config files
 
-                ask_user "" user_answer \
-                    "Browse Games" \
-                    "Edit gamelist.xml" \
+                ask_user "What you want to see?" user_answer \
+                    "Games" \
+                    "Assets" \
+                    "Support Files" \
+                    "Unknows" \
                     "Back" \
-                    "Exit"
+                    "Exit"    
 
                 case "$user_answer" in
-                    "Browse Games")
+                    "Games")
                         STATE="GAMES_MENU"
                     ;;
 
-                    "Edit gamelist.xml")
-                        STATE="GAMELIST_MENU"
+                    "Assets")
+                        STATE="ASSETS_MENU"
+                    ;;
+
+                    "Support Files")
+                        STATE="SUPPORT_MENU"
+                    ;;
+
+                    "Unknows")
+                        STATE="UNKNOWS_MENU"
                     ;;
 
                     "Back")
