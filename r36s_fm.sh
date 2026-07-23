@@ -1590,7 +1590,6 @@ main_menu() {
     printf "Evaluating Directory:${GREEN} %s${ENDCOLOR}\n" "${PWD##*/}"
     printf "${YELLOW}%s Directories Found${ENDCOLOR}\n" "${#dirs_list[@]}"
 
-
     printf "Loading systems data...\n"
     load_systems_info
     load_aux_ext_file
