@@ -107,6 +107,8 @@
 # ==============================================================================
 
 # shellcheck disable=SC2059
+## shellcheck disable=SC2034
+
 set -u
 
 # ==============================================================================
@@ -997,7 +999,7 @@ count_by_dir() {
             local -n arr_ref="unclassified_${name}"
             # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
             # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
-            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files unclassified_${name} valid_${name} orphan_${name} ghost_${name} xml_valid_games
+            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files "unclassified_${name}" "valid_${name}" "orphan_${name}" "ghost_${name}" xml_valid_games
         done
 
         local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
@@ -1490,16 +1492,19 @@ find_games() {
  
 }
 
-# Initial aplcation state
+# Initial application state
 STATE="LOOK"
+PREV_STATE=""
 
 main_menu() {
     # --------------------------------------------------------------------------
     # USER INTERACTION
     # --------------------------------------------------------------------------
     local user_answer=""
+    local selected_system_dir=""
     local selected_game_name=""
     local selected_game_path=""
+
     local using_find=0 # Indicates whether execution originated from the "Find Games" workflow.
 
     # --------------------------------------------------------------------------
@@ -1632,6 +1637,7 @@ main_menu() {
 
                     "Overall Report")
                     # Generate an overview of all detected systems.
+                    # TODO: IMPLEMENTAR CORRETAMENTE DEPOIS
                         count_by_dir dirs_with_games
 
                         STATE="LOOK"
@@ -1645,6 +1651,7 @@ main_menu() {
 
                 esac
 
+                PREV_STATE="LOOK"
                 STATE="CONSOLE_MENU"
             ;;
 
@@ -1664,11 +1671,14 @@ main_menu() {
                     ;;
 
                     *)
-                        printf "Entering directory ${GREEN}%s${ENDCOLOR}\n" "$user_answer"
-                        cd -- "$user_answer" || exit 1
+                        selected_system_dir="$user_answer"
+                        printf "Entering directory ${GREEN}%s${ENDCOLOR}\n" "$selected_system_dir"
+                        cd -- "$selected_system_dir" || exit 1
                         STATE="DIR_ACTION"
                     ;;
                 esac
+
+                PREV_STATE="CONSOLE_MENU"
             ;;
 
             "DIR_ACTION")
@@ -1680,11 +1690,14 @@ main_menu() {
                     # high-level functions operate directly on that state to avoid forwarding
                     # dozens of arrays through the call chain. Helper functions continue to
                     # receive explicit parameters, preserving their modularity and reusability.
-                reset_analysis_state
+                if [[ "$PREV_STATE" == "CONSOLE_MENU" ]]; then
+                    reset_analysis_state
 
-                analyze_directory "$user_answer"
+                    analyze_directory "$selected_system_dir"
+                
+                fi
 
-                print_directory_summary "$user_answer"
+                print_directory_summary "$selected_system_dir"
                 
                 ask_user "" user_answer \
                     "Browse Games" \
@@ -1712,6 +1725,8 @@ main_menu() {
                         exit 0
                     ;;
                 esac
+
+                PREV_STATE="DIR_ACTION"
             ;;
 
             "GAMES_MENU")
@@ -1752,6 +1767,8 @@ main_menu() {
                     ;;
 
                 esac
+
+                PREV_STATE="GAMES_MENU"
             ;;
 
             "GAME_ACTION")
@@ -1793,6 +1810,8 @@ main_menu() {
                             ;;
 
                     esac
+
+                PREV_STATE="GAME_ACTION"
             ;;
 
             "GAMELIST_MENU")
@@ -1819,6 +1838,8 @@ main_menu() {
                         ;;
 
                 esac
+
+                PREV_STATE="GAMELIST_MENU"
             ;;
 
             "FIND_GAME")
@@ -1830,7 +1851,9 @@ main_menu() {
                     printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
                     STATE="GAMES_MENU"    
 
-                fi    
+                fi   
+
+                PREV_STATE="FIND_GAME" 
             ;;
 
         esac
