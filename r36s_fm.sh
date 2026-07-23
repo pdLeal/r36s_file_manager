@@ -29,31 +29,37 @@
     #
     # unclassified
     #   An item that exists either in the filesystem or in gamelist.xml but has
-    #   not yet been classified by the pipeline.
+    #   not yet been processed by the classification pipeline.
     #
     # valid
-    #   An item that exists in the filesystem and has been successfully validated
-    #   against gamelist.xml.
-    # 
-    #   • Games are valid when they have a matching XML entry.
-    #   • Assets are valid when they have a matching XML entry and belong to a
-    #     valid game.
+    #   An item that exists in the filesystem and is correctly associated with a
+    #   valid game entry in gamelist.xml.
+    #
+    #   • Games have a matching XML entry.
+    #   • Assets belong to a valid game entry.
     #
     # orphan
-    #   A game that exists in the filesystem but has no corresponding entry in
-    #   gamelist.xml.
+    #   An item that exists in the filesystem but has no valid parent.
+    #
+    #   • Games have no corresponding XML entry.
+    #   • Assets belong to a ghost game entry.
     #
     # linked
-    #   An asset or auxiliary file that has no XML entry of its own but was
-    #   successfully associated with a known game (valid or orphan).
+    #   An item without its own XML entry that was successfully associated with a
+    #   known game.
+    #
+    #   • Applies to auxiliary files and filesystem-only assets.
+    #   • The associated game may be either valid or orphan.
     #
     # unlinked
-    #   An asset or auxiliary file that could not be associated with any known
-    #   game.
+    #   An item without its own XML entry that could not be associated with any
+    #   known game.
     #
     # ghost
-    #   A gamelist.xml entry that does not have a corresponding game in the
-    #   filesystem.
+    #   An item referenced by gamelist.xml that does not exist in the filesystem.
+    #
+    #   • Games are ghost when the ROM is missing.
+    #   • Assets are ghost when the referenced asset file is missing.
     #
     #
     # CLASSIFICATION MODEL
@@ -64,18 +70,40 @@
     #                                    │
     #                             Classification
     #                                    │
-    #            ┌───────────────┬───────────────┬───────────────┐
-    #            │               │               │               │
-    #          valid          orphan          ghost       unclassified
-    #            │               │
-    #            └───────┬───────┘
-    #                    │
-    #              Associated files
-    #                    │
-    #             ┌──────┴──────┐
-    #             │             │
-    #          linked      unlinked
+    #                     ┌──────────────┬──────────────┐
+    #                     │              │              │
+    #                   valid         orphan         ghost
+    #                     │              │              │
+    #                     │              │              └── Referenced by XML but
+    #                     │              │                  missing from filesystem.
+    #                     │              │
+    #                     │              └── Exists in the filesystem but has
+    #                     │                  no valid parent game.
+    #                     │
+    #                     └── Exists in the filesystem and belongs
+    #                         to a valid game entry.
     #
+    #   -----------------------------------------------------------------
+    #
+    #              Files without their own XML entry
+    #                           │
+    #                    Association
+    #                           │
+    #                  ┌────────┴────────┐
+    #                  │                 │
+    #               linked          unlinked
+    #                  │                 │
+    #                  │                 └── Could not be associated
+    #                  │                     with any known game.
+    #                  │
+    #                  └── Successfully associated with a
+    #                      known game (valid or orphan).
+    #
+    #   -----------------------------------------------------------------
+    #
+    #   unclassified
+    #       Items discovered in either source that have not yet been
+    #       processed by the classification pipeline.
 # ==============================================================================
 
 # shellcheck disable=SC2059
@@ -304,78 +332,76 @@ load_xml_entries() {
     local -n unclassified_marquees_ref="$4"
     local -n unclassified_thumbnails_ref="$5"
 
-    local path=""
-    local name=""
-    local image=""
-    local video=""
-    local marquee=""
-    local thumbnail=""
+    local game_path=""
+    local game_name=""
 
-    while IFS='|' read -r path name image video marquee thumbnail; do
+    local image_path=""
+    local video_path=""
+    local marquee_path=""
+    local thumbnail_path=""
+
+    while IFS='|' read -r game_path game_name image_path video_path marquee_path thumbnail_path; do
         # xmlstarlet may emit rows containing empty fields when optional XML elements
-        # are missing. So, ignore entries without a valid ROM path.
-        [[ -n "$path" ]] && xml_unclassified_entries_ref["$path"]="$name"
+        # are missing. So, ignore entries without a valid ROM game_path
+        [[ -n "$game_path" ]] && xml_unclassified_entries_ref["$game_path"]="$game_name"
         
         # Store only existing asset paths to avoid unnecessary empty entries.
-        [[ -n "$image" ]] && unclassified_images_ref["$path"]="$image"
-        [[ -n "$video" ]] && unclassified_videos_ref["$path"]="$video"
-        [[ -n "$marquee" ]] && unclassified_marquees_ref["$path"]="$marquee"
-        [[ -n "$thumbnail" ]] && unclassified_thumbnails_ref["$path"]="$thumbnail"
+        [[ -n "$image_path" ]] && unclassified_images_ref["$game_path"]="$image_path"
+        [[ -n "$video_path" ]] && unclassified_videos_ref["$game_path"]="$video_path"
+        [[ -n "$marquee_path" ]] && unclassified_marquees_ref["$game_path"]="$marquee_path"
+        [[ -n "$thumbnail_path" ]] && unclassified_thumbnails_ref["$game_path"]="$thumbnail_path"
         
 
     done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -o "|" -v "image" \
                 -o "|" -v "video" -o "|" -v "marquee" -o "|" -v "thumbnail" -n ./gamelist.xml | \
                 sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-        # Decode XML entities (e.g. $amp) so asset paths match the actual filesystem names.
+        # Decode XML entities (e.g. $amp) so asset game_paths match the actual filesystem names.
 }
 
 classify_xml_entries() {
 # Match XML entries against the discovered files.
-    # =========================================================================
-    # Entries with an existing file and a valid extension are classified as
-    # valid games. Otherwise, they are treated as ghost entries.
-    # =========================================================================
-
     local -n unclassified_files_ref="$1"
     local -n xml_unclassified_entries_ref="$2"
     local -n xml_valid_games_ref="$3"
     local -n xml_ghost_entries_ref="$4"
     local system="$5"
 
-    local path=""
-    local extension=""
+    local game_path=""
     local game_name=""
+    local game_extension=""
+
     local -A processed_game_names=()
 
     # Normalize the directory name to match VALID_SYSTEM_EXTENSIONS keys.
     system="${system%%/*}"
 
-    for path in "${!xml_unclassified_entries_ref[@]}"; do
-        extension="${path##*.}"
+    for game_path in "${!xml_unclassified_entries_ref[@]}"; do
+        game_extension="${game_path##*.}"
 
-        if [[ -n "${unclassified_files_ref["$path"]:-}" ]] &&
-           [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$extension"]:-}" ]]; then
+        if [[ -n "${unclassified_files_ref["$game_path"]:-}" ]] &&
+           [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$game_extension"]:-}" ]]; then
 
-            game_name="${xml_unclassified_entries_ref["$path"]}"
+            game_name="${xml_unclassified_entries_ref["$game_path"]}"
 
-            # When multiple ROMs share the same display name, append the file
-            # extension to keep their names unique and expose the duplicate.
             if [[ -z "${processed_game_names["$game_name"]:-}" ]]; then
-                xml_valid_games_ref["$path"]="$game_name"
+            # Entries with an existing file and a valid extension are classified as valid games.
+                xml_valid_games_ref["$game_path"]="$game_name"
                 processed_game_names["$game_name"]=1
 
             else
-                xml_valid_games_ref["$path"]="$game_name.$extension"
+                # When multiple ROMs share the same name, append the file
+                # extension to keep their names unique and expose the duplicate.
+                xml_valid_games_ref["$game_path"]="$game_name.$game_extension"
 
             fi
-
-            unset 'unclassified_files_ref[$path]'
+            unset 'unclassified_files_ref[$game_path]'
 
         else
-            xml_ghost_entries_ref["$path"]="$game_name"
+        # Otherwise, they are treated as ghost entries.
+            xml_ghost_entries_ref["$game_path"]="$game_name"
         fi
 
-        unset 'xml_unclassified_entries_ref[$path]'
+        unset 'xml_unclassified_entries_ref["$game_path"]'
     done
 }
 
@@ -389,23 +415,23 @@ classify_xml_asset() {
     local -n unclassified_files_ref="$1"
     local -n unclassified_assets_ref="$2"
     local -n valid_assets_ref="$3"
-    local -n unlinked_assets_ref="$4"
+    local -n orphan_assets_ref="$4"
     local -n ghost_assets_ref="$5"
     local -n xml_valid_games_ref="$6"
 
-    local path=""
+    local game_path=""
     local asset_path=""
 
-    for path in "${!unclassified_assets_ref[@]}"; do
-        asset_path="${unclassified_assets_ref[$path]}"
+    for game_path in "${!unclassified_assets_ref[@]}"; do
+        asset_path="${unclassified_assets_ref[$game_path]}"
 
         if [[ -n "${unclassified_files_ref["$asset_path"]:-}" ]]; then
 
-            if [[ -n "${xml_valid_games_ref["$path"]:-}" ]]; then
-                valid_assets_ref["$path"]="$asset_path"
+            if [[ -n "${xml_valid_games_ref["$game_path"]:-}" ]]; then
+                valid_assets_ref["$game_path"]="$asset_path"
 
-            else
-                unlinked_assets_ref["$path"]="$asset_path"
+            else 
+                orphan_assets_ref["$game_path"]="$asset_path"
 
             fi
 
@@ -414,11 +440,11 @@ classify_xml_asset() {
 
         else
             # The referenced asset does not exist on disk.
-            ghost_assets_ref["$path"]="$asset_path"
+            ghost_assets_ref["$game_path"]="$asset_path"
         fi
 
         # Remove the processed XML reference.
-        unset 'unclassified_assets_ref[$path]'
+        unset 'unclassified_assets_ref[$game_path]'
     done
 }
 
@@ -552,11 +578,12 @@ classify_possible_roms() {
 }
 
 build_game_library() {
+# Build the final game library combiniing games referenced by the gamelist.xml
+# with orphan games discovered during filesystem analysis 
     local -n xml_valid_games_ref="$1"
     local -n orphan_games_ref="$2"
     local -n game_library_ref="$3"
-
-    local -A seen=()
+    
     local path=""
 
     for path in "${!xml_valid_games_ref[@]}"; do
@@ -571,159 +598,165 @@ build_game_library() {
 }
 
 classify_remaining_files() {
+# At this stage, all XML-referenced resources and ROMs have already been
+# processed. The remaining files are classified by extension and associated
+# with the game library using filename matching.
+
     local -n unclassified_files_ref="$1"
-    local -n grouped_library_ref="$2"
+    local -n game_library_ref="$2"
 
     local -n linked_images_ref="$3" linked_videos_ref="$4" linked_marquees_ref="$5" linked_thumbnails_ref="$6" linked_auxiliary_ref="$7"
     local -n unlinked_images_ref="$8" unlinked_videos_ref="$9" unlinked_marquees_ref="${10}" unlinked_thumbnails_ref="${11}" unlinked_auxiliary_ref="${12}"
     local -n linked_configs_ref="${13}" unlinked_configs_ref="${14}" unknown_files_ref="${15}"
 
+    local -A grouped_library=()
+
     local file=""
     local path=""
-    local basename=""
+    local filename=""
+    local group_key=""
     local image_suffix=""
     local extension=""
     local category=""
-    
-    for file in "${!unclassified_files_ref[@]}"; do
-        path="${file##*/}"
 
-        basename="${path%.*}"
-        [[ "$basename" == *.A1 ]]  && basename="${basename%.*}"
+    # Group the game library by filename to allow fast association between
+    # remaining files and known games.
+    group_files game_library_ref grouped_library
+
+    for file in "${!unclassified_files_ref[@]}"; do
+        path="$file"
+        filename="${file##*/}"
+
+        group_key="${filename%.*}"
+        [[ "$group_key" == *.A1 ]] && group_key="${group_key%.*}"
 
         extension="${file##*.}"
-        shopt -s extglob
-        # .state pode conter digitos ao final (.state1 ou .state99),  a linha abaixo servee p/ retirar os digitos
-        # pooderia acrescentar no arquivo auxiliar state1, state2...state99, mas muito empenho 
-        [[ "$extension" == state+([0-9]) ]] && extension="${extension%%+([[:digit:]])}"
-        shopt -u extglob
-        category="${AUX_CATEGORY["$extension"]:-}"
-        
 
-        if [[ -n "${grouped_library_ref["$basename"]:-}" ]]; then
+        shopt -s extglob
+        # Normalize RetroArch save-state extensions (e.g. ".state1",
+        # ".state2") to the generic ".state" category.
+        [[ "$extension" == state+([0-9]) ]] &&
+            extension="${extension%%+([[:digit:]])}"
+        shopt -u extglob
+
+        category="${AUX_CATEGORY["$extension"]:-}"
+
+        if [[ -n "${grouped_library["$group_key"]:-}" ]]; then
 
             case "$category" in
-                # ========================================================================
-                # Imagens
-                # ========================================================================
+                # ====================================================================
+                # Images
+                # ====================================================================
                 "IMAGE")
-                    image_suffix="${basename##*-}"
+                    image_suffix="${group_key##*-}"
+
                     case "$image_suffix" in
                         "marquee")
                             linked_marquees_ref["$path"]="$file"
-                        
                             ;;
+
                         "thumb")
                             linked_thumbnails_ref["$path"]="$file"
-                            
                             ;;
+
                         *)
                             linked_images_ref["$path"]="$file"
-                           
                             ;;
                     esac
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Videos
-                # ========================================================================
+                # ====================================================================
                 "VIDEO")
                     linked_videos_ref["$path"]="$file"
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Configuration Files
-                # Arquivos necessários para funcionamento do sistema/emulador, mas que não
-                # representam dados do usuário.
-                # ========================================================================
+                # Files required by the emulator or system, but not tied to
+                # user-generated data.
+                # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
                     linked_configs_ref["$path"]="$file"
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Auxiliary Files
-                # Arquivos relacionados ao jogo ou ao usuário.
-                # ========================================================================
-                "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | "DISC_DESCRIPTOR" | \
-                "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | "FONT" | "DOCUMENT" | "LOG" |  "BACKUP")
+                # Files associated with the game or the user.
+                # ====================================================================
+                "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
+                "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
+                "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
                     linked_auxiliary_ref["$path"]="$file"
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Unknown
-                # ========================================================================
+                # ====================================================================
                 *)
                     unknown_files_ref["$path"]="$file"
-                ;;
+                    ;;
             esac
 
         else
+
             case "$category" in
-                # ========================================================================
-                # Imagens
-                # ========================================================================
+                # ====================================================================
+                # Images
+                # ====================================================================
                 "IMAGE")
-                    image_suffix="${basename##*-}"
+                    image_suffix="${group_key##*-}"
+
                     case "$image_suffix" in
                         "marquee")
                             unlinked_marquees_ref["$path"]="$file"
-                        
                             ;;
+
                         "thumb")
                             unlinked_thumbnails_ref["$path"]="$file"
-                            
                             ;;
+
                         *)
                             unlinked_images_ref["$path"]="$file"
-                           
                             ;;
                     esac
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Videos
-                # ========================================================================
+                # ====================================================================
                 "VIDEO")
                     unlinked_videos_ref["$path"]="$file"
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Configuration Files
-                # ========================================================================
+                # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
                     unlinked_configs_ref["$path"]="$file"
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Auxiliary Files
-                # ========================================================================
-                "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | "DISC_DESCRIPTOR" | \
-                "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | "FONT" | "DOCUMENT" | "LOG" |  "BACKUP")
+                # ====================================================================
+                "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
+                "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
+                "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
                     unlinked_auxiliary_ref["$path"]="$file"
+                    ;;
 
-                ;;
-
-                # ========================================================================
+                # ====================================================================
                 # Unknown
-                # ========================================================================
+                # ====================================================================
                 *)
                     unknown_files_ref["$path"]="$file"
-                ;;
+                    ;;
             esac
-            
         fi
-        unset 'unclassified_files_ref[$file]'
- 
-    done
 
-    
+        unset 'unclassified_files_ref[$file]'
+    done
 }
 
 reset_analysis_state() {
@@ -812,7 +845,7 @@ analyze_directory() {
             unclassified_files \
             "unclassified_${name}" \
             "valid_${name}" \
-            "unlinked_${name}" \
+            "orphan_${name}" \
             "ghost_${name}" \
             xml_valid_games
     done
@@ -842,11 +875,9 @@ analyze_directory() {
 
 
     # Classify all remaining files.
-    group_files game_library grouped_library
-
     classify_remaining_files \
         unclassified_files \
-        grouped_library \
+        game_library \
         linked_images linked_videos linked_marquees linked_thumbnails linked_auxiliary \
         unlinked_images unlinked_videos unlinked_marquees unlinked_thumbnails unlinked_auxiliary \
         linked_configs unlinked_configs unknown_files
@@ -898,6 +929,11 @@ print_directory_summary() {
     print_summary_line "Valid Marquees"     "${#valid_marquees[@]}"
     print_summary_line "Valid Thumbnails"   "${#valid_thumbnails[@]}"
     echo ""
+    print_summary_line "Orphan Images"       "${#orphan_images[@]}"
+    print_summary_line "Orphan Videos"       "${#orphan_videos[@]}"
+    print_summary_line "Orphan Marquees"     "${#orphan_marquees[@]}"
+    print_summary_line "Orphan Thumbnails"   "${#orphan_thumbnails[@]}"
+    echo ""
     print_summary_line "Linked Images"       "${#linked_images[@]}"
     print_summary_line "Linked Videos"       "${#linked_videos[@]}"
     print_summary_line "Linked Marquees"     "${#linked_marquees[@]}"
@@ -912,6 +948,7 @@ print_directory_summary() {
 
     print_summary_line "Linked Auxiliary"    "${#linked_auxiliary[@]}"
     print_summary_line "Unlinked Auxiliary"  "${#unlinked_auxiliary[@]}"
+    echo ""
     print_summary_line "Linked Config"       "${#linked_configs[@]}"
     print_summary_line "Unlinked Config"     "${#unlinked_configs[@]}"
 
@@ -1496,6 +1533,11 @@ main_menu() {
     local -A valid_videos=()
     local -A valid_marquees=()
     local -A valid_thumbnails=()
+
+    local -A orphan_images=()
+    local -A orphan_videos=()
+    local -A orphan_marquees=()
+    local -A orphan_thumbnails=()
 
     local -A ghost_images=()
     local -A ghost_videos=()
