@@ -459,18 +459,18 @@ extract_possible_roms() {
     local -n possible_roms_ref="$2"
     local system="$3"
 
-    local path=""
-    local extension=""
+    local file=""
+    local file_extension=""
 
     # Normalize the directory name to match VALID_SYSTEM_EXTENSIONS keys.
     system="${system%%/*}"
 
-    for path in "${!unclassified_files_ref[@]}"; do
-        extension="${path##*.}"
+    for file in "${!unclassified_files_ref[@]}"; do
+        file_extension="${file##*.}"
 
-        if [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$extension"]:-}" ]]; then
-            possible_roms_ref["$path"]=1
-            unset 'unclassified_files_ref[$path]'
+        if [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$file_extension"]:-}" ]]; then
+            possible_roms_ref["$file"]=1
+            unset 'unclassified_files_ref[$file]'
         fi
     done
 }
@@ -484,7 +484,7 @@ group_files() {
     #
     # NOTE:
     # This is the only stage where the pipeline temporarily switches from using
-    # ROM paths as keys to using grouping keys. Each key represents a group of
+    # game_paths as keys to using grouping keys. Each key represents a group of
     # related files, while the value stores the corresponding file paths.
     # =========================================================================
 
@@ -522,12 +522,11 @@ classify_possible_roms() {
     local -n unlinked_configs_ref="$3"
 
     local -A grouped_possible_roms=()
-
-    local group_key=""
-    local path=""
-    local file=""
     local group=()
-    local extension=""
+    local group_key=""
+
+    local game_path=""
+    local game_extension=""
     local display_name=""
 
     declare -A blacklist=(
@@ -547,26 +546,25 @@ classify_possible_roms() {
     for group_key in "${!grouped_possible_roms[@]}"; do
 
         if [[ -n "${blacklist[$group_key]:-}" ]]; then
-            path="${grouped_possible_roms[$group_key]}"
-            unlinked_configs_ref["$path"]="$group_key"
+            local config_path="${grouped_possible_roms[$group_key]}"
+            unlinked_configs_ref["$config_path"]="$group_key" # group_key=config_name
 
         else
             IFS='|' read -ra group <<< "${grouped_possible_roms[$group_key]}"
 
             if (( ${#group[@]} == 1 )); then
-                path="${group[0]}"
-                orphan_games_ref["$path"]="$group_key"
+                game_path="${group[0]}"
+                orphan_games_ref["$game_path"]="$group_key" # group_key=game_name
 
             else
                 # Multiple files in the same group likely represent different
                 # versions or formats of the same game. Append the extension to
                 # distinguish them in the output.
-                for file in "${group[@]}"; do
-                    path="$file"
-                    extension="${file##*.}"
-                    display_name="$group_key.$extension"
+                for game_path in "${group[@]}"; do
+                    game_extension="${game_path##*.}"
+                    display_name="$group_key.$game_extension"
 
-                    orphan_games_ref["$path"]="$display_name"
+                    orphan_games_ref["$game_path"]="$display_name"
                 done
             fi
         fi
@@ -584,14 +582,18 @@ build_game_library() {
     local -n orphan_games_ref="$2"
     local -n game_library_ref="$3"
     
-    local path=""
+    local game_path=""
+    local game_name=""
 
-    for path in "${!xml_valid_games_ref[@]}"; do
-        game_library_ref["$path"]="${xml_valid_games_ref[$path]}"
+    for game_path in "${!xml_valid_games_ref[@]}"; do
+        game_name="${xml_valid_games_ref[$game_path]}"
+        game_library_ref["$game_path"]="$game_name"
+
     done
 
-    for path in "${!orphan_games_ref[@]}"; do
-        game_library_ref["$path"]="${orphan_games_ref[$path]}"
+    for game_path in "${!orphan_games_ref[@]}"; do
+        game_name="${orphan_games_ref[$game_path]}"
+        game_library_ref["$game_path"]="$game_name"
 
     done
 
@@ -610,38 +612,37 @@ classify_remaining_files() {
     local -n linked_configs_ref="${13}" unlinked_configs_ref="${14}" unknown_files_ref="${15}"
 
     local -A grouped_library=()
+    local group_key=""
 
     local file=""
-    local path=""
-    local filename=""
-    local group_key=""
-    local image_suffix=""
-    local extension=""
+    local file_extension=""
+    local game_path=""
+    
     local category=""
+    local image_suffix=""
 
     # Group the game library by filename to allow fast association between
     # remaining files and known games.
     group_files game_library_ref grouped_library
 
     for file in "${!unclassified_files_ref[@]}"; do
-        path="$file"
-        filename="${file##*/}"
+        group_key="${file##*/}"
+        group_key="${group_key%.*}"
 
-        group_key="${filename%.*}"
         [[ "$group_key" == *.A1 ]] && group_key="${group_key%.*}"
 
-        extension="${file##*.}"
+        file_extension="${file##*.}"
 
         shopt -s extglob
         # Normalize RetroArch save-state extensions (e.g. ".state1",
         # ".state2") to the generic ".state" category.
-        [[ "$extension" == state+([0-9]) ]] &&
-            extension="${extension%%+([[:digit:]])}"
+        [[ "$file_extension" == state+([0-9]) ]] && file_extension="${file_extension%%+([[:digit:]])}"
         shopt -u extglob
 
-        category="${AUX_CATEGORY["$extension"]:-}"
+        category="${AUX_CATEGORY["$file_extension"]:-}"
 
         if [[ -n "${grouped_library["$group_key"]:-}" ]]; then
+            game_path="${grouped_library["$group_key"]}"
 
             case "$category" in
                 # ====================================================================
@@ -652,15 +653,15 @@ classify_remaining_files() {
 
                     case "$image_suffix" in
                         "marquee")
-                            linked_marquees_ref["$path"]="$file"
+                            linked_marquees_ref["$game_path"]="$file"
                             ;;
 
                         "thumb")
-                            linked_thumbnails_ref["$path"]="$file"
+                            linked_thumbnails_ref["$game_path"]="$file"
                             ;;
 
                         *)
-                            linked_images_ref["$path"]="$file"
+                            linked_images_ref["$game_path"]="$file"
                             ;;
                     esac
                     ;;
@@ -669,7 +670,7 @@ classify_remaining_files() {
                 # Videos
                 # ====================================================================
                 "VIDEO")
-                    linked_videos_ref["$path"]="$file"
+                    linked_videos_ref["$game_path"]="$file"
                     ;;
 
                 # ====================================================================
@@ -678,7 +679,7 @@ classify_remaining_files() {
                 # user-generated data.
                 # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    linked_configs_ref["$path"]="$file"
+                    linked_configs_ref["$game_path"]="$file"
                     ;;
 
                 # ====================================================================
@@ -688,19 +689,18 @@ classify_remaining_files() {
                 "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                 "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                 "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                    linked_auxiliary_ref["$path"]="$file"
+                    linked_auxiliary_ref["$game_path"]="$file"
                     ;;
 
                 # ====================================================================
                 # Unknown
                 # ====================================================================
                 *)
-                    unknown_files_ref["$path"]="$file"
+                    unknown_files_ref["$game_path"]="$file"
                     ;;
             esac
 
         else
-
             case "$category" in
                 # ====================================================================
                 # Images
@@ -710,15 +710,15 @@ classify_remaining_files() {
 
                     case "$image_suffix" in
                         "marquee")
-                            unlinked_marquees_ref["$path"]="$file"
+                            unlinked_marquees_ref["$file"]="$group_key"
                             ;;
 
                         "thumb")
-                            unlinked_thumbnails_ref["$path"]="$file"
+                            unlinked_thumbnails_ref["$file"]="$group_key"
                             ;;
 
                         *)
-                            unlinked_images_ref["$path"]="$file"
+                            unlinked_images_ref["$file"]="$group_key"
                             ;;
                     esac
                     ;;
@@ -727,14 +727,14 @@ classify_remaining_files() {
                 # Videos
                 # ====================================================================
                 "VIDEO")
-                    unlinked_videos_ref["$path"]="$file"
+                    unlinked_videos_ref["$file"]="$group_key"
                     ;;
 
                 # ====================================================================
                 # Configuration Files
                 # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    unlinked_configs_ref["$path"]="$file"
+                    unlinked_configs_ref["$file"]="$group_key"
                     ;;
 
                 # ====================================================================
@@ -743,14 +743,14 @@ classify_remaining_files() {
                 "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                 "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                 "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                    unlinked_auxiliary_ref["$path"]="$file"
+                    unlinked_auxiliary_ref["$file"]="$group_key"
                     ;;
 
                 # ====================================================================
                 # Unknown
                 # ====================================================================
                 *)
-                    unknown_files_ref["$path"]="$file"
+                    unknown_files_ref["$file"]="$group_key"
                     ;;
             esac
         fi
@@ -781,6 +781,11 @@ reset_analysis_state() {
     valid_videos=()
     valid_marquees=()
     valid_thumbnails=()
+
+    orphan_images=()
+    orphan_videos=()
+    orphan_marquees=()
+    orphan_thumbnails=()
 
     ghost_images=()
     ghost_videos=()
@@ -852,8 +857,6 @@ analyze_directory() {
 
     # Identify and classify ROM files.
     local -A possible_roms=()
-    local -A grouped_library=()
-    local -A config_files=()
 
     extract_possible_roms \
         unclassified_files \
