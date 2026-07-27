@@ -285,9 +285,13 @@ ask_user() {
     local opt=""
 
     printf "\n${RED}%s${ENDCOLOR}\n" "$question"
-    select opt in "${options[@]}"; do
+    select opt in "${options[@]}" "Exit"; do
+        if [[ "$opt" == "Exit" ]]; then
+            echo "Exiting program..."
+            exit 0
+
         # Ignore invalid menu indexes.
-        if is_valid_option "$REPLY" "$#";then
+        elif is_valid_option "$REPLY" "$#"; then
             user_answer_ref="$opt"
             break
             
@@ -364,8 +368,8 @@ classify_xml_games() {
 # Match XML games against the discovered files.
     local -n unclassified_files_ref="$1"
     local -n xml_unclassified_games_ref="$2"
-    local -n xml_valid_games_ref="$3"
-    local -n xml_ghost_games_ref="$4"
+    local -n valid_games_ref="$3"
+    local -n ghost_games_ref="$4"
     local system="$5"
 
     local game_path=""
@@ -378,29 +382,39 @@ classify_xml_games() {
     system="${system%%/*}"
 
     for game_path in "${!xml_unclassified_games_ref[@]}"; do
+        game_name="${xml_unclassified_games_ref["$game_path"]}"
         game_extension="${game_path##*.}"
 
         if [[ -n "${unclassified_files_ref["$game_path"]:-}" ]] &&
            [[ -n "${VALID_SYSTEM_EXTENSIONS["$system:.$game_extension"]:-}" ]]; then
 
-            game_name="${xml_unclassified_games_ref["$game_path"]}"
 
             if [[ -z "${processed_game_names["$game_name"]:-}" ]]; then
             # Entries with an existing file and a valid extension are classified as valid games.
-                xml_valid_games_ref["$game_path"]="$game_name"
+                valid_games_ref["$game_path"]="$game_name"
                 processed_game_names["$game_name"]=1
 
             else
                 # When multiple ROMs share the same name, append the file
                 # extension to keep their names unique and expose the duplicate.
-                xml_valid_games_ref["$game_path"]="$game_name.$game_extension"
+                valid_games_ref["$game_path"]="$game_name.$game_extension"
 
             fi
             unset 'unclassified_files_ref[$game_path]'
 
         else
         # Otherwise, they are treated as ghost games.
-            xml_ghost_games_ref["$game_path"]="$game_name"
+            if [[ -z "${processed_game_names["$game_name"]:-}" ]]; then
+            # Entries with an existing file and a valid extension are classified as valid games.
+                ghost_games_ref["$game_path"]="$game_name"
+                processed_game_names["$game_name"]=1
+
+            else
+                # When multiple ROMs share the same name, append the file
+                # extension to keep their names unique and expose the duplicate.
+                ghost_games_ref["$game_path"]="$game_name.$game_extension"
+
+            fi
         fi
 
         unset 'xml_unclassified_games_ref["$game_path"]'
@@ -419,7 +433,7 @@ classify_xml_asset() {
     local -n valid_assets_ref="$3"
     local -n orphan_assets_ref="$4"
     local -n ghost_assets_ref="$5"
-    local -n xml_valid_games_ref="$6"
+    local -n valid_games_ref="$6"
 
     local game_path=""
     local asset_path=""
@@ -429,7 +443,7 @@ classify_xml_asset() {
 
         if [[ -n "${unclassified_files_ref["$asset_path"]:-}" ]]; then
 
-            if [[ -n "${xml_valid_games_ref["$game_path"]:-}" ]]; then
+            if [[ -n "${valid_games_ref["$game_path"]:-}" ]]; then
                 valid_assets_ref["$game_path"]="$asset_path"
 
             else 
@@ -580,15 +594,15 @@ classify_possible_roms() {
 build_game_library() {
 # Build the final game library combiniing games referenced by the gamelist.xml
 # with orphan games discovered during filesystem analysis 
-    local -n xml_valid_games_ref="$1"
+    local -n valid_games_ref="$1"
     local -n orphan_games_ref="$2"
     local -n game_library_ref="$3"
     
     local game_path=""
     local game_name=""
 
-    for game_path in "${!xml_valid_games_ref[@]}"; do
-        game_name="${xml_valid_games_ref[$game_path]}"
+    for game_path in "${!valid_games_ref[@]}"; do
+        game_name="${valid_games_ref[$game_path]}"
         game_library_ref["$game_path"]="$game_name"
 
     done
@@ -681,7 +695,12 @@ classify_remaining_files() {
                 # user-generated data.
                 # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    linked_configs_ref["$game_path"]="$file"
+                    # TODO: criar func p/ essse tipo de validação
+                    if [[ -z "${linked_configs_ref["$game_path"]:-}" ]]; then
+                        linked_configs_ref["$game_path"]="$file"
+                    else
+                        linked_configs_ref["$game_path"]+="|$file"
+                    fi
                     ;;
 
                 # ====================================================================
@@ -691,7 +710,11 @@ classify_remaining_files() {
                 "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                 "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                 "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                    linked_auxiliary_ref["$game_path"]="$file"
+                    if [[ -z "${linked_auxiliary_ref["$game_path"]:-}" ]]; then
+                        linked_auxiliary_ref["$game_path"]="$file"
+                    else
+                        linked_auxiliary_ref["$game_path"]+="|$file"
+                    fi
                     ;;
 
                 # ====================================================================
@@ -768,8 +791,8 @@ reset_analysis_state() {
     xml_unclassified_games=()
 
     # Game classification.
-    xml_valid_games=()
-    xml_ghost_games=()
+    valid_games=()
+    ghost_games=()
     orphan_games=()
     game_library=()
 
@@ -834,8 +857,8 @@ analyze_directory() {
     classify_xml_games \
         unclassified_files \
         xml_unclassified_games \
-        xml_valid_games \
-        xml_ghost_games \
+        valid_games \
+        ghost_games \
         "$system_dir"
 
     # Classify assets referenced by gamelist.xml.
@@ -854,7 +877,7 @@ analyze_directory() {
             "valid_${name}" \
             "orphan_${name}" \
             "ghost_${name}" \
-            xml_valid_games
+            valid_games
     done
 
     # Identify and classify ROM files.
@@ -874,7 +897,7 @@ analyze_directory() {
 
     # Build the complete game library.
     build_game_library \
-        xml_valid_games \
+        valid_games \
         orphan_games \
         game_library
 
@@ -889,18 +912,19 @@ analyze_directory() {
 }
 
 print_summary_line() {
-# Prints a formatted summary line.
     local label="$1"
     local value="$2"
     local color="${3:-}"
 
-    printf "  %-30s " "${label}:"
+    [[ "$value" =~ ^[0-9]+$ ]] && (( "$value" == 0 )) && return 202
 
-    if [[ -n "$color" ]]; then
-        printf "%b%6d%b\n" "$color" "$value" "$ENDCOLOR"
-    else
-        printf "%6d\n" "$value"
-    fi
+    printf " %-30s " "${label}:"
+
+    [[ -n "$color" ]] && printf "%b" "$color"
+    printf "%6s" "$value"
+    [[ -n "$color" ]] && printf "%b" "$ENDCOLOR"
+
+    printf "\n"
 }
 
 print_directory_summary() {
@@ -915,7 +939,7 @@ print_directory_summary() {
     printf "\n${YELLOW}────────────── Games ──────────────${ENDCOLOR}\n"
 
     print_summary_line "Library Size"      "${#game_library[@]}"
-    print_summary_line "XML Games"         "${#xml_valid_games[@]}"
+    print_summary_line "XML Games"         "${#valid_games[@]}"
 
     local color=""
 
@@ -924,8 +948,8 @@ print_directory_summary() {
     print_summary_line "Orphan Games" "${#orphan_games[@]}" "$color"
 
     color=""
-    (( ${#xml_ghost_games[@]} > 0 )) && color="$RED"
-    print_summary_line "Ghost Games" "${#xml_ghost_games[@]}" "$color"
+    (( ${#ghost_games[@]} > 0 )) && color="$RED"
+    print_summary_line "Ghost Games" "${#ghost_games[@]}" "$color"
 
     printf "\n${YELLOW}────────────── Assets ─────────────${ENDCOLOR}\n"
 
@@ -933,17 +957,38 @@ print_directory_summary() {
     print_summary_line "Valid Videos"       "${#valid_videos[@]}"
     print_summary_line "Valid Marquees"     "${#valid_marquees[@]}"
     print_summary_line "Valid Thumbnails"   "${#valid_thumbnails[@]}"
+    
+    (( ${#valid_images[@]} > 0 )) || (( ${#valid_videos[@]} > 0 )) || \
+    (( ${#valid_marquees[@]} > 0 )) || (( ${#valid_thumbnails[@]} > 0 )) && \
     echo ""
+
     print_summary_line "Orphan Images"       "${#orphan_images[@]}"
     print_summary_line "Orphan Videos"       "${#orphan_videos[@]}"
     print_summary_line "Orphan Marquees"     "${#orphan_marquees[@]}"
     print_summary_line "Orphan Thumbnails"   "${#orphan_thumbnails[@]}"
+     
+    (( ${#orphan_images[@]} > 0 )) || (( ${#orphan_videos[@]} > 0 )) || \
+    (( ${#orphan_marquees[@]} > 0 )) || (( ${#orphan_thumbnails[@]} > 0 )) && \
     echo ""
+
+    print_summary_line "Ghost Images"       "${#ghost_images[@]}"
+    print_summary_line "Ghost Videos"       "${#ghost_videos[@]}"
+    print_summary_line "Ghost Marquees"     "${#ghost_marquees[@]}"
+    print_summary_line "Ghost Thumbnails"   "${#ghost_thumbnails[@]}"
+     
+    (( ${#ghost_images[@]} > 0 )) || (( ${#ghost_videos[@]} > 0 )) || \
+    (( ${#ghost_marquees[@]} > 0 )) || (( ${#ghost_thumbnails[@]} > 0 )) && \
+    echo ""
+
     print_summary_line "Linked Images"       "${#linked_images[@]}"
     print_summary_line "Linked Videos"       "${#linked_videos[@]}"
     print_summary_line "Linked Marquees"     "${#linked_marquees[@]}"
     print_summary_line "Linked Thumbnails"   "${#linked_thumbnails[@]}"
+     
+    (( ${#linked_images[@]} > 0 )) || (( ${#linked_videos[@]} > 0 )) || \
+    (( ${#linked_marquees[@]} > 0 )) || (( ${#linked_thumbnails[@]} > 0 )) && \
     echo ""
+
     print_summary_line "Unlinked Images"     "${#unlinked_images[@]}"
     print_summary_line "Unlinked Videos"     "${#unlinked_videos[@]}"
     print_summary_line "Unlinked Marquees"   "${#unlinked_marquees[@]}"
@@ -953,7 +998,10 @@ print_directory_summary() {
 
     print_summary_line "Linked Auxiliary"    "${#linked_auxiliary[@]}"
     print_summary_line "Unlinked Auxiliary"  "${#unlinked_auxiliary[@]}"
+     
+    (( ${#linked_auxiliary[@]} > 0 )) || (( ${#unlinked_auxiliary[@]} > 0 )) && \
     echo ""
+
     print_summary_line "Linked Config"       "${#linked_configs[@]}"
     print_summary_line "Unlinked Config"     "${#unlinked_configs[@]}"
 
@@ -976,8 +1024,8 @@ count_by_dir() {
 
         unclassified_files=()
         xml_unclassified_games=()
-        xml_valid_games=()
-        xml_ghost_games=() 
+        valid_games=()
+        ghost_games=() 
         orphan_games=()
         game_library=()
 
@@ -990,7 +1038,7 @@ count_by_dir() {
         
         load_xml_metadata xml_unclassified_games unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
 
-        classify_xml_games unclassified_files xml_unclassified_games xml_valid_games xml_ghost_games "$dir"
+        classify_xml_games unclassified_files xml_unclassified_games valid_games ghost_games "$dir"
 
         local assets_names=( "images" "videos" "marquees" "thumbnails" )
         local name=""
@@ -999,7 +1047,7 @@ count_by_dir() {
             local -n arr_ref="unclassified_${name}"
             # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
             # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
-            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files "unclassified_${name}" "valid_${name}" "orphan_${name}" "ghost_${name}" xml_valid_games
+            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files "unclassified_${name}" "valid_${name}" "orphan_${name}" "ghost_${name}" valid_games
         done
 
         local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
@@ -1007,14 +1055,14 @@ count_by_dir() {
         extract_possible_roms unclassified_files possible_roms "$dir"
         group_files possible_roms grouped_possible_roms
         classify_possible_roms grouped_possible_roms orphan_games config_files
-        build_game_library xml_valid_games orphan_games game_library
+        build_game_library valid_games orphan_games game_library
 
         total_games+="${#game_library[@]}"
 
         printf "\n========== ${GREEN}%s${ENDCOLOR} ==========\n" "$dir"
-        printf "XML válidos      : %d\n" "${#xml_valid_games[@]}"
+        printf "XML válidos      : %d\n" "${#valid_games[@]}"
         printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
-        printf "Jogos fantasma: %d\n" "${#xml_ghost_games[@]}"
+        printf "Jogos fantasma: %d\n" "${#ghost_games[@]}"
         printf "${CYAN}Total de jogos   : %d${ENDCOLOR}\n" "${#game_library[@]}"
         printf "${RED}Não classificados   : %d${ENDCOLOR}\n" "${#unclassified_files[@]}"
         printf "===========================\n\n"
@@ -1035,6 +1083,121 @@ sort_games() {
     local -n sorted="$1"
     shift 1
     mapfile -t sorted < <( printf "%s\n" "$@" | sort -f )
+}
+
+build_target_collection() {
+# Inverte um array associativo de jogos (path -> name)
+# para um array (name -> path), usado pelos menus seguintes.
+    local -n source_ref="$1"
+    local -n target_ref="$2"
+
+    local game_path
+    local game_name
+
+    target_ref=()
+
+    for game_path in "${!source_ref[@]}"; do
+        game_name="${source_ref["$game_path"]}"
+        target_ref["$game_name"]="$game_path"
+    done
+
+}
+
+load_game_context() {
+# Loads all information related to the selected game into the context.
+
+    local -n game_context_ref="$1"
+    local game_path="$2"
+
+    game_context_ref=()
+
+    if [[ -n "${valid_games["$game_path"]:-}" ]]; then
+        game_context_ref["status"]="Valid"
+
+    elif [[ -n "${orphan_games["$game_path"]:-}" ]]; then
+        game_context_ref["status"]="Orphan"
+
+    else
+        game_context_ref["status"]="Ghost"
+
+    fi
+
+    [[ -n "${valid_images["$game_path"]:-}"      ]] && game_context_ref["valid_image"]="${valid_images["$game_path"]}"
+    [[ -n "${valid_videos["$game_path"]:-}"      ]] && game_context_ref["valid_video"]="${valid_videos["$game_path"]}"
+    [[ -n "${valid_marquees["$game_path"]:-}"    ]] && game_context_ref["valid_marquee"]="${valid_marquees["$game_path"]}"
+    [[ -n "${valid_thumbnails["$game_path"]:-}"  ]] && game_context_ref["valid_thumbnail"]="${valid_thumbnails["$game_path"]}"
+
+    [[ -n "${orphan_images["$game_path"]:-}"     ]] && game_context_ref["orphan_image"]="${orphan_images["$game_path"]}"
+    [[ -n "${orphan_videos["$game_path"]:-}"     ]] && game_context_ref["orphan_video"]="${orphan_videos["$game_path"]}"
+    [[ -n "${orphan_marquees["$game_path"]:-}"   ]] && game_context_ref["orphan_marquee"]="${orphan_marquees["$game_path"]}"
+    [[ -n "${orphan_thumbnails["$game_path"]:-}" ]] && game_context_ref["orphan_thumbnail"]="${orphan_thumbnails["$game_path"]}"
+
+    [[ -n "${ghost_images["$game_path"]:-}"      ]] && game_context_ref["ghost_image"]="${ghost_images["$game_path"]}"
+    [[ -n "${ghost_videos["$game_path"]:-}"      ]] && game_context_ref["ghost_video"]="${ghost_videos["$game_path"]}"
+    [[ -n "${ghost_marquees["$game_path"]:-}"    ]] && game_context_ref["ghost_marquee"]="${ghost_marquees["$game_path"]}"
+    [[ -n "${ghost_thumbnails["$game_path"]:-}"  ]] && game_context_ref["ghost_thumbnail"]="${ghost_thumbnails["$game_path"]}"
+
+    [[ -n "${linked_images["$game_path"]:-}"     ]] && game_context_ref["linked_image"]="${linked_images["$game_path"]}"
+    [[ -n "${linked_videos["$game_path"]:-}"     ]] && game_context_ref["linked_video"]="${linked_videos["$game_path"]}"
+    [[ -n "${linked_marquees["$game_path"]:-}"   ]] && game_context_ref["linked_marquee"]="${linked_marquees["$game_path"]}"
+    [[ -n "${linked_thumbnails["$game_path"]:-}" ]] && game_context_ref["linked_thumbnail"]="${linked_thumbnails["$game_path"]}"
+
+    [[ -n "${linked_auxiliary["$game_path"]:-}"  ]] && game_context_ref["linked_auxiliary"]="${linked_auxiliary["$game_path"]}"
+    [[ -n "${linked_configs["$game_path"]:-}"    ]] && game_context_ref["linked_config"]="${linked_configs["$game_path"]}"
+}
+
+context_status_icon() {
+# Returns a colored checkmark or cross depending on whether the key exists.
+
+    local -n ctx_ref="$1"
+    local key="$2"
+
+    if [[ -n "${ctx_ref[$key]:-}" ]]; then
+        printf "${GREEN}✓${ENDCOLOR}"
+    else
+        printf "${RED}✗${ENDCOLOR}"
+    fi
+}
+
+print_game_context() {
+# Displays a summary of the selected game.
+
+    local -n context_ref="$1"
+    local game_name="$2"
+
+    printf "\n${PINK}============================================================${ENDCOLOR}\n"
+    printf "                    %s Data\n" "$game_name"
+    printf "${PINK}============================================================${ENDCOLOR}\n\n"
+
+    printf " Status: %s\n" "${context_ref[status]}"
+
+    printf "\n${YELLOW}──────────────Valid Assets ─────────────${ENDCOLOR}\n"
+    print_summary_line "Image"     "$(context_status_icon context_ref valid_image)"
+    print_summary_line "Video"     "$(context_status_icon context_ref valid_video)"
+    print_summary_line "Marquee"   "$(context_status_icon context_ref valid_marquee)"
+    print_summary_line "Thumbnail" "$(context_status_icon context_ref valid_thumbnail)"
+
+    printf "\n${YELLOW}────────────── Orphan Assets ─────────────${ENDCOLOR}\n"
+    print_summary_line "Image"     "$(context_status_icon context_ref orphan_image)"
+    print_summary_line "Video"     "$(context_status_icon context_ref orphan_video)"
+    print_summary_line "Marquee"   "$(context_status_icon context_ref orphan_marquee)"
+    print_summary_line "Thumbnail" "$(context_status_icon context_ref orphan_thumbnail)"
+
+    printf "\n${YELLOW}──────────────Ghost Assets ─────────────${ENDCOLOR}\n"
+    print_summary_line "Image"     "$(context_status_icon context_ref ghost_image)"
+    print_summary_line "Video"     "$(context_status_icon context_ref ghost_video)"
+    print_summary_line "Marquee"   "$(context_status_icon context_ref ghost_marquee)"
+    print_summary_line "Thumbnail" "$(context_status_icon context_ref ghost_thumbnail)"
+
+    printf "\n${YELLOW}────────────── Linked Files ─────────────${ENDCOLOR}\n"
+    print_summary_line "Image"      "$(context_status_icon context_ref linked_image)"
+    print_summary_line "Video"      "$(context_status_icon context_ref linked_video)"
+    print_summary_line "Marquee"    "$(context_status_icon context_ref linked_marquee)"
+    print_summary_line "Thumbnail"  "$(context_status_icon context_ref linked_thumbnail)"
+    print_summary_line "Auxiliary"  "$(context_status_icon context_ref linked_auxiliary)"
+    print_summary_line "Config"     "$(context_status_icon context_ref linked_config)"
+    
+    printf "\n${PINK}============================================================${ENDCOLOR}\n"
 }
 
 create_gamelist() {
@@ -1275,9 +1438,6 @@ process_other_files() {
 
 mv_game() {
 # Move um jogo e sua entrada no gamelist.xml para um diretório de destino.
-    # Parâmetros:
-    #   $1 - Nome do jogo
-    #   $2 - Caminho do arquivo do jogo
     local selected_game="$1"
     local selected_path="$2"
     local target_dir=""
@@ -1521,8 +1681,8 @@ main_menu() {
     local -A unclassified_files=()
 
     local -A xml_unclassified_games=()
-    local -A xml_valid_games=()
-    local -A xml_ghost_games=()
+    local -A valid_games=()
+    local -A ghost_games=()
 
     local -A orphan_games=()
 
@@ -1616,8 +1776,7 @@ main_menu() {
                     "Browse Directories with ROMs" \
                     "Browse Directories without ROMs" \
                     "Find Game" \
-                    "Overall Report" \
-                    "Exit"
+                    "Overall Report"
 
                 case "$user_answer" in
                     "Browse Directories with ROMs")
@@ -1644,11 +1803,6 @@ main_menu() {
                         continue
                     ;;
 
-                    "Exit")
-                        echo "Exiting program..."
-                        exit 0
-                    ;;
-
                 esac
 
                 PREV_STATE="LOOK"
@@ -1658,16 +1812,11 @@ main_menu() {
             "CONSOLE_MENU")
             # Allows the user to choose a console directory and enter in it.
                 ask_user "Select a directory:" user_answer \
-                    "${dirs_to_look[@]}" "Back" "Exit"
+                    "${dirs_to_look[@]}" "Back"
 
                 case "$user_answer" in
                     "Back")
                         STATE="LOOK"
-                    ;;
-
-                    "Exit")
-                        echo "Exiting program..."
-                        exit 0
                     ;;
 
                     *)
@@ -1699,28 +1848,27 @@ main_menu() {
 
                 print_directory_summary "$selected_system_dir"
 
-                ask_user "What you want to see?" user_answer \
-                    "Games" \
-                    "Assets" \
-                    "Support Files" \
-                    "Unknows" \
-                    "Back" \
-                    "Exit"    
+                ask_user "" user_answer \
+                    "Browse Games" \
+                    "Browse Assets" \
+                    "Browse Support Files" \
+                    "Browse Unknows" \
+                    "Back"   
 
                 case "$user_answer" in
-                    "Games")
-                        STATE="GAMES_MENU"
+                    "Browse Games")
+                        STATE="GAMES_COLLECTION_MENU"
                     ;;
 
-                    "Assets")
+                    "Browse Assets")
                         STATE="ASSETS_MENU"
                     ;;
 
-                    "Support Files")
+                    "Browse Support Files")
                         STATE="SUPPORT_MENU"
                     ;;
 
-                    "Unknows")
+                    "Browse Unknows")
                         STATE="UNKNOWS_MENU"
                     ;;
 
@@ -1729,145 +1877,198 @@ main_menu() {
                         cd -- "$OLDPWD" || exit 1
                         STATE="CONSOLE_MENU"
                     ;;
-
-                    "Exit")
-                        echo "Exiting program..."
-                        exit 0
-                    ;;
                 esac
 
-                PREV_STATE="DIR_ACTION"
+                PREV_STATE="SYSTEM_DASHBOARD"
             ;;
 
-            "GAMES_MENU")
-                sorted_games=()                
-                sort_games sorted_games "${game_library[@]}"
+            "GAMES_COLLECTION_MENU")
+                local -A target_collection=()
 
-                ask_user "Selecione um jogo:" user_answer "${sorted_games[@]}" "Voltar"
+                ask_user "" user_answer \
+                    "All games" \
+                    "Xml games" \
+                    "Orphan games" \
+                    "Ghost games" \
+                    "Back"
+
                 case "$user_answer" in
-                    "Voltar")
-                        if (( using_find )); then
-                            using_find=0
-                            STATE="LOOK"
-                            continue
-                            
-                        fi
-                        STATE="DIR_ACTION"
+                    "All games")
+                        build_target_collection game_library target_collection
+                    ;;
+
+                    "Xml games")
+                        build_target_collection valid_games target_collection
+
+                    ;;
+
+                    "Orphan games")
+                        build_target_collection orphan_games target_collection
+
+                    ;;
+
+                    "Ghost games")
+                        build_target_collection ghost_games target_collection
+
+                    ;;
+
+                    "Back")
+                        STATE="SYSTEM_DASHBOARD"
+                        PREV_STATE="GAMES_COLLECTION_MENU"
+                        continue
+
+                    ;;
+                esac
+                STATE="GAMES_SELECTION_MENU"
+                PREV_STATE="GAMES_COLLECTION_MENU"
+            
+            ;;
+
+            "GAMES_SELECTION_MENU")
+                sorted_games=()
+
+                sort_games sorted_games "${!target_collection[@]}"
+
+                ask_user "Selecione um jogo:" user_answer \
+                    "${sorted_games[@]}" \
+                    "Back"
+
+                case "$user_answer" in
+                    "Back")
+                        STATE="SYSTEM_DASHBOARD"
+                        PREV_STATE="GAMES_SELECTION_MENU"
+                        continue
+
                     ;;
 
                     *)
                         selected_game_name="$user_answer"
-
-                        for file in "${!game_library[@]}"; do
-                            if [[ "${game_library[$file]}" == "$selected_game_name" ]]; then
-                                selected_game_path="$file"
-                                break
-                            fi
-                        done
+                        selected_game_path="${target_collection["$selected_game_name"]}"
 
                         printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
-                        printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
-                       
-                        if (( using_find )); then
-                            printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "${selected_game_path%%/*}"
-                            cd -- "./${selected_game_path%%/*}" || exit 1
-                            
-                        fi
-                        STATE="GAME_ACTION"
+                        # printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
+
                     ;;
-
                 esac
+                STATE="GAME_ACTION_MENU"
+                PREV_STATE="GAMES_SELECTION_MENU"
 
-                PREV_STATE="GAMES_MENU"
             ;;
 
-            "GAME_ACTION")
+            "GAME_ACTION_MENU")
+                local -A game_context=()
+                load_game_context  game_context "$selected_game_path"
+                print_game_context game_context  "$selected_game_name"
 
-                ask_user "" user_answer "Ver metadados" "Editar metadados" "Mover jogo" "Copiar jogo" "Deletar jogo" "Voltar"
+                local menu_options=("Move Game" "Copy Game" "Delete Game")
+                if [[ "${game_context["status"]}" !=  "Orphan" ]]; then
+                    menu_options+=("See Metadata" "Edit Metadata")
+                else
+                    menu_options+=("Add to gamelist.xml")
+                fi
+
+                (( "${#game_context[@]}" > 1 )) &&  menu_options+=("See Related Files")
+
+                ask_user "" user_answer \
+                    "${menu_options[@]}" "Back"
+
                 case "$user_answer" in
-                        "Ver metadados")
-                            show_game_metadata "$selected_game_name"
-                            STATE="GAME_ACTION"
-                            ;;
-
-                        "Editar metadados")
-                            edit_metadata "$selected_game_name"
-                            STATE="DIR_ACTION"
-                            ;;
-
-                        "Mover jogo")
+                        "Move Game")
                             mv_game "$selected_game_name" "$selected_game_path"
-                            STATE="DIR_ACTION"
-                            ;;
+                        ;;
 
-                        "Copiar jogo")
+                        "Copy Game")
                             cp_game "$selected_game_name" "$selected_game_path"
-                            STATE="DIR_ACTION"
-                            ;;
+                        ;;
 
-                        "Deletar jogo")
+                        "Delete Game")
                             rm_game "$selected_game_name" "$selected_game_path"
-                            STATE="DIR_ACTION"
-                            ;;
+                        ;;
 
-                        "Voltar")
+                        "See Metadata")
+                            show_game_metadata "$selected_game_name"
+                        ;;
+
+                        "Edit Metadata")
+                            edit_metadata "$selected_game_name"
+                        ;;
+
+                        "Add to gamelist.xml")
+                            :
+                        ;;
+
+                        "See Related Files")
+                            :
+                        ;;
+
+                        "Back")
                             if (( using_find )); then
                                 printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
                                 cd "$OLDPWD" || exit 1
                             
                             fi
                             STATE="GAMES_MENU"
-                            ;;
-
-                    esac
-
-                PREV_STATE="GAME_ACTION"
-            ;;
-
-            "GAMELIST_MENU")
-                ask_user "" user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
-                case "$user_answer" in
-                        "Usar VS Code")
-                            code --wait ./gamelist.xml \
-                                && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
-                            STATE="GAMELIST_MENU"
-                        ;;
-
-                        "Ver Entradas")
-                            show_gamelist_data
-                            STATE="GAMELIST_MENU"
-                        ;;
-
-                        "Deletar gamelist.xml")
-                            echo "sudo rm ./gamelist.xml"
-                            STATE="GAMELIST_MENU"
-                        ;;
-
-                        "Voltar")
-                            STATE="DIR_ACTION"                        
                         ;;
 
                 esac
-
-                PREV_STATE="GAMELIST_MENU"
+                STATE="GAME_ACTION_MENU"
+                PREV_STATE="GAME_ACTION_MENU"
             ;;
 
-            "FIND_GAME")
-                find_games dirs_to_look game_library
+            # "GAMELIST_MENU")
+                #     ask_user "" user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
+                #     case "$user_answer" in
+                #             "Usar VS Code")
+                #                 code --wait ./gamelist.xml \
+                #                     && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
+                #                 STATE="GAMELIST_MENU"
+                #             ;;
 
-                if [[ "${#game_library[@]}" -lt 1 ]]; then
-                    printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
-                else
-                    printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
-                    STATE="GAMES_MENU"    
+                #             "Ver Entradas")
+                #                 show_gamelist_data
+                #                 STATE="GAMELIST_MENU"
+                #             ;;
 
-                fi   
+                #             "Deletar gamelist.xml")
+                #                 echo "sudo rm ./gamelist.xml"
+                #                 STATE="GAMELIST_MENU"
+                #             ;;
 
-                PREV_STATE="FIND_GAME" 
-            ;;
+                #             "Voltar")
+                #                 STATE="DIR_ACTION"                        
+                #             ;;
+
+                #     esac
+
+                #     PREV_STATE="GAMELIST_MENU"
+            # ;;
+
+            # "FIND_GAME")
+                #     find_games dirs_to_look game_library
+
+                #     if [[ "${#game_library[@]}" -lt 1 ]]; then
+                #         printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
+                #     else
+                #         printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
+                #         STATE="GAMES_MENU"    
+
+                #     fi   
+
+                #     PREV_STATE="FIND_GAME" 
+            # ;;
 
         esac
     done
+
+    # if (( using_find )); then
+        #     using_find=0
+        #     STATE="LOOK"
+        #     continue  
+        # fi
+        # if (( using_find )); then
+        #     printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "${selected_game_path%%/*}"
+        #     cd -- "./${selected_game_path%%/*}" || exit 1  
+        # fi
 
 }
 main_menu "$@"
