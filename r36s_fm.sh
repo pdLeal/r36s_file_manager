@@ -1108,8 +1108,11 @@ load_game_context() {
 
     local -n game_context_ref="$1"
     local game_path="$2"
+    local game_name="$3"
 
     game_context_ref=()
+    game_context_ref["path"]="$game_path"
+    game_context_ref["name"]="$game_name"
 
     if [[ -n "${valid_games["$game_path"]:-}" ]]; then
         game_context_ref["status"]="Valid"
@@ -1163,10 +1166,9 @@ print_game_context() {
 # Displays a summary of the selected game.
 
     local -n context_ref="$1"
-    local game_name="$2"
 
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
-    printf "                    %s Data\n" "$game_name"
+    printf "                    %s Data\n" "${context_ref[name]}"
     printf "${PINK}============================================================${ENDCOLOR}\n\n"
 
     printf " Status: %s\n" "${context_ref[status]}"
@@ -1436,44 +1438,78 @@ process_other_files() {
 
 }
 
-mv_game() {
-# Move um jogo e sua entrada no gamelist.xml para um diretório de destino.
-    local selected_game="$1"
-    local selected_path="$2"
-    local target_dir=""
+prepare_target_directory() {
+# Prompts the user for a destination directory and prepares it for file operations.
+    local -n target_dir_context_ref="$1"
+
+    local answer=""
 
     while true; do
-        read -r -p "Digite o diretório de destino: " target_dir
-        if [[ ! -d "$target_dir" ]]; then
-            printf "${BLUE}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
+    # Always returns a valid existing directory in target_dir_context["dir"].
+        read -r -p "Enter target directory: " target_dir_context_ref["dir"]
+
+        if [[ ! -d "${target_dir_context_ref["dir"]}" ]]; then
+            printf "${BLUE}Directory not found. Try again.${ENDCOLOR}\n"
             continue
         fi
+
+        printf "${GREEN}Directory validated.${ENDCOLOR}\n"
         break
     done
 
-    local target_file="$target_dir/gamelist.xml" # gamelist.xml no diretório de destino
-    if [[ -f "$target_file" ]]; then
-        printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
+    if [[ -f "${target_dir_context_ref["dir"]}/gamelist.xml" ]]; then
+    # target_dir_context["gamelist"] is only set if a gamelist.xml exists
+    # or the user chooses to create one.
+        printf "${GREEN}gamelist.xml found.${ENDCOLOR}\n"
+        target_dir_context_ref["gamelist"]="${target_dir_context_ref["dir"]}/gamelist.xml"
+
     else
-        printf "${CYAN}Nenhum gamelist.xml encontrado no destino.${ENDCOLOR}\n"
-        create_gamelist "$target_file"
+        printf "${CYAN}gamelist.xml not found.${ENDCOLOR}\n"
+
+        while true; do
+        # The user decides whether a new gamelist.xml should be created.
+        # This function intentionally does not force its creation.
+            read -r -p "Create gamelist.xml? (y/n) -> " answer
+
+            case "$answer" in
+                [Yy])
+                    create_gamelist "${target_dir_context_ref["dir"]}/gamelist.xml"
+                    target_dir_context_ref["gamelist"]="${target_dir_context_ref["dir"]}/gamelist.xml"
+                    break
+                ;;
+
+                [Nn])
+                    # Leave the context without a "gamelist" key.
+                    # The caller is responsible for handling this case.
+                    break
+                ;;
+
+                *)
+                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                ;;
+            esac
+        done
     fi
+}
 
-    duplicate_xml_with_entry "$selected_game" "$target_file" && \
-        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+mv_game() {
+    local -n game_context_ref="$1"
+
+    # duplicate_xml_with_entry "$selected_game" "$target_gamelist" && \
+    #     printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
         
-    mv_xml_entry "$target_file" && \
-        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$target_file"
+    # mv_xml_entry "$target_gamelist" && \
+    #     printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$target_gamelist"
 
-    rm_xml_entry "$selected_game" && \
-        printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
+    # rm_xml_entry "$selected_game" && \
+    #     printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
 
    
-    process_other_files "$tmp_game" "$target_dir" "mv" #tmp_game é criado pelo duplicate_xml...
+    # process_other_files "$tmp_game" "$target_dir" "mv" #tmp_game é criado pelo duplicate_xml...
     
-    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
-    sudo mv "$selected_path" "$target_dir" && \
-        printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
+    # printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
+    # sudo mv "$selected_path" "$target_dir" && \
+    #     printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
     # rsync -ah --info=progress2 --remove-source-files "$selected_path" "$target_dir/"
     # Dá p/ usar o comando acima - mais seguro - porém deu problema devido a espaço de armazenamento
     # Resolver eventualmente =)
@@ -1498,12 +1534,12 @@ cp_game() {
         break
     done
 
-    local target_file="$target_dir/gamelist.xml" # gamelist.xml no diretório de destino
-    if [[ -f "$target_file" ]]; then
-        printf "${YELLOW}Arquivo gamelist encontrado no destino...${ENDCOLOR}\n"
+    local target_gamelist="$target_dir/gamelist.xml"
+    if [[ -f "$target_gamelist" ]]; then
+        printf "${GREEN}gamelist.xml found${ENDCOLOR}\n"
     else
-        printf "${CYAN}Nenhum gamelist.xml encontrado no destino.${ENDCOLOR}\n"
-        create_gamelist "$target_file"
+        printf "${CYAN}gamelist.xml not found${ENDCOLOR}\n"
+        create_gamelist "$target_gamelist"
     fi
 
     duplicate_xml_with_entry "$selected_game" "$target_file" && \
@@ -1957,24 +1993,35 @@ main_menu() {
 
             "GAME_ACTION_MENU")
                 local -A game_context=()
-                load_game_context  game_context "$selected_game_path"
-                print_game_context game_context  "$selected_game_name"
+                load_game_context  game_context "$selected_game_path" "$selected_game_name"
+                print_game_context game_context
 
+                # TODO: rever opções p/ ghost_games - ñ se move/copia oq ñ existe
                 local menu_options=("Move Game" "Copy Game" "Delete Game")
+
                 if [[ "${game_context["status"]}" !=  "Orphan" ]]; then
                     menu_options+=("See Metadata" "Edit Metadata")
                 else
                     menu_options+=("Add to gamelist.xml")
                 fi
 
-                (( "${#game_context[@]}" > 1 )) &&  menu_options+=("See Related Files")
+                # TODO: reavaliar a fragilidade  do trecho, pois depende diretamente da arquitetura de game_context
+                (( "${#game_context[@]}" > 3 )) &&  menu_options+=("See Related Files")
+                
+                local -A target_dir_context=()
 
                 ask_user "" user_answer \
                     "${menu_options[@]}" "Back"
 
                 case "$user_answer" in
+                        "Move Game" | "Copy Game")
+                        # COMEÇAR DAQUI: reavaliar create_gamelist antes de prosseguir p/ mv_game
+                            prepare_target_directory target_dir_context
+                        ;;&
+                        
                         "Move Game")
-                            mv_game "$selected_game_name" "$selected_game_path"
+                            echo "chegou aqui"
+                            # mv_game game_context
                         ;;
 
                         "Copy Game")
