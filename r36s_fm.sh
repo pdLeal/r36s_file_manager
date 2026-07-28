@@ -1203,15 +1203,22 @@ print_game_context() {
 }
 
 create_gamelist() {
-# Cria um gamelist.xml básico em um diretório especificado
+# Creates a minimal gamelist.xml at the specified path.
     local target="$1"
-    printf "Criando${GREEN} %s${ENDCOLOR}\n" "$target"
+    printf "Creating ${GREEN}%s${ENDCOLOR}\n" "$target"
 
-sudo tee "$target" > /dev/null <<EOF
+    if sudo tee "$target" > /dev/null <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <gameList>
 </gameList>
 EOF
+    then
+        printf "${GREEN}gamelist.xml created successfully.${ENDCOLOR}\n"
+        return 0
+    else
+        printf "${RED}Failed to create gamelist.xml.${ENDCOLOR}\n"
+        return 1
+    fi
 }
 
 escape_xpath_string() {
@@ -1473,7 +1480,7 @@ prepare_target_directory() {
 
             case "$answer" in
                 [Yy])
-                    create_gamelist "${target_dir_context_ref["dir"]}/gamelist.xml"
+                    create_gamelist "${target_dir_context_ref["dir"]}/gamelist.xml" && \
                     target_dir_context_ref["gamelist"]="${target_dir_context_ref["dir"]}/gamelist.xml"
                     break
                 ;;
@@ -1920,7 +1927,7 @@ main_menu() {
 
             "GAMES_COLLECTION_MENU")
                 local -A target_collection=()
-
+                # TODO: add lógica p/ mostrar apenas opções pertinentes
                 ask_user "" user_answer \
                     "All games" \
                     "Xml games" \
@@ -2015,8 +2022,8 @@ main_menu() {
 
                 case "$user_answer" in
                         "Move Game" | "Copy Game")
-                        # COMEÇAR DAQUI: reavaliar create_gamelist antes de prosseguir p/ mv_game
                             prepare_target_directory target_dir_context
+
                         ;;&
                         
                         "Move Game")
