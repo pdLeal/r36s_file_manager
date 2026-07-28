@@ -1125,12 +1125,12 @@ load_game_context() {
     fi
 
     if [[ "${game_context_ref["status"]}" != "Orphan" ]]; then
-        # local safe_xpath
-        # safe_xpath=$(escape_xpath_string "$game_path")
+        local safe_xpath
+        safe_xpath=$(escape_xpath_string "$game_path")
 
         game_context_ref["xml_node"]="$(
             xmlstarlet sel \
-                -t -c "//game[path='$game_path']" \
+                -t -c "//game[path=$safe_xpath]" \
                 "./gamelist.xml"
         )"
     fi
@@ -1252,80 +1252,104 @@ escape_xpath_string() {
 }
 
 duplicate_xml_with_entry() {
-# Cria uma cópia do gamelist.xml com a entrada de um jogo anexada como arquivo temporário
-    local game="$1"
-    local tgt_file="$2"
-    local open_vscode="${3:-false}" # flag q controla a edição de metadados
-    printf "Criando arquivos temporários necessários...\n"
+# Creates a validated temporary copy of the target gamelist.xml with a new
+# <game> node appended. The original gamelist is never modified by this function.
+    local node="$1"
+    local target_gamelist="$2"
 
-    # Arquivos temporários seguros
-    tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" && \
-        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_game"
+    local -n tmp_output_fmt="$3"
 
-    tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)" && \
-        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_xsl"
+    local open_vscode="${4:-false}" # flag q controla a edição de metadados
+    
+     printf "Creating temporary files...\n"
 
-    tmp_output_raw="$(mktemp --tmpdir out_raw.XXXXXX.xml)" && \
-        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_output_raw"
+    # Temporary files used during XML generation.
+    local tmp_game
+    local tmp_xsl
+    local tmp_output_raw
+    
+    tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" || return 1
+    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_game"
 
-    tmp_output_fmt="$(mktemp --tmpdir out_fmt.XXXXXX.xml)" && \
-        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_output_fmt"
+    tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)" || return 1
+    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_xsl"
 
-    # 1) Extrai o <game> para o temporário
-    printf "Extraindo entrada do jogo selecionado...\n"
+    tmp_output_raw="$(mktemp --tmpdir out_raw.XXXXXX.xml)" || return 1
+    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_output_raw"
 
-    local safe_xpath
-    safe_xpath=$(escape_xpath_string "$game")
-    xmlstarlet sel -t -c "//game[name=$safe_xpath]" "./gamelist.xml" > "$tmp_game"
+    tmp_output_fmt="$(mktemp --tmpdir out_fmt.XXXXXX.xml)" || return 1
+    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_output_fmt"
+
+    # -------------------------------------------------------------------------
+    # Step 1 - Persist the XML node into a temporary document.
+    #
+    # xsltproc imports external XML documents through document(), therefore the
+    # node is temporarily written to disk before applying the stylesheet.
+    # -------------------------------------------------------------------------
+
+    printf "Preparing game entry...\n"
+
+    printf '%s\n' "$node" > "$tmp_game" || return 1
+
 
     if "$open_vscode"; then
         code --wait "$tmp_game"
     fi
 
-    printf "Criando cópia do gamelist.xml de destino com a entrada anexada...\n"
-    # 2) cria o XSLT via heredoc
-# AVISO: Se der tab no heredoc, o XSLT fica inválido e apaga o gamelist.xml alvo !!!
-cat > "$tmp_xsl" <<'XSL'
+    # -------------------------------------------------------------------------
+    # Step 2 - Create the stylesheet responsible for appending the game node to
+    #          the destination gamelist.
+    #
+    # WARNING:
+    # Do not indent the heredoc delimiter. Doing so will produce an invalid
+    # stylesheet and may generate an invalid output XML.
+    # -------------------------------------------------------------------------
+    printf "Creating temporary gamelist copy...\n"
+
+    cat > "$tmp_xsl" <<XSL
 <?xml version="1.0" encoding="utf-8"?>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+
   <xsl:output method="xml" indent="yes"/>
 
+  <!-- Identity transform: copy every node unchanged -->
   <xsl:template match="@*|node()">
     <xsl:copy>
       <xsl:apply-templates select="@*|node()"/>
     </xsl:copy>
   </xsl:template>
 
+  <!-- Append the imported <game> node before closing </gameList> -->
   <xsl:template match="gameList">
     <xsl:copy>
       <xsl:apply-templates select="@*|node()"/>
-      <xsl:apply-templates select="document('%%tmp_game%%')/game"/>
+      <xsl:apply-templates select="document('$tmp_game')/game"/>
     </xsl:copy>
   </xsl:template>
 
 </xsl:stylesheet>
 XSL
+    # -------------------------------------------------------------------------
+    # Step 3 - Apply the stylesheet to generate the merged XML.
+    # -------------------------------------------------------------------------
+    xsltproc "$tmp_xsl" "$target_gamelist" > "$tmp_output_raw" || return 1
 
-    # 2.1) Substitui o placeholder pelo caminho do arquivo temporário do jogo
-    sed -i "s|%%tmp_game%%|$tmp_game|g" "$tmp_xsl"
+    # -------------------------------------------------------------------------
+    # Step 4 - Normalize the XML formatting.
+    # -------------------------------------------------------------------------
+    xmlstarlet fo -t --encode utf-8 \
+        "$tmp_output_raw" > "$tmp_output_fmt" || return 1
 
-    # 3) Aplica o XSLT ao arquivo destino e grava em tmp_output_raw
-
-    xsltproc "$tmp_xsl" "$tgt_file" > "$tmp_output_raw"
-
-    # 4) Formata o XML de saída corretamente
-    xmlstarlet fo -t --encode utf-8 "$tmp_output_raw" > "$tmp_output_fmt"
-
-    # 5) (opcional) backup do original
-    #cp -a "$tgt_file" "${tgt_file}.bak.$(date +%s)" 
-
-    # 6) Valida o XML final
-    if xmlstarlet val -q "$tmp_output_fmt"; then
-        return 0
-    else
-        printf "${BLUE}Erro: O arquivo temporário não é um XML válido. Operação Cancelada.${ENDCOLOR}\n"
-        exit 1
+    # -------------------------------------------------------------------------
+    # Step 5 - Validate the generated XML before replacing the original file.
+    # -------------------------------------------------------------------------
+    if ! xmlstarlet val -q "$tmp_output_fmt"; then
+        printf "${BLUE}Error: Temporary XML is invalid. Operation cancelled.${ENDCOLOR}\n"
+        return 1
     fi
+
+    # The validated temporary XML is now ready to replace the original gamelist.
+    return 0
     
 }
 
@@ -1459,14 +1483,19 @@ transfer_gamelist_entry() {
     local -n game_ctx_ref="$1"
     local -n target_dir_ctx_ref="$2"
 
-    duplicate_xml_with_entry "${game_ctx_ref["path"]}" "${target_dir_context_ref["gamelist"]}" && \
-        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
-        
-    mv_xml_entry "${target_dir_context_ref["gamelist"]}" && \
-        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "${target_dir_context_ref["gamelist"]}"
+    local tmp_gamelist=""
 
-    rm_xml_entry "${game_ctx_ref["path"]}" && \
-        printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
+    duplicate_xml_with_entry "${game_ctx_ref["xml_node"]}" "${target_dir_context_ref["gamelist"]}" tmp_gamelist && \
+        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+    nano "$tmp_gamelist"
+    
+    # CONTINUAR DAQUI - atualizar mv_xml_entry
+
+    # mv_xml_entry "${target_dir_context_ref["gamelist"]}" && \
+    #     printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "${target_dir_context_ref["gamelist"]}"
+
+    # rm_xml_entry "${game_ctx_ref["path"]}" && \
+    #     printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
 
 }
 
