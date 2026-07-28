@@ -1105,7 +1105,6 @@ build_target_collection() {
 
 load_game_context() {
 # Loads all information related to the selected game into the context.
-
     local -n game_context_ref="$1"
     local game_path="$2"
     local game_name="$3"
@@ -1349,101 +1348,101 @@ rm_xml_entry() {
     fi
 }
 
-process_other_files() {
-# Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
-# É preciso descobrir se existem e move-los junto
-   local game_xml="$1"
-   local tg_dir="$2"
-   local command="$3"
-   printf "Verificando e processando arquivos relacionados ao jogo... \n"
+# process_other_files() {
+# # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
+# # É preciso descobrir se existem e move-los junto
+#    local game_xml="$1"
+#    local tg_dir="$2"
+#    local command="$3"
+#    printf "Verificando e processando arquivos relacionados ao jogo... \n"
 
-    # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
-    # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
-    local other_files=()
-    local file=""
+#     # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
+#     # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
+#     local other_files=()
+#     local file=""
 
-    mapfile -t other_files < <(xmlstarlet sel -t \
-                    -m "//game/*[starts-with(normalize-space(.), \"./\") and \
-                        not(self::name or self::path or self::desc or self::scrap)]" \
-                    -v "." -n "$game_xml")
+#     mapfile -t other_files < <(xmlstarlet sel -t \
+#                     -m "//game/*[starts-with(normalize-space(.), \"./\") and \
+#                         not(self::name or self::path or self::desc or self::scrap)]" \
+#                     -v "." -n "$game_xml")
 
     
-    # TODO: passar selected_game_path EXPLICITAMENTE!!!
-    # Alguns jogos possuem arquivos como fileName.iso e fileName.cue q devem ser processados tbm
-    local name="${selected_game_path%.*}"
-    mapfile -t -O "${#other_files[@]}" other_files < <(find . -type f -path "$name.*")
+#     # TODO: passar selected_game_path EXPLICITAMENTE!!!
+#     # Alguns jogos possuem arquivos como fileName.iso e fileName.cue q devem ser processados tbm
+#     local name="${selected_game_path%.*}"
+#     mapfile -t -O "${#other_files[@]}" other_files < <(find . -type f -path "$name.*")
     
-    if [[ "${#other_files[@]}" -eq 0 ]]; then
-        printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
-        return 0
-    else
+#     if [[ "${#other_files[@]}" -eq 0 ]]; then
+#         printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
+#         return 0
+#     else
 
-        local -A seen
-        local unique=()
-        local other=""
+#         local -A seen
+#         local unique=()
+#         local other=""
 
-        for other in "${other_files[@]}"; do
-        # Remove duplicatas, pois alguns jogos possuem duas ou mais tags q apontam p/ mesmo arquivo ou foram achados novamente pelo segundo mapfile
-        # Tbm checa se o arquivo realmente existe, pq né, num vai processar oq ñ tá lá =)
-            if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]] && [[ -e "$other" ]]; then
-                seen[$other]=1                         
-                unique+=("$other")
-            fi
-        done
+#         for other in "${other_files[@]}"; do
+#         # Remove duplicatas, pois alguns jogos possuem duas ou mais tags q apontam p/ mesmo arquivo ou foram achados novamente pelo segundo mapfile
+#         # Tbm checa se o arquivo realmente existe, pq né, num vai processar oq ñ tá lá =)
+#             if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]] && [[ -e "$other" ]]; then
+#                 seen[$other]=1                         
+#                 unique+=("$other")
+#             fi
+#         done
 
-        other_files=("${unique[@]}")
+#         other_files=("${unique[@]}")
 
-        printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
-        printf "${PINK}%s${ENDCOLOR}\n" "${other_files[@]}"
+#         printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
+#         printf "${PINK}%s${ENDCOLOR}\n" "${other_files[@]}"
 
-        for other in "${other_files[@]}"; do
+#         for other in "${other_files[@]}"; do
 
-            local sub_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
-            sub_dir="${sub_dir#./}" # Remove o prefixo ./
+#             local sub_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
+#             sub_dir="${sub_dir#./}" # Remove o prefixo ./
 
-            local target_sub_dir=""
+#             local target_sub_dir=""
             
-            if [[  "$sub_dir" =~ ^\. ]]; then # Decide entre usar o diretório principal como destino ou um subdiretório
-                target_sub_dir="$tg_dir"
-            else
-                target_sub_dir="$tg_dir/$sub_dir"
-            fi
+#             if [[  "$sub_dir" =~ ^\. ]]; then # Decide entre usar o diretório principal como destino ou um subdiretório
+#                 target_sub_dir="$tg_dir"
+#             else
+#                 target_sub_dir="$tg_dir/$sub_dir"
+#             fi
                 
-            case "$command" in
-                cp|mv)
-                    if [[ ! -d "$target_sub_dir" ]]; then
-                        printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_sub_dir"
-                        sudo mkdir -p "$target_sub_dir"
-                    fi
-                    ;;&
-                mv)
+#             case "$command" in
+#                 cp|mv)
+#                     if [[ ! -d "$target_sub_dir" ]]; then
+#                         printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_sub_dir"
+#                         sudo mkdir -p "$target_sub_dir"
+#                     fi
+#                     ;;&
+#                 mv)
                     
-                    printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
-                    sudo "$command" "$other" "$target_sub_dir"
-                    continue
-                    ;;
-                cp)
+#                     printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
+#                     sudo "$command" "$other" "$target_sub_dir"
+#                     continue
+#                     ;;
+#                 cp)
                     
-                    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
-                    sudo "$command" "$other" "$target_sub_dir"
-                    continue
-                    ;;
-                rm)
+#                     printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
+#                     sudo "$command" "$other" "$target_sub_dir"
+#                     continue
+#                     ;;
+#                 rm)
                     
-                    printf "Removendo ${GREEN}%s${ENDCOLOR}${ENDCOLOR}\n" "$other"
-                    sudo "$command" "$other"
-                    continue
-                    ;;
-            esac
+#                     printf "Removendo ${GREEN}%s${ENDCOLOR}${ENDCOLOR}\n" "$other"
+#                     sudo "$command" "$other"
+#                     continue
+#                     ;;
+#             esac
             
-        done
+#         done
 
-        printf "${YELLOW}Arquivos relacionados processados com sucesso!${ENDCOLOR}\n"
-        return 0
-    fi
+#         printf "${YELLOW}Arquivos relacionados processados com sucesso!${ENDCOLOR}\n"
+#         return 0
+#     fi
 
 
-}
+# }
 
 prepare_target_directory() {
 # Prompts the user for a destination directory and prepares it for file operations.
@@ -1499,9 +1498,185 @@ prepare_target_directory() {
     fi
 }
 
+process_related_files() {
+# Processes all files associated with a game (assets, saves, configs, etc.).
+    # The game itself is handled separately by mv_game() because it is the pivot
+    # of the operation. Failures while processing related files are reported, but
+    # do not interrupt the remaining files.
+
+    local -n game_ctx_ref="$1"
+    local target_dir="$2"
+    local command="$3"
+
+    local key=""
+    local file=""
+    local sub_dir=""
+    local target_sub_dir=""
+    local answer=""
+
+    for key in "${!game_ctx_ref[@]}"; do
+        # Skip context metadata and ghost assets.
+        # Only entries representing existing related files are processed.
+        if [[ "$key" != "name" ]] &&
+           [[ "$key" != "path" ]] &&
+           [[ "$key" != "status" ]] &&
+           [[ "$key" != ghost_* ]]; then
+
+            file="${game_ctx_ref["$key"]}"
+
+            printf "\nProcessing ${PINK}%s${ENDCOLOR}\n" "$file"
+
+            # Removing files does not require a destination.
+            # Skip all target directory handling and execute the command directly.
+            if [[ "$command" != "rm" ]]; then
+
+                # Preserve the original directory structure whenever possible.
+                # Example:
+                #   ./images/game.png -> target/images/
+                #   ./saves/game.srm  -> target/saves/
+                sub_dir="${file%/*}"
+                sub_dir="${sub_dir#./}"
+
+                if [[ "$sub_dir" =~ ^\. ]]; then
+                    target_sub_dir="$target_dir"
+                else
+                    target_sub_dir="$target_dir/$sub_dir"
+                fi
+
+                if [[ ! -d "$target_sub_dir" ]]; then
+                    printf "${BLUE}%s doesn't exist${ENDCOLOR}\n" "$target_sub_dir"
+                    printf "${RED}Create %s? (y/n) ${ENDCOLOR}" "$target_sub_dir"
+
+                    while true; do
+                        read -r -p "-> " answer
+
+                        case "$answer" in
+                            [Yy])
+                                if sudo mkdir -p "$target_sub_dir"; then
+                                    printf "${GREEN}%s created${ENDCOLOR}\n" "$target_sub_dir"
+                                    break
+                                fi
+
+                                printf "${RED}Failed to create %s.${ENDCOLOR}\n" "$target_sub_dir"
+
+                                # If the directory cannot be created, allow the
+                                # user to either place the files directly in the
+                                # target directory or skip this group entirely.
+                                while true; do
+                                    printf "${RED}Process these files in the main target directory instead? (y/n) ${ENDCOLOR}"
+                                    read -r -p "-> " answer
+
+                                    case "$answer" in
+                                        [Yy])
+                                            target_sub_dir="$target_dir"
+                                            break 2
+                                            ;;
+
+                                        [Nn])
+                                            printf "${YELLOW}Skipping files from %s.${ENDCOLOR}\n" "$sub_dir"
+                                            continue 2
+                                            ;;
+
+                                        *)
+                                            printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                                            ;;
+                                    esac
+                                done
+                                ;;
+
+                            [Nn])
+                                # User chose not to recreate the directory.
+                                # Store the files directly in the destination root.
+                                target_sub_dir="$target_dir"
+                                break
+                                ;;
+
+                            *)
+                                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                                ;;
+                        esac
+                    done
+                fi
+            fi
+
+            case "$command" in
+                mv)
+                    printf "Moving ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
+                        "$file" "$target_sub_dir"
+
+                    if sudo mv "$file" "$target_sub_dir"; then
+                        printf "${GREEN}File moved successfully!${ENDCOLOR}\n"
+                    else
+                        printf "${RED}Failed to move %s.${ENDCOLOR}\n" "$file"
+                    fi
+                    ;;
+
+                cp)
+                    printf "Copying ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
+                        "$file" "$target_sub_dir"
+
+                    if sudo cp "$file" "$target_sub_dir"; then
+                        printf "${GREEN}File copied successfully!${ENDCOLOR}\n"
+                    else
+                        printf "${RED}Failed to copy %s.${ENDCOLOR}\n" "$file"
+                    fi
+                    ;;
+
+                rm)
+                    printf "Removing ${GREEN}%s${ENDCOLOR}\n" "$file"
+
+                    if sudo rm "$file"; then
+                        printf "${GREEN}File removed successfully!${ENDCOLOR}\n"
+                    else
+                        printf "${RED}Failed to remove %s.${ENDCOLOR}\n" "$file"
+                    fi
+                    ;;
+            esac
+        fi
+    done
+}
+
 mv_game() {
     local -n game_context_ref="$1"
+    local -n target_dir_context_ref="$2"
 
+    local answer=""
+
+    printf "Moving ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
+    "${game_context_ref["name"]}" \
+    "${target_dir_context_ref["dir"]}"
+
+    if sudo mv "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
+        printf "${YELLOW}Game moved successfully!${ENDCOLOR}\n"
+    else
+        printf "${BLUE}Failed to move game!${ENDCOLOR}\n"
+        return 1
+    fi
+
+    printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
+    while true; do
+        read -r -p "-> " answer
+
+        case "$answer" in
+            [Yy])
+                process_related_files game_context_ref "${target_dir_context_ref["dir"]}" "mv"
+                ;;
+
+            [Nn])
+                :
+                ;;
+
+            *)
+                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                continue
+                ;;
+        esac
+        break
+    done
+
+    
+    # CONTINUAR DAQUI - mover entrada xml
+    
     # duplicate_xml_with_entry "$selected_game" "$target_gamelist" && \
     #     printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
         
@@ -1512,12 +1687,8 @@ mv_game() {
     #     printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
 
    
-    # process_other_files "$tmp_game" "$target_dir" "mv" #tmp_game é criado pelo duplicate_xml...
     
-    # printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"
-    # sudo mv "$selected_path" "$target_dir" && \
-    #     printf "${YELLOW}Jogo movido com sucesso!${ENDCOLOR}\n"
-    # rsync -ah --info=progress2 --remove-source-files "$selected_path" "$target_dir/"
+    # rsync -ah --info=progress2 --remove-source-files "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"
     # Dá p/ usar o comando acima - mais seguro - porém deu problema devido a espaço de armazenamento
     # Resolver eventualmente =)
 
@@ -2027,8 +2198,8 @@ main_menu() {
                         ;;&
                         
                         "Move Game")
-                            echo "chegou aqui"
-                            # mv_game game_context
+                            mv_game game_context target_dir_context
+
                         ;;
 
                         "Copy Game")
@@ -2052,7 +2223,16 @@ main_menu() {
                         ;;
 
                         "See Related Files")
-                            :
+                        # lógica p/ debug - implementaar corretaamente depois
+                            for key in "${!game_context[@]}"; do
+                                if [[ "$key" != "name" ]] && \
+                                    [[ "$key" != "path" ]] && \
+                                    [[ "$key" != "status" ]]; then
+                                    printf  "%s: ${PINK}%s${ENDCOLOR}\n" "$key" "${game_context["$key"]:-}"
+                                
+                                fi
+                            
+                            done
                         ;;
 
                         "Back")
