@@ -1124,6 +1124,17 @@ load_game_context() {
 
     fi
 
+    if [[ "${game_context_ref["status"]}" != "Orphan" ]]; then
+        # local safe_xpath
+        # safe_xpath=$(escape_xpath_string "$game_path")
+
+        game_context_ref["xml_node"]="$(
+            xmlstarlet sel \
+                -t -c "//game[path='$game_path']" \
+                "./gamelist.xml"
+        )"
+    fi
+
     [[ -n "${valid_images["$game_path"]:-}"      ]] && game_context_ref["valid_image"]="${valid_images["$game_path"]}"
     [[ -n "${valid_videos["$game_path"]:-}"      ]] && game_context_ref["valid_video"]="${valid_videos["$game_path"]}"
     [[ -n "${valid_marquees["$game_path"]:-}"    ]] && game_context_ref["valid_marquee"]="${valid_marquees["$game_path"]}"
@@ -1349,100 +1360,115 @@ rm_xml_entry() {
 }
 
 # process_other_files() {
-# # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
-# # É preciso descobrir se existem e move-los junto
-#    local game_xml="$1"
-#    local tg_dir="$2"
-#    local command="$3"
-#    printf "Verificando e processando arquivos relacionados ao jogo... \n"
+    # # Jogos podem conter arquivos relacionados como imgs ou videos ou nenhum
+    # # É preciso descobrir se existem e move-los junto
+    #    local game_xml="$1"
+    #    local tg_dir="$2"
+    #    local command="$3"
+    #    printf "Verificando e processando arquivos relacionados ao jogo... \n"
 
-#     # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
-#     # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
-#     local other_files=()
-#     local file=""
+    #     # Extrai os valores dos elementos filhos do <game> que não sejam <path>, <name>, <desc>ou scrap
+    #     # path e name já são utilizadas, desc pode conter texto longo e scrap aparece como se fosse arquivo - por isso foram excluídos
+    #     local other_files=()
+    #     local file=""
 
-#     mapfile -t other_files < <(xmlstarlet sel -t \
-#                     -m "//game/*[starts-with(normalize-space(.), \"./\") and \
-#                         not(self::name or self::path or self::desc or self::scrap)]" \
-#                     -v "." -n "$game_xml")
+    #     mapfile -t other_files < <(xmlstarlet sel -t \
+    #                     -m "//game/*[starts-with(normalize-space(.), \"./\") and \
+    #                         not(self::name or self::path or self::desc or self::scrap)]" \
+    #                     -v "." -n "$game_xml")
 
-    
-#     # TODO: passar selected_game_path EXPLICITAMENTE!!!
-#     # Alguns jogos possuem arquivos como fileName.iso e fileName.cue q devem ser processados tbm
-#     local name="${selected_game_path%.*}"
-#     mapfile -t -O "${#other_files[@]}" other_files < <(find . -type f -path "$name.*")
-    
-#     if [[ "${#other_files[@]}" -eq 0 ]]; then
-#         printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
-#         return 0
-#     else
+        
+    #     # TODO: passar selected_game_path EXPLICITAMENTE!!!
+    #     # Alguns jogos possuem arquivos como fileName.iso e fileName.cue q devem ser processados tbm
+    #     local name="${selected_game_path%.*}"
+    #     mapfile -t -O "${#other_files[@]}" other_files < <(find . -type f -path "$name.*")
+        
+    #     if [[ "${#other_files[@]}" -eq 0 ]]; then
+    #         printf "${CYAN}Nenhum arquivo relacionado encontrado.${ENDCOLOR}\n"
+    #         return 0
+    #     else
 
-#         local -A seen
-#         local unique=()
-#         local other=""
+    #         local -A seen
+    #         local unique=()
+    #         local other=""
 
-#         for other in "${other_files[@]}"; do
-#         # Remove duplicatas, pois alguns jogos possuem duas ou mais tags q apontam p/ mesmo arquivo ou foram achados novamente pelo segundo mapfile
-#         # Tbm checa se o arquivo realmente existe, pq né, num vai processar oq ñ tá lá =)
-#             if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]] && [[ -e "$other" ]]; then
-#                 seen[$other]=1                         
-#                 unique+=("$other")
-#             fi
-#         done
+    #         for other in "${other_files[@]}"; do
+    #         # Remove duplicatas, pois alguns jogos possuem duas ou mais tags q apontam p/ mesmo arquivo ou foram achados novamente pelo segundo mapfile
+    #         # Tbm checa se o arquivo realmente existe, pq né, num vai processar oq ñ tá lá =)
+    #             if [[ -z "${seen[$other]:-}" ]] && [[ "$other" != "./$selected_game_path" ]] && [[ -e "$other" ]]; then
+    #                 seen[$other]=1                         
+    #                 unique+=("$other")
+    #             fi
+    #         done
 
-#         other_files=("${unique[@]}")
+    #         other_files=("${unique[@]}")
 
-#         printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
-#         printf "${PINK}%s${ENDCOLOR}\n" "${other_files[@]}"
+    #         printf "Foram encontrados ${GREEN}%s arquvios relacionados${ENDCOLOR}\n" "${#other_files[@]}"
+    #         printf "${PINK}%s${ENDCOLOR}\n" "${other_files[@]}"
 
-#         for other in "${other_files[@]}"; do
+    #         for other in "${other_files[@]}"; do
 
-#             local sub_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
-#             sub_dir="${sub_dir#./}" # Remove o prefixo ./
+    #             local sub_dir="${other%/*}" # Remove o nome do arquivo, ficando só com o diretório
+    #             sub_dir="${sub_dir#./}" # Remove o prefixo ./
 
-#             local target_sub_dir=""
-            
-#             if [[  "$sub_dir" =~ ^\. ]]; then # Decide entre usar o diretório principal como destino ou um subdiretório
-#                 target_sub_dir="$tg_dir"
-#             else
-#                 target_sub_dir="$tg_dir/$sub_dir"
-#             fi
+    #             local target_sub_dir=""
                 
-#             case "$command" in
-#                 cp|mv)
-#                     if [[ ! -d "$target_sub_dir" ]]; then
-#                         printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_sub_dir"
-#                         sudo mkdir -p "$target_sub_dir"
-#                     fi
-#                     ;;&
-#                 mv)
+    #             if [[  "$sub_dir" =~ ^\. ]]; then # Decide entre usar o diretório principal como destino ou um subdiretório
+    #                 target_sub_dir="$tg_dir"
+    #             else
+    #                 target_sub_dir="$tg_dir/$sub_dir"
+    #             fi
                     
-#                     printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
-#                     sudo "$command" "$other" "$target_sub_dir"
-#                     continue
-#                     ;;
-#                 cp)
-                    
-#                     printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
-#                     sudo "$command" "$other" "$target_sub_dir"
-#                     continue
-#                     ;;
-#                 rm)
-                    
-#                     printf "Removendo ${GREEN}%s${ENDCOLOR}${ENDCOLOR}\n" "$other"
-#                     sudo "$command" "$other"
-#                     continue
-#                     ;;
-#             esac
-            
-#         done
+    #             case "$command" in
+    #                 cp|mv)
+    #                     if [[ ! -d "$target_sub_dir" ]]; then
+    #                         printf "${CYAN}Criando diretório %s${ENDCOLOR}\n" "$target_sub_dir"
+    #                         sudo mkdir -p "$target_sub_dir"
+    #                     fi
+    #                     ;;&
+    #                 mv)
+                        
+    #                     printf "Movendo ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
+    #                     sudo "$command" "$other" "$target_sub_dir"
+    #                     continue
+    #                     ;;
+    #                 cp)
+                        
+    #                     printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$other" "$target_sub_dir"
+    #                     sudo "$command" "$other" "$target_sub_dir"
+    #                     continue
+    #                     ;;
+    #                 rm)
+                        
+    #                     printf "Removendo ${GREEN}%s${ENDCOLOR}${ENDCOLOR}\n" "$other"
+    #                     sudo "$command" "$other"
+    #                     continue
+    #                     ;;
+    #             esac
+                
+    #         done
 
-#         printf "${YELLOW}Arquivos relacionados processados com sucesso!${ENDCOLOR}\n"
-#         return 0
-#     fi
+    #         printf "${YELLOW}Arquivos relacionados processados com sucesso!${ENDCOLOR}\n"
+    #         return 0
+    #     fi
 
 
 # }
+
+transfer_gamelist_entry() {
+    local -n game_ctx_ref="$1"
+    local -n target_dir_ctx_ref="$2"
+
+    duplicate_xml_with_entry "${game_ctx_ref["path"]}" "${target_dir_context_ref["gamelist"]}" && \
+        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+        
+    mv_xml_entry "${target_dir_context_ref["gamelist"]}" && \
+        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "${target_dir_context_ref["gamelist"]}"
+
+    rm_xml_entry "${game_ctx_ref["path"]}" && \
+        printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
+
+}
 
 prepare_target_directory() {
 # Prompts the user for a destination directory and prepares it for file operations.
@@ -1674,19 +1700,7 @@ mv_game() {
         break
     done
 
-    
-    # CONTINUAR DAQUI - mover entrada xml
-    
-    # duplicate_xml_with_entry "$selected_game" "$target_gamelist" && \
-    #     printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
-        
-    # mv_xml_entry "$target_gamelist" && \
-    #     printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$target_gamelist"
-
-    # rm_xml_entry "$selected_game" && \
-    #     printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
-
-   
+    transfer_gamelist_entry game_context_ref target_dir_context_ref
     
     # rsync -ah --info=progress2 --remove-source-files "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"
     # Dá p/ usar o comando acima - mais seguro - porém deu problema devido a espaço de armazenamento
