@@ -1310,7 +1310,7 @@ duplicate_gamelist_with_entry() {
 <?xml version="1.0" encoding="utf-8"?>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
 
-  <xsl:output method="xml" indent="yes"/>
+  <xsl:output method="xml" indent="no"/>
 
   <!-- Identity transform: copy every node unchanged -->
   <xsl:template match="@*|node()">
@@ -1367,19 +1367,20 @@ replace_gamelist() {
 }
 
 rm_gamelist_entry() {
-# Remove a entrada do gamelist.xml original
-    local game="$1"
-    printf "${CYAN}Removendo entrada do gamelist.xml...${ENDCOLOR}\n"
-
+# Removes the first matching game entry from the source gamelist.xml.
+    local game_path="$1"
     
     local safe_xpath
-    safe_xpath=$(escape_xpath_string "$game")    
+    
+    printf "${CYAN}Removing node from the source gamelist...${ENDCOLOR}\n"
+    
+    safe_xpath=$(escape_xpath_string "$game_path")    
 
-    if sudo xmlstarlet ed --inplace -d "(//game[name=$safe_xpath])[1]" "./gamelist.xml"; then
+    if sudo xmlstarlet ed --inplace -d "(//game[path=$safe_xpath])[1]" "./gamelist.xml"; then
         return 0
     else
-        printf "${BLUE}Erro ao remover a entrada do gamelist.xml. Verifique permissões ou integridade do arquivo.${ENDCOLOR}\n"
-        exit 1
+        printf "${BLUE}Failed to remove the node from the source gamelist. Check permissions and/or file integrity.${ENDCOLOR}\n"
+        return 1
     fi
 }
 
@@ -1395,9 +1396,9 @@ transfer_gamelist_entry() {
     replace_gamelist "${target_dir_context_ref["gamelist"]}" "$tmp_gamelist" && \
         printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "${target_dir_context_ref["gamelist"]}"
 
+    rm_gamelist_entry "${game_ctx_ref["path"]}" && \
+        printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
     exit
-    # rm_gamelist_entry "${game_ctx_ref["path"]}" && \
-    #     printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
 
 }
 
