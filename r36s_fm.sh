@@ -1385,21 +1385,46 @@ rm_gamelist_entry() {
 }
 
 transfer_gamelist_entry() {
+# Transfers a game entry from the source gamelist.xml to the target gamelist.xml.
+    # =========================================================================
+    # Pipeline:
+    #   1. Create and validate a temporary copy of the target gamelist.xml
+    #      containing the new entry.
+    #   2. Replace the target gamelist.xml with the validated temporary file.
+    #   3. Remove the transferred entry from the source gamelist.xml.
+    #
+    # The source entry is only removed after the target gamelist.xml has been
+    # successfully updated, preventing metadata loss if any previous step fails.
+    # =========================================================================
     local -n game_ctx_ref="$1"
     local -n target_dir_ctx_ref="$2"
 
     local tmp_gamelist=""
 
-    duplicate_gamelist_with_entry "${game_ctx_ref["xml_node"]}" "${target_dir_context_ref["gamelist"]}" tmp_gamelist && \
-        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+    if ! duplicate_gamelist_with_entry \
+        "${game_ctx_ref["xml_node"]}" \
+        "${target_dir_ctx_ref["gamelist"]}" \
+        tmp_gamelist; then
+        return 1
+    fi
 
-    replace_gamelist "${target_dir_context_ref["gamelist"]}" "$tmp_gamelist" && \
-        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "${target_dir_context_ref["gamelist"]}"
+    printf "${GREEN}Temporary gamelist.xml created and validated successfully!${ENDCOLOR}\n"
 
-    rm_gamelist_entry "${game_ctx_ref["path"]}" && \
-        printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"
-    exit
+    if ! replace_gamelist \
+        "${target_dir_ctx_ref["gamelist"]}" \
+        "$tmp_gamelist"; then
+        return 1
+    fi
 
+    printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
+
+    if ! rm_gamelist_entry "${game_ctx_ref["path"]}"; then
+        return 1
+    fi
+
+    printf "${YELLOW}Source gamelist.xml entry removed successfully!${ENDCOLOR}\n"
+
+    return 0
 }
 
 prepare_target_directory() {
@@ -1478,11 +1503,12 @@ process_related_files() {
         if [[ "$key" != "name" ]] &&
            [[ "$key" != "path" ]] &&
            [[ "$key" != "status" ]] &&
+           [[ "$key" != "xml_node" ]] &&
            [[ "$key" != ghost_* ]]; then
 
             file="${game_ctx_ref["$key"]}"
 
-            printf "\nProcessing ${PINK}%s${ENDCOLOR}\n" "$file"
+            printf "Processing ${PINK}%s${ENDCOLOR}\n" "$file"
 
             # Removing files does not require a destination.
             # Skip all target directory handling and execute the command directly.
@@ -1563,9 +1589,9 @@ process_related_files() {
                         "$file" "$target_sub_dir"
 
                     if sudo mv "$file" "$target_sub_dir"; then
-                        printf "${GREEN}File moved successfully!${ENDCOLOR}\n"
+                        printf "${GREEN}File moved successfully!${ENDCOLOR}\n\n"
                     else
-                        printf "${RED}Failed to move %s.${ENDCOLOR}\n" "$file"
+                        printf "${RED}Failed to move %s.${ENDCOLOR}\n\n" "$file"
                     fi
                     ;;
 
@@ -1574,9 +1600,9 @@ process_related_files() {
                         "$file" "$target_sub_dir"
 
                     if sudo cp "$file" "$target_sub_dir"; then
-                        printf "${GREEN}File copied successfully!${ENDCOLOR}\n"
+                        printf "${GREEN}File copied successfully!${ENDCOLOR}\n\n"
                     else
-                        printf "${RED}Failed to copy %s.${ENDCOLOR}\n" "$file"
+                        printf "${RED}Failed to copy %s.${ENDCOLOR}\n\n" "$file"
                     fi
                     ;;
 
@@ -1584,9 +1610,9 @@ process_related_files() {
                     printf "Removing ${GREEN}%s${ENDCOLOR}\n" "$file"
 
                     if sudo rm "$file"; then
-                        printf "${GREEN}File removed successfully!${ENDCOLOR}\n"
+                        printf "${GREEN}File removed successfully!${ENDCOLOR}\n\n"
                     else
-                        printf "${RED}Failed to remove %s.${ENDCOLOR}\n" "$file"
+                        printf "${RED}Failed to remove %s.${ENDCOLOR}\n\n" "$file"
                     fi
                     ;;
             esac
@@ -1614,6 +1640,7 @@ mv_game() {
     printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
     while true; do
         read -r -p "-> " answer
+        echo ""
 
         case "$answer" in
             [Yy])
@@ -1632,6 +1659,8 @@ mv_game() {
         break
     done
 
+    # AQUI: apenas ghost e valid tem entradas, perguntar se orphan quer criar entrada
+    # e validar sucesso corretamente
     transfer_gamelist_entry game_context_ref target_dir_context_ref
     
     # rsync -ah --info=progress2 --remove-source-files "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"
