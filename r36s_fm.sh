@@ -1135,28 +1135,82 @@ load_game_context() {
         )"
     fi
 
-    [[ -n "${valid_images["$game_path"]:-}"      ]] && game_context_ref["valid_image"]="${valid_images["$game_path"]}"
-    [[ -n "${valid_videos["$game_path"]:-}"      ]] && game_context_ref["valid_video"]="${valid_videos["$game_path"]}"
-    [[ -n "${valid_marquees["$game_path"]:-}"    ]] && game_context_ref["valid_marquee"]="${valid_marquees["$game_path"]}"
-    [[ -n "${valid_thumbnails["$game_path"]:-}"  ]] && game_context_ref["valid_thumbnail"]="${valid_thumbnails["$game_path"]}"
+    [[ -n "${valid_images["$game_path"]:-}"      ]] && \
+        game_context_ref["valid_image"]="${valid_images["$game_path"]}" && \
+            (( game_context_ref["valid_asset_count"]+=1 ))
 
-    [[ -n "${orphan_images["$game_path"]:-}"     ]] && game_context_ref["orphan_image"]="${orphan_images["$game_path"]}"
-    [[ -n "${orphan_videos["$game_path"]:-}"     ]] && game_context_ref["orphan_video"]="${orphan_videos["$game_path"]}"
-    [[ -n "${orphan_marquees["$game_path"]:-}"   ]] && game_context_ref["orphan_marquee"]="${orphan_marquees["$game_path"]}"
-    [[ -n "${orphan_thumbnails["$game_path"]:-}" ]] && game_context_ref["orphan_thumbnail"]="${orphan_thumbnails["$game_path"]}"
+    [[ -n "${valid_videos["$game_path"]:-}"      ]] && \
+        game_context_ref["valid_video"]="${valid_videos["$game_path"]}" && \
+            (( game_context_ref["valid_asset_count"]+=1 ))
 
-    [[ -n "${ghost_images["$game_path"]:-}"      ]] && game_context_ref["ghost_image"]="${ghost_images["$game_path"]}"
-    [[ -n "${ghost_videos["$game_path"]:-}"      ]] && game_context_ref["ghost_video"]="${ghost_videos["$game_path"]}"
-    [[ -n "${ghost_marquees["$game_path"]:-}"    ]] && game_context_ref["ghost_marquee"]="${ghost_marquees["$game_path"]}"
-    [[ -n "${ghost_thumbnails["$game_path"]:-}"  ]] && game_context_ref["ghost_thumbnail"]="${ghost_thumbnails["$game_path"]}"
+    [[ -n "${valid_marquees["$game_path"]:-}"    ]] && \
+        game_context_ref["valid_marquee"]="${valid_marquees["$game_path"]}" && \
+            (( game_context_ref["valid_asset_count"]+=1 ))
 
-    [[ -n "${linked_images["$game_path"]:-}"     ]] && game_context_ref["linked_image"]="${linked_images["$game_path"]}"
-    [[ -n "${linked_videos["$game_path"]:-}"     ]] && game_context_ref["linked_video"]="${linked_videos["$game_path"]}"
-    [[ -n "${linked_marquees["$game_path"]:-}"   ]] && game_context_ref["linked_marquee"]="${linked_marquees["$game_path"]}"
-    [[ -n "${linked_thumbnails["$game_path"]:-}" ]] && game_context_ref["linked_thumbnail"]="${linked_thumbnails["$game_path"]}"
+    [[ -n "${valid_thumbnails["$game_path"]:-}"  ]] && \
+        game_context_ref["valid_thumbnail"]="${valid_thumbnails["$game_path"]}" && \
+            (( game_context_ref["valid_asset_count"]+=1 ))
 
-    [[ -n "${linked_auxiliary["$game_path"]:-}"  ]] && game_context_ref["linked_auxiliary"]="${linked_auxiliary["$game_path"]}"
-    [[ -n "${linked_configs["$game_path"]:-}"    ]] && game_context_ref["linked_config"]="${linked_configs["$game_path"]}"
+
+    [[ -n "${orphan_images["$game_path"]:-}"     ]] && \
+        game_context_ref["orphan_image"]="${orphan_images["$game_path"]}" && \
+            (( game_context_ref["orphan_asset_count"]+=1 ))
+
+    [[ -n "${orphan_videos["$game_path"]:-}"     ]] && \
+        game_context_ref["orphan_video"]="${orphan_videos["$game_path"]}" && \
+            (( game_context_ref["orphan_asset_count"]+=1 ))
+
+    [[ -n "${orphan_marquees["$game_path"]:-}"   ]] && \
+        game_context_ref["orphan_marquee"]="${orphan_marquees["$game_path"]}" && \
+            (( game_context_ref["orphan_asset_count"]+=1 ))
+
+    [[ -n "${orphan_thumbnails["$game_path"]:-}" ]] && \
+        game_context_ref["orphan_thumbnail"]="${orphan_thumbnails["$game_path"]}" && \
+            (( game_context_ref["orphan_asset_count"]+=1 ))
+
+
+    [[ -n "${ghost_images["$game_path"]:-}"      ]] && \
+        game_context_ref["ghost_image"]="${ghost_images["$game_path"]}" && \
+            (( game_context_ref["ghost_asset_count"]+=1 ))
+
+    [[ -n "${ghost_videos["$game_path"]:-}"      ]] && \
+        game_context_ref["ghost_video"]="${ghost_videos["$game_path"]}" && \
+            (( game_context_ref["ghost_asset_count"]+=1 ))
+
+    [[ -n "${ghost_marquees["$game_path"]:-}"    ]] && \
+        game_context_ref["ghost_marquee"]="${ghost_marquees["$game_path"]}" && \
+            (( game_context_ref["ghost_asset_count"]+=1 ))
+
+    [[ -n "${ghost_thumbnails["$game_path"]:-}"  ]] && \
+        game_context_ref["ghost_thumbnail"]="${ghost_thumbnails["$game_path"]}" && \
+            (( game_context_ref["ghost_asset_count"]+=1 ))
+
+
+    [[ -n "${linked_images["$game_path"]:-}"     ]] && \
+        game_context_ref["linked_image"]="${linked_images["$game_path"]}" && \
+            (( game_context_ref["linked_asset_count"]+=1 ))
+
+    [[ -n "${linked_videos["$game_path"]:-}"     ]] && \
+        game_context_ref["linked_video"]="${linked_videos["$game_path"]}" && \
+            (( game_context_ref["linked_asset_count"]+=1 ))
+
+    [[ -n "${linked_marquees["$game_path"]:-}"   ]] && \
+        game_context_ref["linked_marquee"]="${linked_marquees["$game_path"]}" && \
+            (( game_context_ref["linked_asset_count"]+=1 ))
+
+    [[ -n "${linked_thumbnails["$game_path"]:-}" ]] && \
+        game_context_ref["linked_thumbnail"]="${linked_thumbnails["$game_path"]}" && \
+            (( game_context_ref["linked_asset_count"]+=1 ))
+
+
+    [[ -n "${linked_auxiliary["$game_path"]:-}"  ]] && \
+        game_context_ref["linked_auxiliary"]="${linked_auxiliary["$game_path"]}" && \
+            (( game_context_ref["linked_support_count"]+=1 ))
+
+    [[ -n "${linked_configs["$game_path"]:-}"    ]] && \
+        game_context_ref["linked_config"]="${linked_configs["$game_path"]}" && \
+            (( game_context_ref["linked_support_count"]+=1 ))
+
 }
 
 context_status_icon() {
@@ -1189,17 +1243,20 @@ print_game_context() {
     print_summary_line "Marquee"   "$(context_status_icon context_ref valid_marquee)"
     print_summary_line "Thumbnail" "$(context_status_icon context_ref valid_thumbnail)"
 
+
     printf "\n${YELLOW}────────────── Orphan Assets ─────────────${ENDCOLOR}\n"
     print_summary_line "Image"     "$(context_status_icon context_ref orphan_image)"
     print_summary_line "Video"     "$(context_status_icon context_ref orphan_video)"
     print_summary_line "Marquee"   "$(context_status_icon context_ref orphan_marquee)"
     print_summary_line "Thumbnail" "$(context_status_icon context_ref orphan_thumbnail)"
 
+
     printf "\n${YELLOW}──────────────Ghost Assets ─────────────${ENDCOLOR}\n"
     print_summary_line "Image"     "$(context_status_icon context_ref ghost_image)"
     print_summary_line "Video"     "$(context_status_icon context_ref ghost_video)"
     print_summary_line "Marquee"   "$(context_status_icon context_ref ghost_marquee)"
     print_summary_line "Thumbnail" "$(context_status_icon context_ref ghost_thumbnail)"
+
 
     printf "\n${YELLOW}────────────── Linked Files ─────────────${ENDCOLOR}\n"
     print_summary_line "Image"      "$(context_status_icon context_ref linked_image)"
@@ -1208,6 +1265,8 @@ print_game_context() {
     print_summary_line "Thumbnail"  "$(context_status_icon context_ref linked_thumbnail)"
     print_summary_line "Auxiliary"  "$(context_status_icon context_ref linked_auxiliary)"
     print_summary_line "Config"     "$(context_status_icon context_ref linked_config)"
+
+
     
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
 }
@@ -1504,6 +1563,7 @@ process_related_files() {
            [[ "$key" != "path" ]] &&
            [[ "$key" != "status" ]] &&
            [[ "$key" != "xml_node" ]] &&
+           [[ "$key" != *_count ]] &&
            [[ "$key" != ghost_* ]]; then
 
             file="${game_ctx_ref["$key"]}"
@@ -1636,36 +1696,55 @@ mv_game() {
         printf "${BLUE}Failed to move game!${ENDCOLOR}\n"
         return 1
     fi
-
-    printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
-    while true; do
-        read -r -p "-> " answer
-        echo ""
-
-        case "$answer" in
-            [Yy])
-                process_related_files game_context_ref "${target_dir_context_ref["dir"]}" "mv"
-                ;;
-
-            [Nn])
-                :
-                ;;
-
-            *)
-                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
-                continue
-                ;;
-        esac
-        break
-    done
-
-    # AQUI: apenas ghost e valid tem entradas, perguntar se orphan quer criar entrada
-    # e validar sucesso corretamente
-    transfer_gamelist_entry game_context_ref target_dir_context_ref
     
+    if [[ -n "${game_context_ref["valid_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["orphan_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["linked_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["linked_support_count"]:-}" ]]; then
+
+        printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
+        while true; do
+            read -r -p "-> " answer
+            echo ""
+
+            case "$answer" in
+                [Yy])
+                    process_related_files game_context_ref "${target_dir_context_ref["dir"]}" "mv"
+                    ;;
+
+                [Nn])
+                    :
+                    ;;
+
+                *)
+                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                    continue
+                    ;;
+            esac
+            break
+        done
+    fi
+
+    if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
+        echo "TODO: implementar normalização do gamelist"
+    
+    elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
+        if ! transfer_gamelist_entry \
+            game_context_ref target_dir_context_ref; then
+            return 1
+        fi
+        printf "${GREEN}gamelist.xml updated successfully${ENDCOLOR}\n"
+
+
+    fi
+    return 0
+
     # rsync -ah --info=progress2 --remove-source-files "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"
-    # Dá p/ usar o comando acima - mais seguro - porém deu problema devido a espaço de armazenamento
-    # Resolver eventualmente =)
+    # rsync --remove-source-files é uma alternativa mais segura que mv,
+    # pois copia os arquivos e só remove a origem após a transferência.
+    # Atualmente não é utilizado porque requer espaço suficiente para manter
+    # origem e destino simultaneamente durante a cópia.
+    # Reavaliar essa abordagem futuramente.
 
 }
 
@@ -2145,7 +2224,9 @@ main_menu() {
             ;;
 
             "GAME_ACTION_MENU")
+            
                 local -A game_context=()
+                
                 load_game_context  game_context "$selected_game_path" "$selected_game_name"
                 print_game_context game_context
 
@@ -2173,7 +2254,13 @@ main_menu() {
                         ;;&
                         
                         "Move Game")
-                            mv_game game_context target_dir_context
+                            if mv_game game_context target_dir_context; then
+                                printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+                                printf "All requested operations were completed as expected.\n"
+                            else
+                                printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
+                                printf "Please review the messages above to identify which step failed.\n"
+                            fi
 
                         ;;
 
