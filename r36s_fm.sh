@@ -1457,6 +1457,7 @@ transfer_gamelist_entry() {
     # =========================================================================
     local -n game_ctx_ref="$1"
     local -n target_dir_ctx_ref="$2"
+    local remove_from_source="${3:-true}"
 
     local tmp_gamelist=""
 
@@ -1477,11 +1478,13 @@ transfer_gamelist_entry() {
 
     printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
 
-    if ! rm_gamelist_entry "${game_ctx_ref["path"]}"; then
-        return 1
+    if "$remove_from_source"; then
+        if ! rm_gamelist_entry "${game_ctx_ref["path"]}"; then
+            return 1
+        fi
+        printf "${YELLOW}Source gamelist.xml entry removed successfully!${ENDCOLOR}\n"
+    
     fi
-
-    printf "${YELLOW}Source gamelist.xml entry removed successfully!${ENDCOLOR}\n"
 
     return 0
 }
@@ -1644,7 +1647,7 @@ process_related_files() {
             fi
 
             case "$command" in
-                mv)
+                "mv")
                     printf "Moving ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
                         "$file" "$target_sub_dir"
 
@@ -1655,7 +1658,7 @@ process_related_files() {
                     fi
                     ;;
 
-                cp)
+                "cp")
                     printf "Copying ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
                         "$file" "$target_sub_dir"
 
@@ -1666,7 +1669,7 @@ process_related_files() {
                     fi
                     ;;
 
-                rm)
+                "rm")
                     printf "Removing ${GREEN}%s${ENDCOLOR}\n" "$file"
 
                     if sudo rm "$file"; then
@@ -1749,42 +1752,64 @@ mv_game() {
 }
 
 cp_game() {
-# Copia um jogo e sua entrada no gamelist.xml para um diretório de destino.
-    # Parâmetros:
-    #   $1 - Nome do jogo
-    #   $2 - Caminho do arquivo do jogo
-    local selected_game="$1"
-    local selected_path="$2"
-    local target_dir=""
+    local -n game_context_ref="$1"
+    local -n target_dir_context_ref="$2"
 
-    while true; do
-        read -r -p "Digite o diretório de destino: " target_dir
-        if [[ ! -d "$target_dir" ]]; then
-            printf "${BLUE}Diretório não encontrado. Tente novamente.${ENDCOLOR}\n"
-            continue
-        fi
-        break
-    done
+    local answer=""
 
-    local target_gamelist="$target_dir/gamelist.xml"
-    if [[ -f "$target_gamelist" ]]; then
-        printf "${GREEN}gamelist.xml found${ENDCOLOR}\n"
+    printf "Copying ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
+    "${game_context_ref["name"]}" \
+    "${target_dir_context_ref["dir"]}"
+
+    if sudo rsync -ah --info=progress2 "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
+        printf "${YELLOW}Game copied successfully!${ENDCOLOR}\n"
     else
-        printf "${CYAN}gamelist.xml not found${ENDCOLOR}\n"
-        create_gamelist "$target_gamelist"
+        printf "${BLUE}Failed to copy game!${ENDCOLOR}\n"
+        return 1
+    fi
+    
+    if [[ -n "${game_context_ref["valid_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["orphan_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["linked_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["linked_support_count"]:-}" ]]; then
+
+        printf "${RED}Do you want to copy all related files too? (y/n) ${ENDCOLOR}"
+        while true; do
+            read -r -p "-> " answer
+            echo ""
+
+            case "$answer" in
+                [Yy])
+                    process_related_files game_context_ref "${target_dir_context_ref["dir"]}" "cp"
+                    ;;
+
+                [Nn])
+                    :
+                    ;;
+
+                *)
+                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                    continue
+                    ;;
+            esac
+            break
+        done
     fi
 
-    duplicate_xml_with_entry "$selected_game" "$target_file" && \
-        printf "${GREEN}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
-        
-    mv_xml_entry "$target_file" && \
-        printf "${YELLOW}Entrada movida com sucesso para %s${ENDCOLOR}\n" "$target_file"
-
-    process_other_files "$tmp_game" "$target_dir" "cp" #tmp_game é criado pelo mv_xml_entry
+    if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
+        echo "TODO: implementar normalização do gamelist"
     
-    printf "Copiando ${GREEN}%s${ENDCOLOR} para ${GREEN}%s${ENDCOLOR}\n" "$selected_game" "$target_dir"  
-    sudo rsync -ah --info=progress2 "./$selected_path" "$target_dir/" && \
-        printf "${YELLOW}Jogo Copiado com sucesso!${ENDCOLOR}\n"
+    elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
+        if ! transfer_gamelist_entry \
+            game_context_ref target_dir_context_ref \
+            false; then
+            return 1
+        fi
+        printf "${GREEN}gamelist.xml updated successfully${ENDCOLOR}\n"
+
+
+    fi
+    return 0
 
 }
 
@@ -2265,7 +2290,14 @@ main_menu() {
                         ;;
 
                         "Copy Game")
-                            cp_game "$selected_game_name" "$selected_game_path"
+                            if cp_game game_context target_dir_context; then
+                                printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+                                printf "All requested operations were completed as expected.\n"
+                            else
+                                printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
+                                printf "Please review the messages above to identify which step failed.\n"
+                            fi
+
                         ;;
 
                         "Delete Game")
