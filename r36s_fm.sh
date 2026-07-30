@@ -1550,8 +1550,8 @@ process_related_files() {
     # do not interrupt the remaining files.
 
     local -n game_ctx_ref="$1"
-    local target_dir="$2"
-    local command="$3"
+    local command="$2"
+    local target_dir="${3:-}"
 
     local key=""
     local file=""
@@ -1712,7 +1712,7 @@ mv_game() {
 
             case "$answer" in
                 [Yy])
-                    process_related_files game_context_ref "${target_dir_context_ref["dir"]}" "mv"
+                    process_related_files game_context_ref "mv" "${target_dir_context_ref["dir"]}"
                     ;;
 
                 [Nn])
@@ -1780,7 +1780,7 @@ cp_game() {
 
             case "$answer" in
                 [Yy])
-                    process_related_files game_context_ref "${target_dir_context_ref["dir"]}" "cp"
+                    process_related_files game_context_ref "cp" "${target_dir_context_ref["dir"]}"
                     ;;
 
                 [Nn])
@@ -1814,33 +1814,59 @@ cp_game() {
 }
 
 rm_game() {
-# Remove um jogo e sua entrada no gamelist.xml.
-    # Parâmetros:
-    #   $1 - Nome do jogo
-    #   $2 - Caminho do arquivo do jogo
-    local selected_game="$1"
-    local selected_path="$2"
+    local -n game_context_ref="$1"
+    local -n target_dir_context_ref="$2"
+    
+    local answer=""
 
-    printf "Criando xml temporário...\n" # Necessário por conta de process_other_files
-    tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" && \
-        printf "%s ---> ${GREEN}Sucesso!${ENDCOLOR}\n" "$tmp_game"
+    printf "Deleting ${GREEN}%s${ENDCOLOR}\n" \
+    "${game_context_ref["name"]}" \
 
-    printf "Extraindo entrada do jogo selecionado...\n"
+    if sudo rm -f "${game_context_ref["path"]}"; then
+        printf "${YELLOW}Game deleted successfully!${ENDCOLOR}\n"
+    else
+        printf "${BLUE}Failed to delete the game!${ENDCOLOR}\n"
+        return 1
+    fi
 
-    local safe_xpath
-    safe_xpath=$(escape_xpath_string "$selected_game")
-    xmlstarlet sel -t -c "//game[name=$safe_xpath]" "./gamelist.xml" > "$tmp_game"
+    if [[ -n "${game_context_ref["valid_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["orphan_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["linked_asset_count"]:-}" ]] || \
+        [[ -n "${game_context_ref["linked_support_count"]:-}" ]]; then
 
-    rm_xml_entry "$selected_game" && \
-        printf "${YELLOW}Entrada removida com sucesso!${ENDCOLOR}\n"
+        printf "${RED}Do you want to delete all related files too? (y/n) ${ENDCOLOR}"
+        while true; do
+            read -r -p "-> " answer
+            echo ""
 
-    process_other_files "$tmp_game" "$selected_path" "rm"
+            case "$answer" in
+                [Yy])
+                    process_related_files game_context_ref "rm"
+                    ;;
 
-    sudo rm -f "$selected_path" && \
-        printf "${YELLOW}Jogo removido com sucesso!${ENDCOLOR}\n"
+                [Nn])
+                    :
+                    ;;
 
-    rm -f "$tmp_game" && \
-        printf "${YELLOW}Arquivo temporário removido com sucesso!${ENDCOLOR}\n"
+                *)
+                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                    continue
+                    ;;
+            esac
+            break
+        done
+    fi
+
+    if [[ "${game_context_ref["status"]}" != "Orphan" ]]; then
+        if ! rm_gamelist_entry \
+            "${game_context_ref["path"]}"; then
+            return 1
+        fi
+        printf "${GREEN}gamelist.xml updated successfully${ENDCOLOR}\n"
+
+
+    fi
+    return 0
 }
 
 show_game_metadata() {
@@ -2301,7 +2327,13 @@ main_menu() {
                         ;;
 
                         "Delete Game")
-                            rm_game "$selected_game_name" "$selected_game_path"
+                            if rm_game game_context target_dir_context; then
+                                printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+                                printf "All requested operations were completed as expected.\n"
+                            else
+                                printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
+                                printf "Please review the messages above to identify which step failed.\n"
+                            fi
                         ;;
 
                         "See Metadata")
@@ -2339,7 +2371,9 @@ main_menu() {
                         ;;
 
                 esac
-                STATE="GAME_ACTION_MENU"
+                printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                cd -- "$OLDPWD" || exit 1
+                STATE="LOOK"
                 PREV_STATE="GAME_ACTION_MENU"
             ;;
 
