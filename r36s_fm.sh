@@ -1318,7 +1318,7 @@ duplicate_gamelist_with_entry() {
 
     local -n tmp_output_fmt="$3"
 
-    local open_vscode="${4:-false}" # flag q controla a edição de metadados
+    local open_text_editor="${4:-false}" # flag q controla a edição de metadados
     
      printf "Creating temporary files...\n"
 
@@ -1351,7 +1351,7 @@ duplicate_gamelist_with_entry() {
     printf '%s\n' "$node" > "$tmp_game" || return 1
 
 
-    if "$open_vscode"; then
+    if "$open_text_editor"; then
         code --wait "$tmp_game"
     fi
 
@@ -1880,17 +1880,35 @@ show_game_metadata() {
 }
 
 edit_metadata() {
-    local game="$1"
+    local node="$1"
+    local game_path="$2"
 
-    duplicate_xml_with_entry "$game" "./gamelist.xml" "true" && \
-        printf "${YELLOW}Arquivo temporário validado com sucesso!${ENDCOLOR}\n"
+    local tmp_gamelist=""
 
-    mv_xml_entry "./gamelist.xml" && \
-        printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
+    if ! duplicate_gamelist_with_entry \
+        "$node" \
+        "./gamelist.xml" \
+        tmp_gamelist true; then
+        return 1
+    fi
+
+    printf "${GREEN}Temporary gamelist.xml created and validated successfully!${ENDCOLOR}\n"
+
+    if ! replace_gamelist \
+        "./gamelist.xml" \
+        "$tmp_gamelist"; then
+        return 1
+    fi
+
+    printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
+
+    if ! rm_gamelist_entry "$game_path"; then
+        return 1
+    fi
+    printf "${YELLOW}Source gamelist.xml entry removed successfully!${ENDCOLOR}\n"
+
+    return 0
     
-    rm_xml_entry "$game" && \
-        printf "${YELLOW}Entrada removida do arquivo de origem com sucesso!${ENDCOLOR}\n"    
-
 }
 
 show_gamelist_data() {
@@ -2331,11 +2349,18 @@ main_menu() {
                     ;;
 
                     "Edit Metadata")
-                    # CONTINUAR DAQUI  - ou voltar nos TODOS
-                        edit_metadata "$selected_game_name"
+                        if edit_metadata "${game_context["xml_node"]}" "${game_context["path"]}"; then
+                            printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+                            printf "All requested operations were completed as expected.\n"
+                        else
+                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify which step failed.\n"
+                        fi
                     ;;
 
                     "Add to gamelist.xml")
+                    # CONTINUAR DAQUI  - ou voltar nos TODOS
+                        
                         :
                     ;;
 
