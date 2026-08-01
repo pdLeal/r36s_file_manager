@@ -1870,22 +1870,12 @@ rm_game() {
 }
 
 show_game_metadata() {
-    local game="$1"
-    printf "\nDados sobre: ${GREEN}%s${ENDCOLOR}\n" "$game"
+    local game_name="$1"
+    local xml_node="$2"
+    printf "\n${YELLOW}────────────── %s Node ──────────────${ENDCOLOR}\n" "$game_name"
+    printf "    %s\n" "$xml_node"
+    printf "\n${YELLOW}─────────────────────────────────────${ENDCOLOR}\n"
     
-    local safe_xpath
-    safe_xpath=$(escape_xpath_string "$game")
-    xmlstarlet sel -t -m "//game[name=$safe_xpath]" -m "*" \
-    -v "name()" -o ": " -v "normalize-space(.)" -n -b ./gamelist.xml \
-    | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '{ 
-    gsub(/&amp;/, "\\&", $2)
-    gsub(/&lt;/, "<", $2)
-    gsub(/&gt;/, ">", $2)
-    gsub(/&quot;/, "\"", $2)
-    gsub(/&#39;/, "'\''", $2)
-    print C $1 E ": " $2 
-    }'
-    return 0
 
 }
 
@@ -2299,76 +2289,77 @@ main_menu() {
                     "${menu_options[@]}" "Back"
 
                 case "$user_answer" in
-                        "Move Game" | "Copy Game")
-                            prepare_target_directory target_dir_context
+                    "Move Game" | "Copy Game")
+                        prepare_target_directory target_dir_context
 
-                        ;;&
+                    ;;&
+                    
+                    "Move Game")
+                        if mv_game game_context target_dir_context; then
+                            printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+                            printf "All requested operations were completed as expected.\n"
+                        else
+                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify which step failed.\n"
+                        fi
+
+                    ;;
+
+                    "Copy Game")
+                        if cp_game game_context target_dir_context; then
+                            printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+                            printf "All requested operations were completed as expected.\n"
+                        else
+                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify which step failed.\n"
+                        fi
+
+                    ;;
+
+                    "Delete Game")
+                        if rm_game game_context target_dir_context; then
+                            printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+                            printf "All requested operations were completed as expected.\n"
+                        else
+                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify which step failed.\n"
+                        fi
+                    ;;
+
+                    "See Metadata")
+                        show_game_metadata "${game_context["name"]}" "${game_context["xml_node"]}"
+                    ;;
+
+                    "Edit Metadata")
+                    # CONTINUAR DAQUI  - ou voltar nos TODOS
+                        edit_metadata "$selected_game_name"
+                    ;;
+
+                    "Add to gamelist.xml")
+                        :
+                    ;;
+
+                    "See Related Files")
+                    # lógica p/ debug - implementaar corretaamente depois
+                        for key in "${!game_context[@]}"; do
+                            if [[ "$key" != "name" ]] && \
+                                [[ "$key" != "path" ]] && \
+                                [[ "$key" != "status" ]]; then
+                                printf  "%s: ${PINK}%s${ENDCOLOR}\n" "$key" "${game_context["$key"]:-}"
+                            
+                            fi
                         
-                        "Move Game")
-                            if mv_game game_context target_dir_context; then
-                                printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
-                                printf "All requested operations were completed as expected.\n"
-                            else
-                                printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
-                                printf "Please review the messages above to identify which step failed.\n"
-                            fi
+                        done
+                    ;;
 
-                        ;;
-
-                        "Copy Game")
-                            if cp_game game_context target_dir_context; then
-                                printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
-                                printf "All requested operations were completed as expected.\n"
-                            else
-                                printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
-                                printf "Please review the messages above to identify which step failed.\n"
-                            fi
-
-                        ;;
-
-                        "Delete Game")
-                            if rm_game game_context target_dir_context; then
-                                printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
-                                printf "All requested operations were completed as expected.\n"
-                            else
-                                printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
-                                printf "Please review the messages above to identify which step failed.\n"
-                            fi
-                        ;;
-
-                        "See Metadata")
-                            show_game_metadata "$selected_game_name"
-                        ;;
-
-                        "Edit Metadata")
-                            edit_metadata "$selected_game_name"
-                        ;;
-
-                        "Add to gamelist.xml")
-                            :
-                        ;;
-
-                        "See Related Files")
-                        # lógica p/ debug - implementaar corretaamente depois
-                            for key in "${!game_context[@]}"; do
-                                if [[ "$key" != "name" ]] && \
-                                    [[ "$key" != "path" ]] && \
-                                    [[ "$key" != "status" ]]; then
-                                    printf  "%s: ${PINK}%s${ENDCOLOR}\n" "$key" "${game_context["$key"]:-}"
-                                
-                                fi
-                            
-                            done
-                        ;;
-
-                        "Back")
-                            if (( using_find )); then
-                                printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
-                                cd "$OLDPWD" || exit 1
-                            
-                            fi
-                            STATE="GAMES_MENU"
-                        ;;
+                    "Back")
+                        if (( using_find )); then
+                            printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                            cd "$OLDPWD" || exit 1
+                        
+                        fi
+                        STATE="GAMES_MENU"
+                    ;;
 
                 esac
                 printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
