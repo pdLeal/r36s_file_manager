@@ -2365,7 +2365,8 @@ main_menu() {
 
 
                 # TODO: rever opções p/ ghost_games - ñ se move/copia oq ñ existe
-                local menu_options=("Move Game" "Copy Game" "Delete Game")
+
+                local menu_options=("Move Game" "Copy Game" "Delete Game" "Remove from gamelist.xml" )
 
                 if [[ "${game_context["status"]}" !=  "Orphan" ]]; then
                     menu_options+=("See Metadata" "Edit Metadata")
@@ -2435,6 +2436,10 @@ main_menu() {
 
                     "Add to gamelist.xml")
                         add_to_gamelist game_context
+                    ;;
+
+                    "Remove from gamelist.xml")
+                        rm_gamelist_entry "${game_context["path"]}"
                     ;;
 
                     "See Related Files")
