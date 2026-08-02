@@ -2141,6 +2141,11 @@ main_menu() {
     local -A unknown_files=()
 
     # --------------------------------------------------------------------------
+    # MENUS
+    # --------------------------------------------------------------------------
+    local menu_options=()
+
+    # --------------------------------------------------------------------------
     # SYSTEM DATABASE
     # --------------------------------------------------------------------------
     # Loaded once and treated as read-only lookup tables throughout the application.
@@ -2285,13 +2290,15 @@ main_menu() {
 
             "GAMES_COLLECTION_MENU")
                 local -A target_collection=()
-                # TODO: add lógica p/ mostrar apenas opções pertinentes
+                menu_options=( "See library" )
+
+                (( ${#valid_games[@]} > 0 )) && menu_options+=( "Xml games" )
+                (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Orphan games" )
+                (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Ghost games" )
+
+
                 ask_user "" user_answer \
-                    "All games" \
-                    "Xml games" \
-                    "Orphan games" \
-                    "Ghost games" \
-                    "Back"
+                    "${menu_options[@]}" "Back"
 
                 case "$user_answer" in
                     "All games")
@@ -2347,7 +2354,6 @@ main_menu() {
                         selected_game_path="${target_collection["$selected_game_name"]}"
 
                         printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
-                        # printf "Arquivo selecionado: ${CYAN}%s${ENDCOLOR}\n" "$selected_game_path"
 
                     ;;
                 esac
@@ -2363,19 +2369,21 @@ main_menu() {
                 load_game_context  game_context "$selected_game_path" "$selected_game_name"
                 print_game_context game_context
 
+                menu_options=()
 
-                # TODO: rever opções p/ ghost_games - ñ se move/copia oq ñ existe
+                if [[ "${game_context["status"]}" ==  "Valid" ]]; then
+                    menu_options+=( "Move Game" "Copy Game" "Delete Game" "See Metadata" "Edit Metadata" )
+                
+                elif [[ "${game_context["status"]}" ==  "Orphan" ]]; then
+                    menu_options+=( "Move Game" "Copy Game" "Delete Game" "Add to gamelist.xml" )
 
-                local menu_options=("Move Game" "Copy Game" "Delete Game" "Remove from gamelist.xml" )
-
-                if [[ "${game_context["status"]}" !=  "Orphan" ]]; then
-                    menu_options+=("See Metadata" "Edit Metadata")
                 else
-                    menu_options+=("Add to gamelist.xml")
+                    menu_options+=( "See Metadata" "Remove from gamelist.xml" )
+
                 fi
 
                 # TODO: reavaliar a fragilidade  do trecho, pois depende diretamente da arquitetura de game_context
-                (( "${#game_context[@]}" > 3 )) &&  menu_options+=("See Related Files")
+                (( "${#game_context[@]}" > 9 )) &&  menu_options+=("See Related Files")
                 
                 local -A target_dir_context=()
 
