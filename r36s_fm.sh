@@ -1208,7 +1208,7 @@ load_game_context() {
             (( game_context_ref["linked_support_count"]+=1 ))
 
     [[ -n "${linked_configs["$game_path"]:-}"    ]] && \
-        game_context_ref["linked_config"]="${linked_configs["$game_path"]}" && \
+        game_context_ref["linked_configs"]="${linked_configs["$game_path"]}" && \
             (( game_context_ref["linked_support_count"]+=1 ))
 
 }
@@ -1264,7 +1264,7 @@ print_game_context() {
     print_summary_line "Marquee"    "$(context_status_icon context_ref linked_marquee)"
     print_summary_line "Thumbnail"  "$(context_status_icon context_ref linked_thumbnail)"
     print_summary_line "Auxiliary"  "$(context_status_icon context_ref linked_auxiliary)"
-    print_summary_line "Config"     "$(context_status_icon context_ref linked_config)"
+    print_summary_line "Config"     "$(context_status_icon context_ref linked_configs)"
 
 
     
@@ -1914,7 +1914,7 @@ edit_metadata() {
 add_to_gamelist() {
     local -n game_context_ref="$1"
 
-    local tags=( "path" "name" "desc" "image" "video" "marquee" "thumbnail" )
+    local tags=( "path" "name" "image" "video" "marquee" "thumbnail" )
     local tag=""
     local node=""
     local tmp_gamelist=""
@@ -1937,7 +1937,7 @@ add_to_gamelist() {
         [[ "$tag" == "thumbnail" ]] && node+="</game>"
     done
 
-    # TODO: adicionar pergunta spbre add mais entradas no xml 
+    # TODO: adicionar pergunta sobre add mais entradas no xml 
     if ! duplicate_gamelist_with_entry \
         "$node" \
         "./gamelist.xml" \
@@ -1956,6 +1956,33 @@ add_to_gamelist() {
     printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
     return 0
     
+}
+
+show_relatted_files() {
+    local -n game_context_ref="$1"
+
+    local suffixes=( "image" "video" "marquee" "thumbnail" "auxiliary" "configs" )
+    local suffix=""
+    local has_relative_files=""
+
+    for suffix in "${suffixes[@]}"; do
+
+        if [[ -n "${game_context_ref["valid_${suffix}"]:-}" ]]; then
+            printf "Valid %s: ${PINK}%s${ENDCOLOR}\n" "$suffix" "${game_context_ref["valid_${suffix}"]}"
+            has_relative_files=1
+        fi
+
+        if [[ -n "${game_context_ref["linked_${suffix}"]:-}" ]]; then
+            printf "Linked %s: ${PINK}%s${ENDCOLOR}\n" "$suffix" "${game_context_ref["linked_${suffix}"]}"
+            has_relative_files=1
+        fi
+   
+    done
+
+    if [[ -z "$has_relative_files" ]]; then
+        printf "${BLUE}%s has no relative files associeted with${ENDCOLOR}\n" "${game_context_ref["name"]}"
+    
+    fi   
 }
 
 show_gamelist_data() {
@@ -2336,6 +2363,7 @@ main_menu() {
                 load_game_context  game_context "$selected_game_path" "$selected_game_name"
                 print_game_context game_context
 
+
                 # TODO: rever opções p/ ghost_games - ñ se move/copia oq ñ existe
                 local menu_options=("Move Game" "Copy Game" "Delete Game")
 
@@ -2406,21 +2434,12 @@ main_menu() {
                     ;;
 
                     "Add to gamelist.xml")
-                    # CONTINUAR DAQUI  - ou voltar nos TODOS
                         add_to_gamelist game_context
                     ;;
 
                     "See Related Files")
-                    # lógica p/ debug - implementaar corretaamente depois
-                        for key in "${!game_context[@]}"; do
-                            if [[ "$key" != "name" ]] && \
-                                [[ "$key" != "path" ]] && \
-                                [[ "$key" != "status" ]]; then
-                                printf  "%s: ${PINK}%s${ENDCOLOR}\n" "$key" "${game_context["$key"]:-}"
-                            
-                            fi
-                        
-                        done
+                        show_relatted_files game_context
+
                     ;;
 
                     "Back")
