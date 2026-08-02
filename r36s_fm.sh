@@ -1908,6 +1908,53 @@ edit_metadata() {
     printf "${YELLOW}Source gamelist.xml entry removed successfully!${ENDCOLOR}\n"
 
     return 0
+
+}
+
+add_to_gamelist() {
+    local -n game_context_ref="$1"
+
+    local tags=( "path" "name" "desc" "image" "video" "marquee" "thumbnail" )
+    local tag=""
+    local node=""
+    local tmp_gamelist=""
+
+    for tag in "${tags[@]}"; do
+        case "$tag" in
+            "path")
+                node+="<game>"$'\n\t'"<path>${game_context_ref["path"]}</path>"$'\n'
+                ;;
+
+            "name")
+                node+=$'\t'"<name>${game_context_ref["name"]}</name>"$'\n'
+                ;;
+        esac
+
+        if [[ "${game_context_ref["linked_${tag}"]:-}" ]]; then
+            node+=$'\t'"<$tag>${game_context_ref["linked_${tag}"]}</$tag>"$'\n'
+        fi
+
+        [[ "$tag" == "thumbnail" ]] && node+="</game>"
+    done
+
+    # TODO: adicionar pergunta spbre add mais entradas no xml 
+    if ! duplicate_gamelist_with_entry \
+        "$node" \
+        "./gamelist.xml" \
+        tmp_gamelist; then
+        return 1
+    fi
+
+    printf "${GREEN}Temporary gamelist.xml created and validated successfully!${ENDCOLOR}\n"
+
+    if ! replace_gamelist \
+        "./gamelist.xml" \
+        "$tmp_gamelist"; then
+        return 1
+    fi
+
+    printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
+    return 0
     
 }
 
@@ -2360,8 +2407,7 @@ main_menu() {
 
                     "Add to gamelist.xml")
                     # CONTINUAR DAQUI  - ou voltar nos TODOS
-                        
-                        :
+                        add_to_gamelist game_context
                     ;;
 
                     "See Related Files")
