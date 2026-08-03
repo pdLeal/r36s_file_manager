@@ -1327,7 +1327,7 @@ duplicate_gamelist_with_entry() {
 
     local edit_node="${4:-false}" # flag q controla a edição de metadados
     
-     printf "-> Creating temporary files...\n"
+     printf "  > Creating temporary files...\n"
 
     # Temporary files used during XML generation.
     local tmp_game
@@ -1353,7 +1353,7 @@ duplicate_gamelist_with_entry() {
     # node is temporarily written to disk before applying the stylesheet.
     # -------------------------------------------------------------------------
 
-    printf "-> Preparing game node...\n"
+    printf "  > Preparing game node...\n"
 
     printf '%s\n' "$node" > "$tmp_game" || return 1
 
@@ -1370,7 +1370,7 @@ duplicate_gamelist_with_entry() {
     # Do not indent the heredoc delimiter. Doing so will produce an invalid
     # stylesheet and may generate an invalid output XML.
     # -------------------------------------------------------------------------
-    printf "-> Creating temporary gamelist copy...\n"
+    printf "  > Creating temporary gamelist copy...\n"
 
     cat > "$tmp_xsl" <<XSL
 <?xml version="1.0" encoding="utf-8"?>
@@ -1448,7 +1448,7 @@ rm_gamelist_node() {
     fi
 }
 
-update_gamelist_entry() {
+update_gamelist_node() {
 # Updates a gamelist.xml with the provided game entry.
     # =========================================================================
     # The function supports different workflows:
@@ -1757,8 +1757,8 @@ mv_game() {
         :
 
     elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
-        if ! update_gamelist_entry game_context \
-            "${target_dir_context["gamelist"]}"; then
+        if ! update_gamelist_node game_context \
+            "${target_dir_context_ref["gamelist"]}"; then
             return 1
         fi
 
@@ -1839,8 +1839,8 @@ cp_game() {
         :
 
     elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
-        if update_gamelist_entry game_context \
-            "${target_dir_context["gamelist"]}" \
+        if ! update_gamelist_node game_context \
+            "${target_dir_context_ref["gamelist"]}" \
             false; then
             return 1
         fi
@@ -1926,82 +1926,103 @@ show_game_metadata() {
 }
 
 add_to_gamelist() {
+# Creates a new gamelist entry for an orphan game and appends it to the
+# current gamelist.xml.
+
     local -n game_context_ref="$1"
 
     local tags=( "path" "name" "image" "video" "marquee" "thumbnail" )
     local tag=""
-    local node=""
-    local tmp_gamelist=""
 
+    game_context_ref["xml_node"]=""
+
+    # Build the XML node using the information available in the game context.
+    # Obs: this could be its own function if needed - build_xml_node
     for tag in "${tags[@]}"; do
         case "$tag" in
             "path")
-                node+="<game>"$'\n\t'"<path>${game_context_ref["path"]}</path>"$'\n'
+                game_context_ref["xml_node"]+="<game>"$'\n\t'"<path>${game_context_ref["path"]}</path>"$'\n'
                 ;;
 
             "name")
-                node+=$'\t'"<name>${game_context_ref["name"]}</name>"$'\n'
+                game_context_ref["xml_node"]+=$'\t'"<name>${game_context_ref["name"]}</name>"$'\n'
                 ;;
         esac
 
-        if [[ "${game_context_ref["linked_${tag}"]:-}" ]]; then
-            node+=$'\t'"<$tag>${game_context_ref["linked_${tag}"]}</$tag>"$'\n'
+        if [[ -n "${game_context_ref["linked_${tag}"]:-}" ]]; then
+            game_context_ref["xml_node"]+=$'\t'"<$tag>${game_context_ref["linked_${tag}"]}</$tag>"$'\n'
         fi
 
-        [[ "$tag" == "thumbnail" ]] && node+="</game>"
+        [[ "$tag" == "thumbnail" ]] && \
+            game_context_ref["xml_node"]+="</game>"
     done
 
-    # TODO: adicionar pergunta sobre add mais entradas no xml 
-    if ! duplicate_gamelist_with_entry \
-        "$node" \
+    local answer=""
+    local edit_metadata="false"
+
+    printf "${RED}Do you want to edit the game metadata? (y/n) ${ENDCOLOR}"
+
+    while true; do
+        read -r -p "-> " answer
+        echo ""
+
+        case "$answer" in
+            [Yy])
+                edit_metadata="true"
+                break
+            ;;
+
+            [Nn])
+                edit_metadata="false"
+                break
+            ;;
+
+            *)
+                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+            ;;
+        esac
+    done
+
+
+    if ! update_gamelist_node \
+        game_context_ref \
         "./gamelist.xml" \
-        tmp_gamelist; then
+        false \
+        "$edit_metadata"; then
         return 1
     fi
 
-    printf "${GREEN}Temporary gamelist.xml created and validated successfully!${ENDCOLOR}\n"
-
-    if ! replace_gamelist \
-        "./gamelist.xml" \
-        "$tmp_gamelist"; then
-        return 1
-    fi
-
-    printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
     return 0
-    
 }
 
-show_relatted_files() {
+show_related_files() {
+# Displays all files associated with the selected game.
     local -n game_context_ref="$1"
 
     local suffixes=( "image" "video" "marquee" "thumbnail" "auxiliary" "configs" )
     local suffix=""
-    local has_relative_files=""
 
     for suffix in "${suffixes[@]}"; do
 
         if [[ -n "${game_context_ref["valid_${suffix}"]:-}" ]]; then
-            printf "Valid %s: ${PINK}%s${ENDCOLOR}\n" "$suffix" "${game_context_ref["valid_${suffix}"]}"
-            has_relative_files=1
+            printf "Valid %s: ${PINK}%s${ENDCOLOR}\n" \
+                "$suffix" \
+                "${game_context_ref["valid_${suffix}"]}"
         fi
 
         if [[ -n "${game_context_ref["orphan_${suffix}"]:-}" ]]; then
-            printf "Orphan %s: ${PINK}%s${ENDCOLOR}\n" "$suffix" "${game_context_ref["orphan_${suffix}"]}"
-            has_relative_files=1
+            printf "Orphan %s: ${PINK}%s${ENDCOLOR}\n" \
+                "$suffix" \
+                "${game_context_ref["orphan_${suffix}"]}"
         fi
 
         if [[ -n "${game_context_ref["linked_${suffix}"]:-}" ]]; then
-            printf "Linked %s: ${PINK}%s${ENDCOLOR}\n" "$suffix" "${game_context_ref["linked_${suffix}"]}"
-            has_relative_files=1
+            printf "Linked %s: ${PINK}%s${ENDCOLOR}\n" \
+                "$suffix" \
+                "${game_context_ref["linked_${suffix}"]}"
         fi
-   
-    done
 
-    if [[ -z "$has_relative_files" ]]; then
-        printf "${BLUE}%s has no relative files associeted with${ENDCOLOR}\n" "${game_context_ref["name"]}"
-    
-    fi   
+    done
 }
 
 show_gamelist_data() {
@@ -2485,10 +2506,14 @@ main_menu() {
 
                     "See Metadata")
                         show_game_metadata "${game_context["name"]}" "${game_context["xml_node"]}"
+                        echo "Press ENTER to continue..."
+                        read
+                        PREV_STATE="GAME_ACTION_MENU"
+                        continue
                     ;;
 
                     "Edit Metadata")
-                        if update_gamelist_entry game_context \
+                        if update_gamelist_node game_context \
                             "./gamelist.xml" true true; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
 
@@ -2500,15 +2525,32 @@ main_menu() {
                     ;;
 
                     "Add to gamelist.xml")
-                        add_to_gamelist game_context
+                        if add_to_gamelist game_context; then
+                            printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
+                        
+                        else
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
+                        fi
                     ;;
 
                     "Remove from gamelist.xml")
-                        rm_gamelist_node "${game_context["path"]}"
+                        if rm_gamelist_node "${game_context["path"]}"; then
+                            printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
+                        
+                        else
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
+                        fi
                     ;;
 
                     "See Related Files")
-                        show_relatted_files game_context
+                        show_related_files game_context
+                        echo "Press ENTER to continue..."
+                        read
+                        PREV_STATE="GAME_ACTION_MENU"
                         continue
 
                     ;;
@@ -2524,6 +2566,12 @@ main_menu() {
                     ;;
 
                 esac
+
+                # Most game operations modify the filesystem and/or gamelist.xml.
+                # Returning to the initial state forces a new analysis cycle,
+                # ensuring that all collections, contexts, and classifications
+                # are rebuilt with the current data and preventing stale state
+                # from causing unexpected behavior.
                 printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
                 cd -- "$OLDPWD" || exit 1
                 STATE="LOOK"
