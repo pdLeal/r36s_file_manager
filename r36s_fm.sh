@@ -1079,20 +1079,20 @@ count_by_dir() {
 }
 
 sort_games() {
-# Orndena os jogos alfabeticamente
+# Sorts the provided game names alphabetically (case-insensitive).
     local -n sorted="$1"
-    shift 1
+    shift
     mapfile -t sorted < <( printf "%s\n" "$@" | sort -f )
 }
 
 build_target_collection() {
-# Inverte um array associativo de jogos (path -> name)
-# para um array (name -> path), usado pelos menus seguintes.
+# Inverts an associative array of games (path -> name)
+# into an array (name -> path), used by the subsequent menus..
     local -n source_ref="$1"
     local -n target_ref="$2"
 
-    local game_path
-    local game_name
+    local game_path=""
+    local game_name=""
 
     target_ref=()
 
@@ -1211,6 +1211,12 @@ load_game_context() {
         game_context_ref["linked_configs"]="${linked_configs["$game_path"]}" && \
             (( game_context_ref["linked_support_count"]+=1 ))
 
+    (( game_context_ref["related_file_count"] =
+    game_context_ref["valid_asset_count"] +
+    game_context_ref["orphan_asset_count"] +
+    game_context_ref["linked_asset_count"] +
+    game_context_ref["linked_support_count"] ))
+
 }
 
 context_status_icon() {
@@ -1228,6 +1234,8 @@ context_status_icon() {
 
 print_game_context() {
 # Displays a summary of the selected game.
+# TODO: assim como só ghost tem orfãos, apenas valid tem valid/linked
+# e orfãos só podem ter linked. fazer validação como pro ghost no resto
 
     local -n context_ref="$1"
 
@@ -1244,12 +1252,13 @@ print_game_context() {
     print_summary_line "Thumbnail" "$(context_status_icon context_ref valid_thumbnail)"
 
 
-    printf "\n${YELLOW}────────────── Orphan Assets ─────────────${ENDCOLOR}\n"
-    print_summary_line "Image"     "$(context_status_icon context_ref orphan_image)"
-    print_summary_line "Video"     "$(context_status_icon context_ref orphan_video)"
-    print_summary_line "Marquee"   "$(context_status_icon context_ref orphan_marquee)"
-    print_summary_line "Thumbnail" "$(context_status_icon context_ref orphan_thumbnail)"
-
+    if [[ "${context_ref[status]}" == "Ghost" ]]; then
+        printf "\n${YELLOW}────────────── Orphan Assets ─────────────${ENDCOLOR}\n"
+        print_summary_line "Image"     "$(context_status_icon context_ref orphan_image)"
+        print_summary_line "Video"     "$(context_status_icon context_ref orphan_video)"
+        print_summary_line "Marquee"   "$(context_status_icon context_ref orphan_marquee)"
+        print_summary_line "Thumbnail" "$(context_status_icon context_ref orphan_thumbnail)"
+    fi
 
     printf "\n${YELLOW}──────────────Ghost Assets ─────────────${ENDCOLOR}\n"
     print_summary_line "Image"     "$(context_status_icon context_ref ghost_image)"
@@ -1265,8 +1274,6 @@ print_game_context() {
     print_summary_line "Thumbnail"  "$(context_status_icon context_ref linked_thumbnail)"
     print_summary_line "Auxiliary"  "$(context_status_icon context_ref linked_auxiliary)"
     print_summary_line "Config"     "$(context_status_icon context_ref linked_configs)"
-
-
     
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
 }
@@ -1286,7 +1293,7 @@ EOF
         return 0
     else
         printf "${RED}Failed to create gamelist.xml.${ENDCOLOR}\n"
-        return 1
+        exit 1
     fi
 }
 
@@ -1318,9 +1325,9 @@ duplicate_gamelist_with_entry() {
 
     local -n tmp_output_fmt="$3"
 
-    local open_text_editor="${4:-false}" # flag q controla a edição de metadados
+    local edit_node="${4:-false}" # flag q controla a edição de metadados
     
-     printf "Creating temporary files...\n"
+     printf "-> Creating temporary files...\n"
 
     # Temporary files used during XML generation.
     local tmp_game
@@ -1328,16 +1335,16 @@ duplicate_gamelist_with_entry() {
     local tmp_output_raw
     
     tmp_game="$(mktemp --tmpdir game.XXXXXX.xml)" || return 1
-    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_game"
+    # printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_game"
 
     tmp_xsl="$(mktemp --tmpdir append.XXXXXX.xsl)" || return 1
-    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_xsl"
+    # printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_xsl"
 
     tmp_output_raw="$(mktemp --tmpdir out_raw.XXXXXX.xml)" || return 1
-    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_output_raw"
+    # printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_output_raw"
 
     tmp_output_fmt="$(mktemp --tmpdir out_fmt.XXXXXX.xml)" || return 1
-    printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_output_fmt"
+    # printf "%s ---> ${GREEN}Success!${ENDCOLOR}\n" "$tmp_output_fmt"
 
     # -------------------------------------------------------------------------
     # Step 1 - Persist the XML node into a temporary document.
@@ -1346,12 +1353,12 @@ duplicate_gamelist_with_entry() {
     # node is temporarily written to disk before applying the stylesheet.
     # -------------------------------------------------------------------------
 
-    printf "Preparing game entry...\n"
+    printf "-> Preparing game node...\n"
 
     printf '%s\n' "$node" > "$tmp_game" || return 1
 
 
-    if "$open_text_editor"; then
+    if "$edit_node"; then
         code --wait "$tmp_game"
     fi
 
@@ -1363,7 +1370,7 @@ duplicate_gamelist_with_entry() {
     # Do not indent the heredoc delimiter. Doing so will produce an invalid
     # stylesheet and may generate an invalid output XML.
     # -------------------------------------------------------------------------
-    printf "Creating temporary gamelist copy...\n"
+    printf "-> Creating temporary gamelist copy...\n"
 
     cat > "$tmp_xsl" <<XSL
 <?xml version="1.0" encoding="utf-8"?>
@@ -1425,14 +1432,12 @@ replace_gamelist() {
     fi
 }
 
-rm_gamelist_entry() {
+rm_gamelist_node() {
 # Removes the first matching game entry from the source gamelist.xml.
     local game_path="$1"
     
     local safe_xpath
-    
-    printf "${CYAN}Removing node from the source gamelist...${ENDCOLOR}\n"
-    
+        
     safe_xpath=$(escape_xpath_string "$game_path")    
 
     if sudo xmlstarlet ed --inplace -d "(//game[path=$safe_xpath])[1]" "./gamelist.xml"; then
@@ -1443,47 +1448,51 @@ rm_gamelist_entry() {
     fi
 }
 
-transfer_gamelist_entry() {
-# Transfers a game entry from the source gamelist.xml to the target gamelist.xml.
+update_gamelist_entry() {
+# Updates a gamelist.xml with the provided game entry.
     # =========================================================================
-    # Pipeline:
-    #   1. Create and validate a temporary copy of the target gamelist.xml
-    #      containing the new entry.
-    #   2. Replace the target gamelist.xml with the validated temporary file.
-    #   3. Remove the transferred entry from the source gamelist.xml.
-    #
-    # The source entry is only removed after the target gamelist.xml has been
-    # successfully updated, preventing metadata loss if any previous step fails.
+    # The function supports different workflows:
+    #   - Move Game
+    #   - Copy Game
+    #   - Edit Metadata
     # =========================================================================
+
     local -n game_ctx_ref="$1"
-    local -n target_dir_ctx_ref="$2"
+
+    local target_gamelist="$2"
     local remove_from_source="${3:-true}"
+    local edit_node="${4:-false}"
 
     local tmp_gamelist=""
 
+    # Create and validate the temporary gamelist.
+    printf "Creating and validating temporary gamelist...\n"
+
     if ! duplicate_gamelist_with_entry \
         "${game_ctx_ref["xml_node"]}" \
-        "${target_dir_ctx_ref["gamelist"]}" \
-        tmp_gamelist; then
+        "$target_gamelist" \
+        tmp_gamelist \
+        "$edit_node"; then
         return 1
     fi
 
-    printf "${GREEN}Temporary gamelist.xml created and validated successfully!${ENDCOLOR}\n"
+    # Replace the destination gamelist.
+    printf "Updating gamelist...\n"
 
     if ! replace_gamelist \
-        "${target_dir_ctx_ref["gamelist"]}" \
+        "$target_gamelist" \
         "$tmp_gamelist"; then
         return 1
     fi
 
-    printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
-
+    # Remove the original entry when requested.
     if "$remove_from_source"; then
-        if ! rm_gamelist_entry "${game_ctx_ref["path"]}"; then
+        printf "Removing original entry...\n"
+
+        if ! rm_gamelist_node \
+            "${game_ctx_ref["path"]}"; then
             return 1
         fi
-        printf "${YELLOW}Source gamelist.xml entry removed successfully!${ENDCOLOR}\n"
-    
     fi
 
     return 0
@@ -1492,8 +1501,6 @@ transfer_gamelist_entry() {
 prepare_target_directory() {
 # Prompts the user for a destination directory and prepares it for file operations.
     local -n target_dir_context_ref="$1"
-
-    local answer=""
 
     while true; do
     # Always returns a valid existing directory in target_dir_context["dir"].
@@ -1517,6 +1524,7 @@ prepare_target_directory() {
     else
         printf "${CYAN}gamelist.xml not found.${ENDCOLOR}\n"
 
+        local answer=""
         while true; do
         # The user decides whether a new gamelist.xml should be created.
         # This function intentionally does not force its creation.
@@ -1546,8 +1554,8 @@ prepare_target_directory() {
 process_related_files() {
 # Processes all files associated with a game (assets, saves, configs, etc.).
     # The game itself is handled separately by mv_game() because it is the pivot
-    # of the operation. Failures while processing related files are reported, but
-    # do not interrupt the remaining files.
+    # of the operation. All related files are processed even if individual
+    # failures occur. The function returns a non-zero status if any file fails.
 
     local -n game_ctx_ref="$1"
     local command="$2"
@@ -1558,6 +1566,7 @@ process_related_files() {
     local sub_dir=""
     local target_sub_dir=""
     local answer=""
+    local failed=0
 
     for key in "${!game_ctx_ref[@]}"; do
         # Skip context metadata and ghost assets.
@@ -1655,6 +1664,7 @@ process_related_files() {
                         printf "${GREEN}File moved successfully!${ENDCOLOR}\n\n"
                     else
                         printf "${RED}Failed to move %s.${ENDCOLOR}\n\n" "$file"
+                        failed=1
                     fi
                     ;;
 
@@ -1666,6 +1676,7 @@ process_related_files() {
                         printf "${GREEN}File copied successfully!${ENDCOLOR}\n\n"
                     else
                         printf "${RED}Failed to copy %s.${ENDCOLOR}\n\n" "$file"
+                        failed=1
                     fi
                     ;;
 
@@ -1676,34 +1687,37 @@ process_related_files() {
                         printf "${GREEN}File removed successfully!${ENDCOLOR}\n\n"
                     else
                         printf "${RED}Failed to remove %s.${ENDCOLOR}\n\n" "$file"
+                        failed=1
                     fi
                     ;;
             esac
         fi
     done
+
+    return "$failed"
 }
 
 mv_game() {
+# Moves the selected game and optionally transfers its related files and metadata.
     local -n game_context_ref="$1"
     local -n target_dir_context_ref="$2"
 
     local answer=""
 
     printf "Moving ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
-    "${game_context_ref["name"]}" \
-    "${target_dir_context_ref["dir"]}"
+        "${game_context_ref["name"]}" \
+        "${target_dir_context_ref["dir"]}"
 
+    # Move the main game file.
     if sudo mv "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
-        printf "${YELLOW}Game moved successfully!${ENDCOLOR}\n"
+        printf "${YELLOW}Main file moved successfully!${ENDCOLOR}\n"
     else
-        printf "${BLUE}Failed to move game!${ENDCOLOR}\n"
+        printf "${BLUE}Failed to move main file!${ENDCOLOR}\n"
         return 1
     fi
-    
-    if [[ -n "${game_context_ref["valid_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["orphan_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["linked_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["linked_support_count"]:-}" ]]; then
+
+    # Optionally move all related files.
+    if (( game_context_ref["related_file_count"] > 0 )); then
 
         printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
         while true; do
@@ -1712,127 +1726,151 @@ mv_game() {
 
             case "$answer" in
                 [Yy])
-                    process_related_files game_context_ref "mv" "${target_dir_context_ref["dir"]}"
-                    ;;
+                    if ! process_related_files \
+                        game_context_ref "mv" "${target_dir_context_ref["dir"]}"; then
+                        
+                        printf "\n${BLUE}Warning:${ENDCOLOR} Some related files could not be moved.\n"
+                    else
+                        printf "${GREEN}All related files moved successfully.${ENDCOLOR}\n"
+
+                    fi
+                ;;
 
                 [Nn])
                     :
-                    ;;
+                ;;
 
                 *)
                     printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
                     continue
-                    ;;
+                ;;
             esac
+
             break
         done
     fi
 
+    # Update the destination gamelist when applicable.
     if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
-        echo "TODO: implementar normalização do gamelist"
-    
+        # TODO:
+        # Normalize the destination gamelist after moving an orphan game.
+        :
+
     elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
-        if ! transfer_gamelist_entry \
-            game_context_ref target_dir_context_ref; then
+        if ! update_gamelist_entry game_context \
+            "${target_dir_context["gamelist"]}"; then
             return 1
         fi
-        printf "${GREEN}gamelist.xml updated successfully${ENDCOLOR}\n"
 
-
+        printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
     fi
+
     return 0
 
     # rsync -ah --info=progress2 --remove-source-files "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"
-    # rsync --remove-source-files é uma alternativa mais segura que mv,
-    # pois copia os arquivos e só remove a origem após a transferência.
-    # Atualmente não é utilizado porque requer espaço suficiente para manter
-    # origem e destino simultaneamente durante a cópia.
-    # Reavaliar essa abordagem futuramente.
-
+    # rsync --remove-source-files is a safer alternative than mv,
+    # because it copies the files first and removes the source only
+    # after the transfer completes successfully.
+    # It is currently not used because it requires enough free space
+    # to keep both the source and destination during the transfer.
+    # Re-evaluate this approach in the future.
 }
 
 cp_game() {
+# Copies the selected game and optionally copies its related files and metadata.
     local -n game_context_ref="$1"
     local -n target_dir_context_ref="$2"
 
     local answer=""
 
     printf "Copying ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
-    "${game_context_ref["name"]}" \
-    "${target_dir_context_ref["dir"]}"
+        "${game_context_ref["name"]}" \
+        "${target_dir_context_ref["dir"]}"
 
-    if sudo rsync -ah --info=progress2 "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
-        printf "${YELLOW}Game copied successfully!${ENDCOLOR}\n"
+    # Copy the main game file.
+    if sudo rsync -ah --info=progress2 \
+        "${game_context_ref["path"]}" \
+        "${target_dir_context_ref["dir"]}"; then
+        printf "${YELLOW}Main file copied successfully!${ENDCOLOR}\n"
     else
-        printf "${BLUE}Failed to copy game!${ENDCOLOR}\n"
+        printf "${BLUE}Failed to copy main file!${ENDCOLOR}\n"
         return 1
     fi
-    
-    if [[ -n "${game_context_ref["valid_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["orphan_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["linked_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["linked_support_count"]:-}" ]]; then
+
+    # Optionally copy all related files.
+    if (( game_context_ref["related_file_count"] > 0 )); then
 
         printf "${RED}Do you want to copy all related files too? (y/n) ${ENDCOLOR}"
+
         while true; do
             read -r -p "-> " answer
             echo ""
 
             case "$answer" in
                 [Yy])
-                    process_related_files game_context_ref "cp" "${target_dir_context_ref["dir"]}"
-                    ;;
+                    if ! process_related_files \
+                        game_context_ref "cp" "${target_dir_context_ref["dir"]}"; then
+
+                        printf "\n${BLUE}Warning:${ENDCOLOR} Some related files could not be copied.\n"
+                        
+                    else
+                        printf "${GREEN}All related files copied successfully.${ENDCOLOR}\n"
+                    fi
+                ;;
 
                 [Nn])
                     :
-                    ;;
+                ;;
 
                 *)
                     printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
                     continue
-                    ;;
+                ;;
             esac
+
             break
         done
     fi
 
+    # Update the destination gamelist when applicable.
     if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
-        echo "TODO: implementar normalização do gamelist"
-    
+        # TODO:
+        # Normalize the destination gamelist after copying an orphan game.
+        :
+
     elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
-        if ! transfer_gamelist_entry \
-            game_context_ref target_dir_context_ref \
+        if update_gamelist_entry game_context \
+            "${target_dir_context["gamelist"]}" \
             false; then
             return 1
         fi
-        printf "${GREEN}gamelist.xml updated successfully${ENDCOLOR}\n"
 
-
+        printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
     fi
-    return 0
 
+    return 0
 }
 
 rm_game() {
+# Deletes the selected game and optionally removes its related files and metadata.
+
     local -n game_context_ref="$1"
-    local -n target_dir_context_ref="$2"
-    
+
     local answer=""
 
     printf "Deleting ${GREEN}%s${ENDCOLOR}\n" \
-    "${game_context_ref["name"]}" \
+        "${game_context_ref["name"]}"
 
+    # Delete the main game file.
     if sudo rm -f "${game_context_ref["path"]}"; then
-        printf "${YELLOW}Game deleted successfully!${ENDCOLOR}\n"
+        printf "${YELLOW}Main file deleted successfully!${ENDCOLOR}\n"
     else
-        printf "${BLUE}Failed to delete the game!${ENDCOLOR}\n"
+        printf "${BLUE}Failed to delete main file!${ENDCOLOR}\n"
         return 1
     fi
 
-    if [[ -n "${game_context_ref["valid_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["orphan_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["linked_asset_count"]:-}" ]] || \
-        [[ -n "${game_context_ref["linked_support_count"]:-}" ]]; then
+    # Optionally delete all related files.
+    if (( game_context_ref["related_file_count"] > 0 )); then
 
         printf "${RED}Do you want to delete all related files too? (y/n) ${ENDCOLOR}"
         while true; do
@@ -1841,73 +1879,49 @@ rm_game() {
 
             case "$answer" in
                 [Yy])
-                    process_related_files game_context_ref "rm"
-                    ;;
+                    if ! process_related_files game_context_ref "rm"; then
+
+                        printf "\n${BLUE}Warning:${ENDCOLOR} Some related files could not be deleted.\n"
+                   
+                    else
+                        printf "${GREEN}All related files deleted successfully.${ENDCOLOR}\n"
+                    fi
+                ;;
 
                 [Nn])
                     :
-                    ;;
+                ;;
 
                 *)
                     printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
                     continue
-                    ;;
+                ;;
             esac
+
             break
         done
     fi
 
+    # Remove the game entry from the source gamelist when applicable.
     if [[ "${game_context_ref["status"]}" != "Orphan" ]]; then
-        if ! rm_gamelist_entry \
-            "${game_context_ref["path"]}"; then
+        if ! rm_gamelist_node "${game_context_ref["path"]}"; then
             return 1
         fi
-        printf "${GREEN}gamelist.xml updated successfully${ENDCOLOR}\n"
 
-
+        printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
     fi
+
     return 0
 }
 
 show_game_metadata() {
+# Everything else was a function, so...
     local game_name="$1"
     local xml_node="$2"
     printf "\n${YELLOW}────────────── %s Node ──────────────${ENDCOLOR}\n" "$game_name"
     printf "    %s\n" "$xml_node"
     printf "\n${YELLOW}─────────────────────────────────────${ENDCOLOR}\n"
     
-
-}
-
-edit_metadata() {
-    local node="$1"
-    local game_path="$2"
-
-    local tmp_gamelist=""
-
-    if ! duplicate_gamelist_with_entry \
-        "$node" \
-        "./gamelist.xml" \
-        tmp_gamelist true; then
-        return 1
-    fi
-
-    printf "${GREEN}Temporary gamelist.xml created and validated successfully!${ENDCOLOR}\n"
-
-    if ! replace_gamelist \
-        "./gamelist.xml" \
-        "$tmp_gamelist"; then
-        return 1
-    fi
-
-    printf "${YELLOW}Target gamelist.xml updated successfully!${ENDCOLOR}\n"
-
-    if ! rm_gamelist_entry "$game_path"; then
-        return 1
-    fi
-    printf "${YELLOW}Source gamelist.xml entry removed successfully!${ENDCOLOR}\n"
-
-    return 0
 
 }
 
@@ -1969,6 +1983,11 @@ show_relatted_files() {
 
         if [[ -n "${game_context_ref["valid_${suffix}"]:-}" ]]; then
             printf "Valid %s: ${PINK}%s${ENDCOLOR}\n" "$suffix" "${game_context_ref["valid_${suffix}"]}"
+            has_relative_files=1
+        fi
+
+        if [[ -n "${game_context_ref["orphan_${suffix}"]:-}" ]]; then
+            printf "Orphan %s: ${PINK}%s${ENDCOLOR}\n" "$suffix" "${game_context_ref["orphan_${suffix}"]}"
             has_relative_files=1
         fi
 
@@ -2165,6 +2184,21 @@ main_menu() {
     load_systems_info
     load_aux_ext_file
 
+    # TODO: nem todos os arquivos relacionados estão sendo achados corretamente
+    # EX: mame ghost collection num 111
+    # Orphan image: ./images/fishfren-image.png
+    # Orphan video: ./videos/fishfren-video.mp4
+    # Orphan marquee: ./images/fishfren-marquee.png
+    # ------------------------------------------------------------
+    # find ./mame -type f -name "*fishfren*"
+        # ./mame/downloaded_images/fishfren.png
+        # ./mame/images/fishfren-image.png
+        # ./mame/images/fishfren-marquee.png
+        # ./mame/mame2010/cfg/fishfren.cfg
+        # ./mame/mame2010/nvram/fishfren.nv
+        # ./mame/videos/fishfren-video.mp4
+
+
     while true; do
         case "$STATE" in
             "LOOK")
@@ -2289,15 +2323,16 @@ main_menu() {
             ;;
 
             "GAMES_COLLECTION_MENU")
+            # Build the menu with only the collections that contain games.
                 local -A target_collection=()
-                menu_options=( "See library" )
+                menu_options=( "All games" )
 
-                (( ${#valid_games[@]} > 0 )) && menu_options+=( "Xml games" )
+                (( ${#valid_games[@]} > 0 )) && menu_options+=( "XML games" )
                 (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Orphan games" )
                 (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Ghost games" )
 
 
-                ask_user "" user_answer \
+                ask_user "Which game collection would you like to browse?" user_answer \
                     "${menu_options[@]}" "Back"
 
                 case "$user_answer" in
@@ -2305,7 +2340,7 @@ main_menu() {
                         build_target_collection game_library target_collection
                     ;;
 
-                    "Xml games")
+                    "XML games")
                         build_target_collection valid_games target_collection
 
                     ;;
@@ -2337,13 +2372,13 @@ main_menu() {
 
                 sort_games sorted_games "${!target_collection[@]}"
 
-                ask_user "Selecione um jogo:" user_answer \
+                ask_user "Which game would you like to select?" user_answer \
                     "${sorted_games[@]}" \
                     "Back"
 
                 case "$user_answer" in
                     "Back")
-                        STATE="SYSTEM_DASHBOARD"
+                        STATE="GAMES_COLLECTION_MENU"
                         PREV_STATE="GAMES_SELECTION_MENU"
                         continue
 
@@ -2353,7 +2388,7 @@ main_menu() {
                         selected_game_name="$user_answer"
                         selected_game_path="${target_collection["$selected_game_name"]}"
 
-                        printf "Jogo selecionado: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
+                        printf "Selected game: ${GREEN}%s${ENDCOLOR}\n" "$selected_game_name"
 
                     ;;
                 esac
@@ -2365,30 +2400,47 @@ main_menu() {
             "GAME_ACTION_MENU")
             
                 local -A game_context=()
-                
-                load_game_context  game_context "$selected_game_path" "$selected_game_name"
+
+                # Load and display all information related to the selected game.
+                load_game_context game_context "$selected_game_path" "$selected_game_name"
                 print_game_context game_context
 
                 menu_options=()
 
-                if [[ "${game_context["status"]}" ==  "Valid" ]]; then
-                    menu_options+=( "Move Game" "Copy Game" "Delete Game" "See Metadata" "Edit Metadata" )
-                
-                elif [[ "${game_context["status"]}" ==  "Orphan" ]]; then
-                    menu_options+=( "Move Game" "Copy Game" "Delete Game" "Add to gamelist.xml" )
+                # Build the list of available actions according to the game status.
+                if [[ "${game_context["status"]}" == "Valid" ]]; then
+                    menu_options+=(
+                        "Move Game"
+                        "Copy Game"
+                        "Delete Game"
+                        "See Metadata"
+                        "Edit Metadata"
+                    )
+
+                elif [[ "${game_context["status"]}" == "Orphan" ]]; then
+                    menu_options+=(
+                        "Move Game"
+                        "Copy Game"
+                        "Delete Game"
+                        "Add to gamelist.xml"
+                    )
 
                 else
-                    menu_options+=( "See Metadata" "Remove from gamelist.xml" )
-
+                    menu_options+=(
+                        "See Metadata"
+                        "Remove from gamelist.xml"
+                    )
                 fi
 
-                # TODO: reavaliar a fragilidade  do trecho, pois depende diretamente da arquitetura de game_context
-                (( "${#game_context[@]}" > 9 )) &&  menu_options+=("See Related Files")
-                
+                # Show the related files option only when additional files exist.
+                (( game_context["related_file_count"] > 0 )) && \
+                    menu_options+=( "See Related Files" )
+
                 local -A target_dir_context=()
 
-                ask_user "" user_answer \
-                    "${menu_options[@]}" "Back"
+                ask_user "What would you like to do with this game?" user_answer \
+                    "${menu_options[@]}" \
+                    "Back"
 
                 case "$user_answer" in
                     "Move Game" | "Copy Game")
@@ -2399,10 +2451,11 @@ main_menu() {
                     "Move Game")
                         if mv_game game_context target_dir_context; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
-                            printf "All requested operations were completed as expected.\n"
+
                         else
-                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
-                            printf "Please review the messages above to identify which step failed.\n"
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
                         fi
 
                     ;;
@@ -2410,21 +2463,23 @@ main_menu() {
                     "Copy Game")
                         if cp_game game_context target_dir_context; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
-                            printf "All requested operations were completed as expected.\n"
+
                         else
-                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
-                            printf "Please review the messages above to identify which step failed.\n"
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
                         fi
 
                     ;;
 
                     "Delete Game")
-                        if rm_game game_context target_dir_context; then
+                        if rm_game game_context; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
-                            printf "All requested operations were completed as expected.\n"
+
                         else
-                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
-                            printf "Please review the messages above to identify which step failed.\n"
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
                         fi
                     ;;
 
@@ -2433,12 +2488,14 @@ main_menu() {
                     ;;
 
                     "Edit Metadata")
-                        if edit_metadata "${game_context["xml_node"]}" "${game_context["path"]}"; then
+                        if update_gamelist_entry game_context \
+                            "./gamelist.xml" true true; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
-                            printf "All requested operations were completed as expected.\n"
+
                         else
-                            printf "\n${RED}Operation completed with errors!${ENDCOLOR}\n"
-                            printf "Please review the messages above to identify which step failed.\n"
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
                         fi
                     ;;
 
@@ -2447,11 +2504,12 @@ main_menu() {
                     ;;
 
                     "Remove from gamelist.xml")
-                        rm_gamelist_entry "${game_context["path"]}"
+                        rm_gamelist_node "${game_context["path"]}"
                     ;;
 
                     "See Related Files")
                         show_relatted_files game_context
+                        continue
 
                     ;;
 
@@ -2461,7 +2519,8 @@ main_menu() {
                             cd "$OLDPWD" || exit 1
                         
                         fi
-                        STATE="GAMES_MENU"
+                        STATE="GAMES_SELECTION_MENU"
+                        continue
                     ;;
 
                 esac
