@@ -2506,8 +2506,7 @@ main_menu() {
 
                     "See Metadata")
                         show_game_metadata "${game_context["name"]}" "${game_context["xml_node"]}"
-                        echo "Press ENTER to continue..."
-                        read
+                        read -p "Press ENTER to continue..."
                         PREV_STATE="GAME_ACTION_MENU"
                         continue
                     ;;
@@ -2548,8 +2547,7 @@ main_menu() {
 
                     "See Related Files")
                         show_related_files game_context
-                        echo "Press ENTER to continue..."
-                        read
+                        read -p "Press ENTER to continue..."
                         PREV_STATE="GAME_ACTION_MENU"
                         continue
 
