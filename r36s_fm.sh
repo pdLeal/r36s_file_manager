@@ -421,6 +421,35 @@ classify_xml_games() {
     done
 }
 
+build_assets_index() {
+    local -n unclassified_assets_ref="$1"
+    local -n asset_index_ref=()
+    local -n asset_index_count_ref=()
+    local asset_type="$2"
+
+    local game_path=""
+    local asset_path=""
+    local -A seen=()
+
+
+    asset_type="${asset_type%s}"
+
+    local key=""
+
+    for game_path in "${!unclassified_assets_ref[@]}"; do
+        asset_path="${unclassified_assets_ref[$game_path]}"
+
+        if [[ -z "${seen["$asset_path"]:-}" ]]; then
+            seen["$asset_path"]=1
+            asset_index_ref["$asset_path"]="$game_path:$asset_type"
+            asset_index_count_ref["$asset_path"]=$(( ${asset_index_count_ref["$asset_path"]:-0} + 1 ))
+        else
+            asset_index_ref["$asset_path"]+="|$game_path:$asset_type"
+            asset_index_count_ref["$asset_path"]=$(( ${asset_index_count_ref["$asset_path"]:-0} + 1 ))
+        fi
+    done
+}
+
 classify_xml_asset() {
 # Classify assets referenced by the gamelist.xml.
     # =========================================================================
@@ -871,14 +900,19 @@ analyze_directory() {
         # Skip empty asset collections.
         (( ${#arr_ref[@]} == 0 )) && continue
 
-        classify_xml_asset \
-            unclassified_files \
+        build_assets_index \
             "unclassified_${name}" \
-            "valid_${name}" \
-            "orphan_${name}" \
-            "ghost_${name}" \
-            valid_games
+            "$name"
+
+        # classify_xml_asset \
+        #     unclassified_files \
+        #     "unclassified_${name}" \
+        #     "valid_${name}" \
+        #     "orphan_${name}" \
+        #     "ghost_${name}" \
+        #     valid_games
     done
+    exit
 
     # Identify and classify ROM files.
     local -A possible_roms=()
@@ -2153,6 +2187,9 @@ main_menu() {
     local -A ghost_marquees=()
     local -A ghost_thumbnails=()
 
+    local -A asset_index=()
+    local -A asset_index_count=()
+
     # --------------------------------------------------------------------------
     # FILES ASSOCIATED WITH KNOWN GAMES
     # --------------------------------------------------------------------------
@@ -2311,9 +2348,7 @@ main_menu() {
 
                 ask_user "" user_answer \
                     "Browse Games" \
-                    "Browse Assets" \
-                    "Browse Support Files" \
-                    "Browse Unknows" \
+                    "Browse Other Files" \
                     "Back"   
 
                 case "$user_answer" in
@@ -2321,16 +2356,9 @@ main_menu() {
                         STATE="GAMES_COLLECTION_MENU"
                     ;;
 
-                    "Browse Assets")
-                        STATE="ASSETS_MENU"
-                    ;;
-
-                    "Browse Support Files")
-                        STATE="SUPPORT_MENU"
-                    ;;
-
-                    "Browse Unknows")
-                        STATE="UNKNOWS_MENU"
+                    "Browse Other Files")
+                    # DAQUI: construir menu de assets
+                        STATE="OTHERS_COLLECTION_MENU"
                     ;;
 
                     "Back")
@@ -2574,6 +2602,13 @@ main_menu() {
                 cd -- "$OLDPWD" || exit 1
                 STATE="LOOK"
                 PREV_STATE="GAME_ACTION_MENU"
+            ;;
+
+            "OTHERS_COLLECTION_MENU")
+                menu_options=( "See all files" )
+
+
+                STATE="ASSETS_MENU"
             ;;
 
             # "GAMELIST_MENU")
