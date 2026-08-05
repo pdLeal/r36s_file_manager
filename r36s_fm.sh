@@ -433,42 +433,64 @@ print_assoc_array() {
     done
 }
 
+register_reference() {
+    local key="$1"
+    local value="$2"
+    local -n collection_ref="$3"
+
+    if [[ -z "${collection_ref["$key"]:-}" ]]; then
+        collection_ref["$key"]="$value"
+    else
+        collection_ref["$key"]+="|$value"
+    fi
+
+     if [[ -n "${4:-}" ]]; then
+        local -n counter_ref="$4"
+        (( ++counter_ref["$key"] ))
+    fi
+
+
+}
+
 build_asset_index() {
 # Builds inverted indexes for XML asset references.
     # =========================================================================
     # For each asset, stores:
     #
-    # asset_refs[path]
+    # <prefix>_refs[path]
     #     game1:image|game1:thumbnail|game2:image
     #
-    # asset_refs_count[path]
+    # <prefix>_refs_count[path]
     #     Total number of XML references.
     #
-    # asset_games[path]
+    # <prefix>_games[path]
     #     game1|game2
     #
-    # asset_game_count[path]
+    # <prefix>_game_count[path]
     #     Number of distinct games referencing the asset.
     #
-    # asset_tags[path]
+    # <prefix>_tags[path]
     #     image|thumbnail
     # =========================================================================
 
     local -n unclassified_assets_ref="$1"
-    local -n asset_refs_ref="$2"
-    local -n asset_refs_count_ref="$3"
-    local -n asset_games_ref="$4"
-    local -n asset_game_count_ref="$5"
-    local -n asset_tags_ref="$6"
+    local -n relation_context_ref="$2"
 
-    local asset_type="${7%s}"
+    local asset_type="${3%s}"
+
+    local asset_prefix="${relation_context_ref[asset]}"
+
+    local -n asset_refs_ref="${asset_prefix}_refs"
+    local -n asset_refs_count_ref="${asset_prefix}_refs_count"
+    local -n asset_games_ref="${asset_prefix}_games"
+    local -n asset_game_count_ref="${asset_prefix}_game_count"
+    local -n asset_tags_ref="${asset_prefix}_tags"
 
     # Internal lookup tables used to avoid duplicate games/tags.
     local list=""
 
     local game_path=""
     local asset_path=""
-    local key=""
 
     for game_path in "${!unclassified_assets_ref[@]}"; do
         asset_path="${unclassified_assets_ref[$game_path]}"
@@ -476,27 +498,23 @@ build_asset_index() {
         # ---------------------------------------------------------------------
         # Register the complete reference.
         # ---------------------------------------------------------------------
-        if [[ -z "${asset_refs_ref["$asset_path"]:-}" ]]; then
-            asset_refs_ref["$asset_path"]="$game_path:$asset_type"
-        else
-            asset_refs_ref["$asset_path"]+="|$game_path:$asset_type"
-        fi
-
-        (( asset_refs_count_ref["$asset_path"]++ ))
+        register_reference \
+            "$asset_path" \
+            "$game_path:$asset_type" \
+            asset_refs_ref \
+            asset_refs_count_ref
 
         # ---------------------------------------------------------------------
         # Register the game only once per asset.
         # ---------------------------------------------------------------------
-       list="|${asset_games_ref["$asset_path"]:-}|"
+        list="|${asset_games_ref["$asset_path"]:-}|"
 
         if [[ "$list" != *"|$game_path|"* ]]; then
-            if [[ -z "${asset_games_ref["$asset_path"]:-}" ]]; then
-                asset_games_ref["$asset_path"]="$game_path"
-            else
-                asset_games_ref["$asset_path"]+="|$game_path"
-            fi
-
-            (( ++asset_game_count_ref["$asset_path"] ))
+            register_reference \
+                "$asset_path" \
+                "$game_path" \
+                asset_games_ref \
+                asset_game_count_ref
         fi
 
         # ---------------------------------------------------------------------
@@ -505,11 +523,10 @@ build_asset_index() {
         list="|${asset_tags_ref["$asset_path"]:-}|"
 
         if [[ "$list" != *"|$asset_type|"* ]]; then
-            if [[ -z "${asset_tags_ref["$asset_path"]:-}" ]]; then
-                asset_tags_ref["$asset_path"]="$asset_type"
-            else
-                asset_tags_ref["$asset_path"]+="|$asset_type"
-            fi
+            register_reference \
+                "$asset_path" \
+                "$asset_type" \
+                asset_tags_ref
         fi
     done
 }
@@ -713,15 +730,35 @@ classify_remaining_files() {
 
     local -n unclassified_files_ref="$1"
     local -n game_library_ref="$2"
+    local -n ghost_games_ref="$3"
 
-    local -n linked_images_ref="$3" linked_videos_ref="$4" linked_marquees_ref="$5" linked_thumbnails_ref="$6" linked_auxiliary_ref="$7"
-    local -n unlinked_images_ref="$8" unlinked_videos_ref="$9" unlinked_marquees_ref="${10}" unlinked_thumbnails_ref="${11}" unlinked_auxiliary_ref="${12}"
-    local -n linked_configs_ref="${13}" unlinked_configs_ref="${14}" unknown_files_ref="${15}"
+    local -n relation_context_ref="$4"
 
-    local -n ghost_games_ref="${16}"
+    local -n unknown_files_ref="$5"
 
-    local -n linked_images_count_ref="${17}" linked_videos_count_ref="${18}" linked_marquees_count_ref="${19}" linked_thumbnails_count_ref="${20}" 
-    local -n linked_auxiliary_count_ref="${21}" linked_configs_count_ref="${22}"
+    local linked_prefix="${relation_context_ref[linked]}"
+    local unlinked_prefix="${relation_context_ref[unlinked]}"
+
+    local -n linked_images_ref="${linked_prefix}_images"
+    local -n linked_videos_ref="${linked_prefix}_videos"
+    local -n linked_marquees_ref="${linked_prefix}_marquees"
+    local -n linked_thumbnails_ref="${linked_prefix}_thumbnails"
+    local -n linked_auxiliary_ref="${linked_prefix}_auxiliary"
+    local -n linked_configs_ref="${linked_prefix}_configs"
+
+    local -n linked_images_count_ref="${linked_prefix}_images_count"
+    local -n linked_videos_count_ref="${linked_prefix}_videos_count"
+    local -n linked_marquees_count_ref="${linked_prefix}_marquees_count"
+    local -n linked_thumbnails_count_ref="${linked_prefix}_thumbnails_count"
+    local -n linked_auxiliary_count_ref="${linked_prefix}_auxiliary_count"
+    local -n linked_configs_count_ref="${linked_prefix}_configs_count"
+
+    local -n unlinked_images_ref="${unlinked_prefix}_images"
+    local -n unlinked_videos_ref="${unlinked_prefix}_videos"
+    local -n unlinked_marquees_ref="${unlinked_prefix}_marquees"
+    local -n unlinked_thumbnails_ref="${unlinked_prefix}_thumbnails"
+    local -n unlinked_auxiliary_ref="${unlinked_prefix}_auxiliary"
+    local -n unlinked_configs_ref="${unlinked_prefix}_configs"
 
     local -A grouped_known_games=()
     local group_key=""
@@ -767,33 +804,21 @@ classify_remaining_files() {
 
                     case "$image_suffix" in
                         "marquee")
-                            if [[ -z "${linked_marquees_ref["$game_path"]:-}" ]]; then
-                                linked_marquees_ref["$game_path"]="$file"
-                            else
-                                linked_marquees_ref["$game_path"]+="|$file"
-                            fi
-                           
-                            (( ++linked_marquees_count_ref["$game_path"] ))
+                            register_reference "$game_path" "$file" \
+                                linked_marquees_ref linked_marquees_count_ref
+                                
                         ;;
 
                         "thumb")
-                            if [[ -z "${linked_thumbnails_ref["$game_path"]:-}" ]]; then
-                                linked_thumbnails_ref["$game_path"]="$file"
-                            else
-                                linked_thumbnails_ref["$game_path"]+="|$file"
-                            fi
-                    
-                            (( ++linked_thumbnails_count_ref["$game_path"] ))
+                            register_reference "$game_path" "$file" \
+                                linked_thumbnails_ref linked_thumbnails_count_ref
+                                
                         ;;
 
                         *)
-                            if [[ -z "${linked_images_ref["$game_path"]:-}" ]]; then
-                                linked_images_ref["$game_path"]="$file"
-                            else
-                                linked_images_ref["$game_path"]+="|$file"
-                            fi
-                    
-                            (( ++linked_images_count_ref["$game_path"] ))
+                            register_reference "$game_path" "$file" \
+                                linked_images_ref linked_images_count_ref
+                                
                         ;;
                     esac
                     ;;
@@ -802,13 +827,9 @@ classify_remaining_files() {
                 # Videos
                 # ====================================================================
                 "VIDEO")
-                    if [[ -z "${linked_videos_ref["$game_path"]:-}" ]]; then
-                        linked_videos_ref["$game_path"]="$file"
-                    else
-                        linked_videos_ref["$game_path"]+="|$file"
-                    fi
-                    
-                    (( ++linked_videos_count_ref["$game_path"] ))
+                    register_reference "$game_path" "$file" \
+                        linked_videos_ref linked_videos_count_ref
+
                 ;;
 
                 # ====================================================================
@@ -817,14 +838,9 @@ classify_remaining_files() {
                 # user-generated data.
                 # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    # TODO: criar func p/ essse tipo de validação
-                    if [[ -z "${linked_configs_ref["$game_path"]:-}" ]]; then
-                        linked_configs_ref["$game_path"]="$file"
-                    else
-                        linked_configs_ref["$game_path"]+="|$file"
-                    fi
-                    
-                    (( ++linked_configs_count_ref["$game_path"] ))
+                    register_reference "$game_path" "$file" \
+                        linked_configs_ref linked_configs_count_ref
+                        
                     ;;
 
                 # ====================================================================
@@ -834,13 +850,9 @@ classify_remaining_files() {
                 "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                 "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                 "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                    if [[ -z "${linked_auxiliary_ref["$game_path"]:-}" ]]; then
-                        linked_auxiliary_ref["$game_path"]="$file"
-                    else
-                        linked_auxiliary_ref["$game_path"]+="|$file"
-                    fi
-                    
-                    (( ++linked_auxiliary_count_ref["$game_path"] ))
+                    register_reference "$game_path" "$file" \
+                            linked_auxiliary_ref linked_auxiliary_count_ref
+                            
                     ;;
 
                 # ====================================================================
@@ -949,6 +961,14 @@ reset_analysis_state() {
     asset_game_count=()
     asset_tags=()
 
+    linked_images_count=()
+    linked_videos_count=()
+    linked_marquees_count=()
+    linked_thumbnails_count=()
+
+    linked_auxiliary_count=()
+    linked_configs_count=()
+
     # Filesystem asset classification.
     linked_images=()
     linked_videos=()
@@ -1005,11 +1025,7 @@ analyze_directory() {
 
         build_asset_index \
             "unclassified_${name}" \
-            asset_refs \
-            asset_refs_count \
-            asset_games \
-            asset_game_count \
-            asset_tags \
+            relation_context \
             "$name"
 
         classify_xml_asset \
@@ -1054,15 +1070,15 @@ analyze_directory() {
 
 
     # Classify all remaining files.
+    # ------------------------------------------------------------------------------
+    # The most disgusting, horrendous, idious and grossy function of all program 
+    # ------------------------------------------------------------------------------
     classify_remaining_files \
         unclassified_files \
         game_library \
-        linked_images linked_videos linked_marquees linked_thumbnails linked_auxiliary \
-        unlinked_images unlinked_videos unlinked_marquees unlinked_thumbnails unlinked_auxiliary \
-        linked_configs unlinked_configs unknown_files \
         ghost_games \
-        linked_images_count linked_videos_count linked_marquees_count linked_thumbnails_count \
-        linked_auxiliary_count linked_configs_count
+        relation_context \
+        unknown_files
 
 }
 
@@ -2177,7 +2193,7 @@ show_related_files() {
                 "${game_context_ref["linked_${suffix}"]}"
         fi
 
-    done
+    done | sort -f
 }
 
 show_gamelist_data() {
@@ -2332,6 +2348,12 @@ main_menu() {
 
     local -Ai linked_auxiliary_count=()
     local -Ai linked_configs_count=()
+
+    declare -A relation_context=(
+        [asset]="asset"
+        [linked]="linked"
+        [unlinked]="unlinked"
+    )
 
     # --------------------------------------------------------------------------
     # FILES NOT ASSOCIATED WITH ANY GAME
