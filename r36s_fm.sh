@@ -444,8 +444,13 @@ register_reference() {
         collection_ref["$key"]+="|$value"
     fi
 
-     if [[ -n "${4:-}" ]]; then
-        local -n counter_ref="$4"
+    if [[ -n "${4:-}" ]]; then
+        local -n collection_total_ref="$4"
+        (( ++collection_total_ref ))
+    fi
+
+    if [[ -n "${5:-}" ]]; then
+        local -n counter_ref="$5"
         (( ++counter_ref["$key"] ))
     fi
 
@@ -501,7 +506,7 @@ build_asset_index() {
         register_reference \
             "$asset_path" \
             "$game_path:$asset_type" \
-            asset_refs_ref \
+            asset_refs_ref "" \
             asset_refs_count_ref
 
         # ---------------------------------------------------------------------
@@ -513,7 +518,7 @@ build_asset_index() {
             register_reference \
                 "$asset_path" \
                 "$game_path" \
-                asset_games_ref \
+                asset_games_ref "" \
                 asset_game_count_ref
         fi
 
@@ -543,7 +548,10 @@ classify_xml_asset() {
     local -n valid_assets_ref="$3"
     local -n orphan_assets_ref="$4"
     local -n ghost_assets_ref="$5"
-    local -n valid_games_ref="$6"
+    local -n valid_assets_total_ref="$6"
+    local -n orphan_assets_total_ref="$7"
+    local -n ghost_assets_total_ref="$8"
+    local -n valid_games_ref="$9"
 
     local game_path=""
     local asset_path=""
@@ -555,18 +563,18 @@ classify_xml_asset() {
             
                 if [[ -n "${valid_games_ref["$game_path"]:-}" ]]; then
                     register_reference "$game_path" "$asset_path" \
-                        valid_assets_ref
+                        valid_assets_ref valid_assets_total_ref
 
                 else
                     register_reference "$game_path" "$asset_path" \
-                        orphan_assets_ref
+                        orphan_assets_ref orphan_assets_total_ref
 
                 fi
         
         else
             # The referenced asset does not exist on disk.
             register_reference "$game_path" "$asset_path" \
-                ghost_assets_ref
+                ghost_assets_ref ghost_assets_total_ref
             
         fi
         
@@ -767,6 +775,13 @@ classify_remaining_files() {
     local -n linked_auxiliary_count_ref="${linked_prefix}_auxiliary_count"
     local -n linked_configs_count_ref="${linked_prefix}_configs_count"
 
+    local -n linked_images_total_ref="${linked_prefix}_images_total"
+    local -n linked_videos_total_ref="${linked_prefix}_videos_total"
+    local -n linked_marquees_total_ref="${linked_prefix}_marquees_total"
+    local -n linked_thumbnails_total_ref="${linked_prefix}_thumbnails_total"
+    local -n linked_auxiliary_total_ref="${linked_prefix}_auxiliary_total"
+    local -n linked_configs_total_ref="${linked_prefix}_configs_total"
+
     # TODO: avaliar a real necessidade de unlinked_* context
     local -n unlinked_images_ref="${unlinked_prefix}_images"
     local -n unlinked_videos_ref="${unlinked_prefix}_videos"
@@ -831,19 +846,22 @@ classify_remaining_files() {
                         case "$image_suffix" in
                             "marquee")
                                 register_reference "$game_path" "$file" \
-                                    linked_marquees_ref linked_marquees_count_ref
+                                    linked_marquees_ref linked_marquees_total_ref \
+                                    linked_marquees_count_ref
                                     
                             ;;
 
                             "thumb")
                                 register_reference "$game_path" "$file" \
-                                    linked_thumbnails_ref linked_thumbnails_count_ref
+                                    linked_thumbnails_ref linked_thumbnails_total_ref \
+                                    linked_thumbnails_count_ref
                                     
                             ;;
 
                             *)
                                 register_reference "$game_path" "$file" \
-                                    linked_images_ref linked_images_count_ref
+                                    linked_images_ref linked_images_total_ref \
+                                    linked_images_count_ref
                                     
                             ;;
                         esac
@@ -854,7 +872,8 @@ classify_remaining_files() {
                     # ====================================================================
                     "VIDEO")
                         register_reference "$game_path" "$file" \
-                            linked_videos_ref linked_videos_count_ref
+                            linked_videos_ref linked_videos_total_ref \
+                            linked_videos_count_ref
 
                     ;;
 
@@ -865,7 +884,8 @@ classify_remaining_files() {
                     # ====================================================================
                     "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
                         register_reference "$game_path" "$file" \
-                            linked_configs_ref linked_configs_count_ref
+                            linked_configs_ref linked_configs_total_ref \
+                            linked_configs_count_ref
                             
                         ;;
 
@@ -877,7 +897,8 @@ classify_remaining_files() {
                     "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                     "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
                         register_reference "$game_path" "$file" \
-                                linked_auxiliary_ref linked_auxiliary_count_ref
+                                linked_auxiliary_ref linked_auxiliary_total_ref \
+                                linked_auxiliary_count_ref
                                 
                         ;;
 
@@ -999,6 +1020,29 @@ reset_analysis_state() {
     linked_auxiliary_count=()
     linked_configs_count=()
 
+    valid_images_total=0
+    valid_videos_total=0
+    valid_marquees_total=0
+    valid_thumbnails_total=0
+
+    orphan_images_total=0
+    orphan_videos_total=0
+    orphan_marquees_total=0
+    orphan_thumbnails_total=0
+
+    ghost_images_total=0
+    ghost_videos_total=0
+    ghost_marquees_total=0
+    ghost_thumbnails_total=0
+
+    linked_images_total=0
+    linked_videos_total=0
+    linked_marquees_total=0
+    linked_thumbnails_total=0
+
+    linked_auxiliary_total=0
+    linked_configs_total=0
+
     # Filesystem asset classification.
     linked_images=()
     linked_videos=()
@@ -1064,6 +1108,9 @@ analyze_directory() {
             "valid_${name}" \
             "orphan_${name}" \
             "ghost_${name}" \
+            "valid_${name}_total" \
+            "orphan_${name}_total" \
+            "ghost_${name}_total" \
             valid_games
 
     done
@@ -1152,37 +1199,37 @@ print_directory_summary() {
 
     printf "\n${YELLOW}────────────── Assets ─────────────${ENDCOLOR}\n"
 
-    print_summary_line "Valid Images"       "${#valid_images[@]}"
-    print_summary_line "Valid Videos"       "${#valid_videos[@]}"
-    print_summary_line "Valid Marquees"     "${#valid_marquees[@]}"
-    print_summary_line "Valid Thumbnails"   "${#valid_thumbnails[@]}"
+    print_summary_line "Valid Images"       "$valid_images_total"
+    print_summary_line "Valid Videos"       "$valid_videos_total"
+    print_summary_line "Valid Marquees"     "$valid_marquees_total"
+    print_summary_line "Valid Thumbnails"   "$valid_thumbnails_total"
     
     (( ${#valid_images[@]} > 0 )) || (( ${#valid_videos[@]} > 0 )) || \
     (( ${#valid_marquees[@]} > 0 )) || (( ${#valid_thumbnails[@]} > 0 )) && \
     echo ""
 
-    print_summary_line "Orphan Images"       "${#orphan_images[@]}"
-    print_summary_line "Orphan Videos"       "${#orphan_videos[@]}"
-    print_summary_line "Orphan Marquees"     "${#orphan_marquees[@]}"
-    print_summary_line "Orphan Thumbnails"   "${#orphan_thumbnails[@]}"
+    print_summary_line "Orphan Images"       "$orphan_images_total"
+    print_summary_line "Orphan Videos"       "$orphan_videos_total"
+    print_summary_line "Orphan Marquees"     "$orphan_marquees_total"
+    print_summary_line "Orphan Thumbnails"   "$orphan_thumbnails_total"
      
     (( ${#orphan_images[@]} > 0 )) || (( ${#orphan_videos[@]} > 0 )) || \
     (( ${#orphan_marquees[@]} > 0 )) || (( ${#orphan_thumbnails[@]} > 0 )) && \
     echo ""
 
-    print_summary_line "Ghost Images"       "${#ghost_images[@]}"
-    print_summary_line "Ghost Videos"       "${#ghost_videos[@]}"
-    print_summary_line "Ghost Marquees"     "${#ghost_marquees[@]}"
-    print_summary_line "Ghost Thumbnails"   "${#ghost_thumbnails[@]}"
+    print_summary_line "Ghost Images"       "$ghost_images_total"
+    print_summary_line "Ghost Videos"       "$ghost_videos_total"
+    print_summary_line "Ghost Marquees"     "$ghost_marquees_total"
+    print_summary_line "Ghost Thumbnails"   "$ghost_thumbnails_total"
      
     (( ${#ghost_images[@]} > 0 )) || (( ${#ghost_videos[@]} > 0 )) || \
     (( ${#ghost_marquees[@]} > 0 )) || (( ${#ghost_thumbnails[@]} > 0 )) && \
     echo ""
 
-    print_summary_line "Linked Images"       "${#linked_images[@]}"
-    print_summary_line "Linked Videos"       "${#linked_videos[@]}"
-    print_summary_line "Linked Marquees"     "${#linked_marquees[@]}"
-    print_summary_line "Linked Thumbnails"   "${#linked_thumbnails[@]}"
+    print_summary_line "Linked Images"       "$linked_images_total"
+    print_summary_line "Linked Videos"       "$linked_videos_total"
+    print_summary_line "Linked Marquees"     "$linked_marquees_total"
+    print_summary_line "Linked Thumbnails"   "$linked_thumbnails_total"
      
     (( ${#linked_images[@]} > 0 )) || (( ${#linked_videos[@]} > 0 )) || \
     (( ${#linked_marquees[@]} > 0 )) || (( ${#linked_thumbnails[@]} > 0 )) && \
@@ -1195,13 +1242,13 @@ print_directory_summary() {
 
     printf "\n${YELLOW}────────── Support Files ──────────${ENDCOLOR}\n"
 
-    print_summary_line "Linked Auxiliary"    "${#linked_auxiliary[@]}"
+    print_summary_line "Linked Auxiliary"    "$linked_auxiliary_total"
     print_summary_line "Unlinked Auxiliary"  "${#unlinked_auxiliary[@]}"
      
     (( ${#linked_auxiliary[@]} > 0 )) || (( ${#unlinked_auxiliary[@]} > 0 )) && \
     echo ""
 
-    print_summary_line "Linked Config"       "${#linked_configs[@]}"
+    print_summary_line "Linked Config"       "$linked_configs_total"
     print_summary_line "Unlinked Config"     "${#unlinked_configs[@]}"
 
     printf "\n${YELLOW}────────────── Other ──────────────${ENDCOLOR}\n"
@@ -2385,6 +2432,21 @@ main_menu() {
     local -A ghost_marquees=()
     local -A ghost_thumbnails=()
 
+    local valid_images_total=0
+    local valid_videos_total=0
+    local valid_marquees_total=0
+    local valid_thumbnails_total=0
+
+    local orphan_images_total=0
+    local orphan_videos_total=0
+    local orphan_marquees_total=0
+    local orphan_thumbnails_total=0
+
+    local ghost_images_total=0
+    local ghost_videos_total=0
+    local ghost_marquees_total=0
+    local ghost_thumbnails_total=0
+
     local -A asset_refs=()
     local -Ai asset_refs_count=()
     local -A asset_games=()
@@ -2401,6 +2463,14 @@ main_menu() {
 
     local -A linked_auxiliary=()
     local -A linked_configs=()
+
+    local linked_images_total=0
+    local linked_videos_total=0
+    local linked_marquees_total=0
+    local linked_thumbnails_total=0
+
+    local linked_auxiliary_total=0
+    local linked_configs_total=0
 
     local -Ai linked_images_count=()
     local -Ai linked_videos_count=()
@@ -2655,9 +2725,9 @@ main_menu() {
                 print_game_context game_context
 
 # --------------------------TESTES-----------------------------------
-                prepare_target_directory target_dir_context
-                mv_game game_context target_dir_context \
-                            relation_context
+                # prepare_target_directory target_dir_context
+                # mv_game game_context target_dir_context \
+                #             relation_context
 # --------------------------TESTES-----------------------------------
                 menu_options=()
 
