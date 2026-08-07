@@ -554,16 +554,19 @@ classify_xml_asset() {
         if [[ -n "${unclassified_files_ref["$asset_path"]:-}" ]]; then
             
                 if [[ -n "${valid_games_ref["$game_path"]:-}" ]]; then
-                    valid_assets_ref["$game_path"]="$asset_path"
+                    register_reference "$game_path" "$asset_path" \
+                        valid_assets_ref
 
-                else 
-                    orphan_assets_ref["$game_path"]="$asset_path"
+                else
+                    register_reference "$game_path" "$asset_path" \
+                        orphan_assets_ref
 
                 fi
         
         else
             # The referenced asset does not exist on disk.
-            ghost_assets_ref["$game_path"]="$asset_path"
+            register_reference "$game_path" "$asset_path" \
+                ghost_assets_ref
             
         fi
         
@@ -614,6 +617,9 @@ group_files() {
 
     local -n files_to_group_ref="$1"
     local -n grouped_files_ref="$2"
+    
+    
+
 
     local file=""
     local group_key=""
@@ -625,12 +631,22 @@ group_files() {
         # Preserve multi-part suffixes such as ".A1.bin" by removing only the
         # final extension before applying this special case.
         [[ "$group_key" == *.A1 ]] && group_key="${group_key%.*}"
+        
+        # register_reference "$group_key" "$file" \
+        #     grouped_files_ref group_count_ref
 
         if [[ -z "${grouped_files_ref["$group_key"]:-}" ]]; then
             grouped_files_ref["$group_key"]="$file"
         else
             grouped_files_ref["$group_key"]+="|$file"
         fi
+
+        if [[ -n "${3:-}" ]]; then
+            local -n group_count_ref="$3"
+
+            (( ++group_count_ref["$group_key"] ))
+        fi
+
     done
 }
 
@@ -731,9 +747,7 @@ classify_remaining_files() {
     local -n unclassified_files_ref="$1"
     local -n game_library_ref="$2"
     local -n ghost_games_ref="$3"
-
     local -n relation_context_ref="$4"
-
     local -n unknown_files_ref="$5"
 
     local linked_prefix="${relation_context_ref[linked]}"
@@ -753,6 +767,7 @@ classify_remaining_files() {
     local -n linked_auxiliary_count_ref="${linked_prefix}_auxiliary_count"
     local -n linked_configs_count_ref="${linked_prefix}_configs_count"
 
+    # TODO: avaliar a real necessidade de unlinked_* context
     local -n unlinked_images_ref="${unlinked_prefix}_images"
     local -n unlinked_videos_ref="${unlinked_prefix}_videos"
     local -n unlinked_marquees_ref="${unlinked_prefix}_marquees"
@@ -761,10 +776,12 @@ classify_remaining_files() {
     local -n unlinked_configs_ref="${unlinked_prefix}_configs"
 
     local -A grouped_known_games=()
+    local -A group_count=()
     local group_key=""
 
     local file=""
     local file_extension=""
+    local game_paths=()
     local game_path=""
     
     local category=""
@@ -772,16 +789,18 @@ classify_remaining_files() {
 
     # Group the game library by filename to allow fast association between
     # remaining files and known games.
-    group_files game_library_ref grouped_known_games
+    group_files game_library_ref grouped_known_games group_count
 
-    group_files ghost_games_ref grouped_known_games
+    group_files ghost_games_ref grouped_known_games group_count
 
     for file in "${!unclassified_files_ref[@]}"; do
         group_key="${file##*/}"
         group_key="${group_key%.*}"
 
+        [[ "$group_key" =~ -(image|thumb|marquee|video)$ ]] && group_key="${group_key%-*}"
+        
         [[ "$group_key" == *.A1 ]] && group_key="${group_key%.*}"
-
+    
         file_extension="${file##*.}"
 
         shopt -s extglob
@@ -793,75 +812,83 @@ classify_remaining_files() {
         category="${AUX_CATEGORY["$file_extension"]:-}"
         
         if [[ -n "${grouped_known_games["$group_key"]:-}" ]]; then
-            game_path="${grouped_known_games["$group_key"]}"
 
-            case "$category" in
-                # ====================================================================
-                # Images
-                # ====================================================================
-                "IMAGE")
-                    image_suffix="${group_key##*-}"
+            if (( "${group_count["$group_key"]}" == 1 )); then
+                game_paths=( "${grouped_known_games["$group_key"]}" )
+            else
+                IFS='|' read -ra game_paths <<< "${grouped_known_games[$group_key]}"
+                
+            fi
 
-                    case "$image_suffix" in
-                        "marquee")
-                            register_reference "$game_path" "$file" \
-                                linked_marquees_ref linked_marquees_count_ref
-                                
+            for game_path in "${game_paths[@]}"; do
+                case "$category" in
+                    # ====================================================================
+                    # Images
+                    # ====================================================================
+                    "IMAGE")
+                        image_suffix="${group_key##*-}"
+
+                        case "$image_suffix" in
+                            "marquee")
+                                register_reference "$game_path" "$file" \
+                                    linked_marquees_ref linked_marquees_count_ref
+                                    
+                            ;;
+
+                            "thumb")
+                                register_reference "$game_path" "$file" \
+                                    linked_thumbnails_ref linked_thumbnails_count_ref
+                                    
+                            ;;
+
+                            *)
+                                register_reference "$game_path" "$file" \
+                                    linked_images_ref linked_images_count_ref
+                                    
+                            ;;
+                        esac
                         ;;
 
-                        "thumb")
-                            register_reference "$game_path" "$file" \
-                                linked_thumbnails_ref linked_thumbnails_count_ref
-                                
-                        ;;
+                    # ====================================================================
+                    # Videos
+                    # ====================================================================
+                    "VIDEO")
+                        register_reference "$game_path" "$file" \
+                            linked_videos_ref linked_videos_count_ref
 
-                        *)
-                            register_reference "$game_path" "$file" \
-                                linked_images_ref linked_images_count_ref
-                                
-                        ;;
-                    esac
                     ;;
 
-                # ====================================================================
-                # Videos
-                # ====================================================================
-                "VIDEO")
-                    register_reference "$game_path" "$file" \
-                        linked_videos_ref linked_videos_count_ref
-
-                ;;
-
-                # ====================================================================
-                # Configuration Files
-                # Files required by the emulator or system, but not tied to
-                # user-generated data.
-                # ====================================================================
-                "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    register_reference "$game_path" "$file" \
-                        linked_configs_ref linked_configs_count_ref
-                        
-                    ;;
-
-                # ====================================================================
-                # Auxiliary Files
-                # Files associated with the game or the user.
-                # ====================================================================
-                "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
-                "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
-                "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                    register_reference "$game_path" "$file" \
-                            linked_auxiliary_ref linked_auxiliary_count_ref
+                    # ====================================================================
+                    # Configuration Files
+                    # Files required by the emulator or system, but not tied to
+                    # user-generated data.
+                    # ====================================================================
+                    "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
+                        register_reference "$game_path" "$file" \
+                            linked_configs_ref linked_configs_count_ref
                             
-                    ;;
+                        ;;
 
-                # ====================================================================
-                # Unknown
-                # ====================================================================
-                *)
-                    unknown_files_ref["$game_path"]="$file"
-                    ;;
-            esac
+                    # ====================================================================
+                    # Auxiliary Files
+                    # Files associated with the game or the user.
+                    # ====================================================================
+                    "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
+                    "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
+                    "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
+                        register_reference "$game_path" "$file" \
+                                linked_auxiliary_ref linked_auxiliary_count_ref
+                                
+                        ;;
+
+                    # ====================================================================
+                    # Unknown
+                    # ====================================================================
+                    *)
+                        unknown_files_ref["$game_path"]="$file"
+                        ;;
+                esac
+            done
 
         else
             case "$category" in
@@ -927,6 +954,9 @@ reset_analysis_state() {
     # File discovery.
     unclassified_files=()
     xml_unclassified_games=()
+
+    target_dir_context=()
+
 
     # Game classification.
     valid_games=()
@@ -1036,8 +1066,6 @@ analyze_directory() {
             "ghost_${name}" \
             valid_games
 
-        # No need to keep these arrays in memory once they were classified
-        unset "unclassified_${name}"
     done
 
     # Removes assets from unclassified_files since they were classified above 
@@ -1872,6 +1900,8 @@ mv_game() {
 # Moves the selected game and optionally transfers its related files and metadata.
     local -n game_context_ref="$1"
     local -n target_dir_context_ref="$2"
+    local -n relation_context_ref="$3"
+    
 
     local answer=""
 
@@ -1880,15 +1910,44 @@ mv_game() {
         "${target_dir_context_ref["dir"]}"
 
     # Move the main game file.
-    if sudo mv "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
-        printf "${YELLOW}Main file moved successfully!${ENDCOLOR}\n"
-    else
-        printf "${BLUE}Failed to move main file!${ENDCOLOR}\n"
-        return 1
-    fi
+    # if sudo mv "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
+    #     printf "${YELLOW}Main file moved successfully!${ENDCOLOR}\n"
+    # else
+    #     printf "${BLUE}Failed to move main file!${ENDCOLOR}\n"
+    #     return 1
+    # fi
 
     # Optionally move all related files.
-    if (( game_context_ref["related_file_count"] > 0 )); then
+    # if (( game_context_ref["related_file_count"] > 0 )); then
+
+    # checar o status do jogo
+    # conferir se os assets  ele tem possuem mais de uma referência
+    # se sim, conferir ual tipo de referência
+    # perguntar se ele prefere copiar ao invés de mover
+
+        if [[ "${game_context_ref["status"]}" == "Valid" ]]; then
+            echo "Valid"
+            for key in "${!game_context_ref[@]}"; do
+                printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
+            done
+            # validos podem conter assets, linked ou ghost
+        
+        elif [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
+            echo "Orphan"
+            for key in "${!game_context_ref[@]}"; do
+                printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
+            done
+            #  orfãos podem conter linked
+
+        else
+            echo "Ghost"
+            for key in "${!game_context_ref[@]}"; do
+                printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
+            done
+            #  ghost podem conter ghost e orphan
+
+        fi
+        exit
 
         printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
         while true; do
@@ -1919,7 +1978,7 @@ mv_game() {
 
             break
         done
-    fi
+    # fi
 
     # Update the destination gamelist when applicable.
     if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
@@ -2286,6 +2345,8 @@ main_menu() {
     local dirs_with_games=()
     local dirs_without_games=()
     local dirs_to_look=()
+    local -A target_dir_context=()
+
 
     # --------------------------------------------------------------------------
     # GAME CLASSIFICATION PIPELINE
@@ -2593,6 +2654,11 @@ main_menu() {
                 load_game_context game_context "$selected_game_path" "$selected_game_name"
                 print_game_context game_context
 
+# --------------------------TESTES-----------------------------------
+                prepare_target_directory target_dir_context
+                mv_game game_context target_dir_context \
+                            relation_context
+# --------------------------TESTES-----------------------------------
                 menu_options=()
 
                 # Build the list of available actions according to the game status.
@@ -2624,8 +2690,6 @@ main_menu() {
                 (( game_context["related_file_count"] > 0 )) && \
                     menu_options+=( "See Related Files" )
 
-                local -A target_dir_context=()
-
                 ask_user "What would you like to do with this game?" user_answer \
                     "${menu_options[@]}" \
                     "Back"
@@ -2637,7 +2701,8 @@ main_menu() {
                     ;;&
                     
                     "Move Game")
-                        if mv_game game_context target_dir_context; then
+                        if mv_game game_context target_dir_context \
+                            relation_context; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
 
                         else
