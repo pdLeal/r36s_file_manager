@@ -434,22 +434,36 @@ print_assoc_array() {
 }
 
 register_reference() {
+# Registers a one-to-many relationship.
+    # The collection stores values as a pipe-separated list associated with
+    # a single key:
+    #
+    #     key -> value1|value2|value3
+    #
+    # Optionally, the function can also update:
+    #   - a global registration counter;
+    #   - a per-key reference counter.
     local key="$1"
     local value="$2"
     local -n collection_ref="$3"
 
+    # Append the value to the existing reference list.
     if [[ -z "${collection_ref["$key"]:-}" ]]; then
         collection_ref["$key"]="$value"
     else
         collection_ref["$key"]+="|$value"
     fi
 
+    # Optional statistics.
+
     if [[ -n "${4:-}" ]]; then
+    # Update the total number of registered references.
         local -n collection_total_ref="$4"
         (( ++collection_total_ref ))
     fi
 
     if [[ -n "${5:-}" ]]; then
+    # Track how many values are associated with each key.
         local -n counter_ref="$5"
         (( ++counter_ref["$key"] ))
     fi
@@ -457,31 +471,90 @@ register_reference() {
 
 }
 
-build_asset_index() {
-# Builds inverted indexes for XML asset references.
-    # =========================================================================
-    # For each asset, stores:
-    #
-    # <prefix>_refs[path]
-    #     game1:image|game1:thumbnail|game2:image
-    #
-    # <prefix>_refs_count[path]
-    #     Total number of XML references.
-    #
-    # <prefix>_games[path]
-    #     game1|game2
-    #
-    # <prefix>_game_count[path]
-    #     Number of distinct games referencing the asset.
-    #
-    # <prefix>_tags[path]
-    #     image|thumbnail
-    # =========================================================================
+# build_asset_index() {
+# # Builds inverted indexes for XML asset references.
+#     # =========================================================================
+#     # For each asset, stores:
+#     #
+#     # <prefix>_refs[path]
+#     #     game1:image|game1:thumbnail|game2:image
+#     #
+#     # <prefix>_refs_count[path]
+#     #     Total number of XML references.
+#     #
+#     # <prefix>_games[path]
+#     #     game1|game2
+#     #
+#     # <prefix>_game_count[path]
+#     #     Number of distinct games referencing the asset.
+#     #
+#     # <prefix>_tags[path]
+#     #     image|thumbnail
+#     # =========================================================================
 
-    local -n unclassified_assets_ref="$1"
+#     local -n unclassified_assets_ref="$1"
+#     local -n relation_context_ref="$2"
+
+#     local asset_type="${3%s}"
+
+#     local asset_prefix="${relation_context_ref[asset]}"
+
+#     local -n asset_refs_ref="${asset_prefix}_refs"
+#     local -n asset_refs_count_ref="${asset_prefix}_refs_count"
+#     local -n asset_games_ref="${asset_prefix}_games"
+#     local -n asset_game_count_ref="${asset_prefix}_game_count"
+#     local -n asset_tags_ref="${asset_prefix}_tags"
+
+#     # Internal lookup tables used to avoid duplicate games/tags.
+#     local list=""
+
+#     local game_path=""
+#     local asset_path=""
+
+#     for game_path in "${!unclassified_assets_ref[@]}"; do
+#         asset_path="${unclassified_assets_ref[$game_path]}"
+
+#         # ---------------------------------------------------------------------
+#         # Register the complete reference.
+#         # ---------------------------------------------------------------------
+#         register_reference \
+#             "$asset_path" \
+#             "$game_path:$asset_type" \
+#             asset_refs_ref "" \
+#             asset_refs_count_ref
+
+#         # ---------------------------------------------------------------------
+#         # Register the game only once per asset.
+#         # ---------------------------------------------------------------------
+#         list="|${asset_games_ref["$asset_path"]:-}|"
+
+#         if [[ "$list" != *"|$game_path|"* ]]; then
+#             register_reference \
+#                 "$asset_path" \
+#                 "$game_path" \
+#                 asset_games_ref "" \
+#                 asset_game_count_ref
+#         fi
+
+#         # ---------------------------------------------------------------------
+#         # Register the tag only once per asset.
+#         # ---------------------------------------------------------------------
+#         list="|${asset_tags_ref["$asset_path"]:-}|"
+
+#         if [[ "$list" != *"|$asset_type|"* ]]; then
+#             register_reference \
+#                 "$asset_path" \
+#                 "$asset_type" \
+#                 asset_tags_ref
+#         fi
+#     done
+# }
+
+build_asset_index() {
+    local -n asset_collection_ref="$1"
     local -n relation_context_ref="$2"
 
-    local asset_type="${3%s}"
+    # local asset_type="${3%s}"
 
     local asset_prefix="${relation_context_ref[asset]}"
 
@@ -489,7 +562,7 @@ build_asset_index() {
     local -n asset_refs_count_ref="${asset_prefix}_refs_count"
     local -n asset_games_ref="${asset_prefix}_games"
     local -n asset_game_count_ref="${asset_prefix}_game_count"
-    local -n asset_tags_ref="${asset_prefix}_tags"
+    # local -n asset_tags_ref="${asset_prefix}_tags"
 
     # Internal lookup tables used to avoid duplicate games/tags.
     local list=""
@@ -497,17 +570,19 @@ build_asset_index() {
     local game_path=""
     local asset_path=""
 
-    for game_path in "${!unclassified_assets_ref[@]}"; do
-        asset_path="${unclassified_assets_ref[$game_path]}"
+    for game_path in "${!asset_collection_ref[@]}"; do
+        asset_path="${asset_collection_ref[$game_path]}"
+
+        printf "Game: %s\nAsset: %s\n\n" "$game_path" "$asset_path"
 
         # ---------------------------------------------------------------------
         # Register the complete reference.
         # ---------------------------------------------------------------------
-        register_reference \
-            "$asset_path" \
-            "$game_path:$asset_type" \
-            asset_refs_ref "" \
-            asset_refs_count_ref
+        # register_reference \
+        #     "$asset_path" \
+        #     "$game_path:$asset_type" \
+        #     asset_refs_ref "" \
+        #     asset_refs_count_ref
 
         # ---------------------------------------------------------------------
         # Register the game only once per asset.
@@ -525,17 +600,16 @@ build_asset_index() {
         # ---------------------------------------------------------------------
         # Register the tag only once per asset.
         # ---------------------------------------------------------------------
-        list="|${asset_tags_ref["$asset_path"]:-}|"
+        # list="|${asset_tags_ref["$asset_path"]:-}|"
 
-        if [[ "$list" != *"|$asset_type|"* ]]; then
-            register_reference \
-                "$asset_path" \
-                "$asset_type" \
-                asset_tags_ref
-        fi
+        # if [[ "$list" != *"|$asset_type|"* ]]; then
+        #     register_reference \
+        #         "$asset_path" \
+        #         "$asset_type" \
+        #         asset_tags_ref
+        # fi
     done
 }
-
 
 classify_xml_asset() {
 # Classify assets referenced by the gamelist.xml.
@@ -611,7 +685,7 @@ extract_possible_roms() {
 }
 
 group_files() {
-# Group files sharing the same base filename.
+# Groups files by their base filename.
     # =========================================================================
     # Some games are distributed as multiple files or in different formats.
     # Grouping related files allows later pipeline stages to determine which
@@ -639,9 +713,6 @@ group_files() {
         # Preserve multi-part suffixes such as ".A1.bin" by removing only the
         # final extension before applying this special case.
         [[ "$group_key" == *.A1 ]] && group_key="${group_key%.*}"
-        
-        # register_reference "$group_key" "$file" \
-        #     grouped_files_ref group_count_ref
 
         if [[ -z "${grouped_files_ref["$group_key"]:-}" ]]; then
             grouped_files_ref["$group_key"]="$file"
@@ -649,6 +720,7 @@ group_files() {
             grouped_files_ref["$group_key"]+="|$file"
         fi
 
+        # Optional statistics.
         if [[ -n "${3:-}" ]]; then
             local -n group_count_ref="$3"
 
@@ -758,8 +830,24 @@ classify_remaining_files() {
     local -n relation_context_ref="$4"
     local -n unknown_files_ref="$5"
 
+    local valid_prefix="${relation_context_ref[valid]}"
+    local orphan_prefix="${relation_context_ref[orphan]}"
     local linked_prefix="${relation_context_ref[linked]}"
     local unlinked_prefix="${relation_context_ref[unlinked]}"
+
+    local -n valid_images_ref="${valid_prefix}_images"
+    local -n valid_videos_ref="${valid_prefix}_videos"
+    local -n valid_marquees_ref="${valid_prefix}_marquees"
+    local -n valid_thumbnails_ref="${valid_prefix}_thumbnails"
+    local -n valid_auxiliary_ref="${valid_prefix}_auxiliary"
+    local -n valid_configs_ref="${valid_prefix}_configs"
+
+    local -n orphan_images_ref="${orphan_prefix}_images"
+    local -n orphan_videos_ref="${orphan_prefix}_videos"
+    local -n orphan_marquees_ref="${orphan_prefix}_marquees"
+    local -n orphan_thumbnails_ref="${orphan_prefix}_thumbnails"
+    local -n orphan_auxiliary_ref="${orphan_prefix}_auxiliary"
+    local -n orphan_configs_ref="${orphan_prefix}_configs"
 
     local -n linked_images_ref="${linked_prefix}_images"
     local -n linked_videos_ref="${linked_prefix}_videos"
@@ -802,6 +890,8 @@ classify_remaining_files() {
     local category=""
     local image_suffix=""
 
+    local list=""
+
     # Group the game library by filename to allow fast association between
     # remaining files and known games.
     group_files game_library_ref grouped_known_games group_count
@@ -812,9 +902,9 @@ classify_remaining_files() {
         group_key="${file##*/}"
         group_key="${group_key%.*}"
 
-        [[ "$group_key" =~ -(image|thumb|marquee|video)$ ]] && group_key="${group_key%-*}"
-        
         [[ "$group_key" == *.A1 ]] && group_key="${group_key%.*}"
+        
+        [[ "$group_key" =~ -(image|thumb|marquee|video)$ ]] && group_key="${group_key%-*}"
     
         file_extension="${file##*.}"
 
@@ -836,6 +926,8 @@ classify_remaining_files() {
             fi
 
             for game_path in "${game_paths[@]}"; do
+                list=()
+
                 case "$category" in
                     # ====================================================================
                     # Images
@@ -843,38 +935,55 @@ classify_remaining_files() {
                     "IMAGE")
                         image_suffix="${group_key##*-}"
 
-                        case "$image_suffix" in
-                            "marquee")
-                                register_reference "$game_path" "$file" \
-                                    linked_marquees_ref linked_marquees_total_ref \
-                                    linked_marquees_count_ref
-                                    
-                            ;;
+                        list="|${valid_images_ref["$game_path"]:-}|"
+                        list+="${valid_marquees_ref["$game_path"]:-}|"
+                        list+="${valid_thumbnails_ref["$game_path"]:-}|"
+                        list+="${orphan_images_ref["$game_path"]:-}|"
+                        list+="${orphan_marquees_ref["$game_path"]:-}|"
+                        list+="${orphan_thumbnails_ref["$game_path"]:-}|"
 
-                            "thumb")
-                                register_reference "$game_path" "$file" \
-                                    linked_thumbnails_ref linked_thumbnails_total_ref \
-                                    linked_thumbnails_count_ref
-                                    
-                            ;;
+                        if [[ "$list" != *"|$file|"* ]]; then
 
-                            *)
-                                register_reference "$game_path" "$file" \
-                                    linked_images_ref linked_images_total_ref \
-                                    linked_images_count_ref
-                                    
-                            ;;
-                        esac
+                            case "$image_suffix" in
+                                "marquee")
+                                    register_reference "$game_path" "$file" \
+                                        linked_marquees_ref linked_marquees_total_ref \
+                                        linked_marquees_count_ref
+                                        
+                                ;;
+
+                                "thumb")
+                                    register_reference "$game_path" "$file" \
+                                        linked_thumbnails_ref linked_thumbnails_total_ref \
+                                        linked_thumbnails_count_ref
+                                        
+                                ;;
+
+                                *)
+
+                                        register_reference "$game_path" "$file" \
+                                            linked_images_ref linked_images_total_ref \
+                                            linked_images_count_ref
+                                        
+                                ;;
+                            esac
+                        fi
+
                         ;;
 
                     # ====================================================================
                     # Videos
                     # ====================================================================
                     "VIDEO")
-                        register_reference "$game_path" "$file" \
-                            linked_videos_ref linked_videos_total_ref \
-                            linked_videos_count_ref
+                        list="|${valid_videos_ref["$game_path"]:-}|"
+                        list+="${orphan_videos_ref["$game_path"]:-}|"
 
+                        if [[ "$list" != *"|$file|"* ]]; then
+
+                            register_reference "$game_path" "$file" \
+                                linked_videos_ref linked_videos_total_ref \
+                                linked_videos_count_ref
+                        fi
                     ;;
 
                     # ====================================================================
@@ -883,9 +992,15 @@ classify_remaining_files() {
                     # user-generated data.
                     # ====================================================================
                     "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                        register_reference "$game_path" "$file" \
-                            linked_configs_ref linked_configs_total_ref \
-                            linked_configs_count_ref
+                        list="|${valid_configs_ref["$game_path"]:-}|"
+                        list+="${orphan_configs_ref["$game_path"]:-}|"
+
+                        if [[ "$list" != *"|$file|"* ]]; then
+                            
+                            register_reference "$game_path" "$file" \
+                                linked_configs_ref linked_configs_total_ref \
+                                linked_configs_count_ref
+                        fi
                             
                         ;;
 
@@ -896,10 +1011,15 @@ classify_remaining_files() {
                     "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                     "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                     "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                        register_reference "$game_path" "$file" \
-                                linked_auxiliary_ref linked_auxiliary_total_ref \
-                                linked_auxiliary_count_ref
-                                
+                        list="|${valid_auxiliary_ref["$game_path"]:-}|"
+                        list+="${orphan_auxiliary_ref["$game_path"]:-}|"
+
+                        if [[ "$list" != *"|$file|"* ]]; then
+                        
+                            register_reference "$game_path" "$file" \
+                                    linked_auxiliary_ref linked_auxiliary_total_ref \
+                                    linked_auxiliary_count_ref
+                        fi
                         ;;
 
                     # ====================================================================
@@ -971,21 +1091,29 @@ classify_remaining_files() {
 }
 
 reset_analysis_state() {
-# Resets all analysis arrays before running the directory pipeline.
-    # File discovery.
-    unclassified_files=()
-    xml_unclassified_games=()
+# Resets all analysis data before running the directory pipeline.
 
+    # ----------------------------------------------------------------------
+    # MENU CONTEXT
+    # ----------------------------------------------------------------------
     target_dir_context=()
 
+    # ----------------------------------------------------------------------
+    # GAME CLASSIFICATION
+    # ----------------------------------------------------------------------
+    unclassified_files=()
 
-    # Game classification.
+    xml_unclassified_games=()
+
     valid_games=()
-    ghost_games=()
     orphan_games=()
+    ghost_games=()
+
     game_library=()
 
-    # XML asset classification.
+    # ----------------------------------------------------------------------
+    # XML ASSET CLASSIFICATION
+    # ----------------------------------------------------------------------
     unclassified_images=()
     unclassified_videos=()
     unclassified_marquees=()
@@ -1006,12 +1134,31 @@ reset_analysis_state() {
     ghost_marquees=()
     ghost_thumbnails=()
 
+    # ----------------------------------------------------------------------
+    # XML ASSET INDEXES
+    # ----------------------------------------------------------------------
     asset_refs=()
     asset_refs_count=()
+
     asset_games=()
     asset_game_count=()
+
     asset_tags=()
 
+    # ----------------------------------------------------------------------
+    # LINKED FILES
+    # ----------------------------------------------------------------------
+    linked_images=()
+    linked_videos=()
+    linked_marquees=()
+    linked_thumbnails=()
+
+    linked_auxiliary=()
+    linked_configs=()
+
+    # ----------------------------------------------------------------------
+    # LINKED FILE INDEXES
+    # ----------------------------------------------------------------------
     linked_images_count=()
     linked_videos_count=()
     linked_marquees_count=()
@@ -1020,6 +1167,9 @@ reset_analysis_state() {
     linked_auxiliary_count=()
     linked_configs_count=()
 
+    # ----------------------------------------------------------------------
+    # STATISTICS
+    # ----------------------------------------------------------------------
     valid_images_total=0
     valid_videos_total=0
     valid_marquees_total=0
@@ -1043,36 +1193,32 @@ reset_analysis_state() {
     linked_auxiliary_total=0
     linked_configs_total=0
 
-    # Filesystem asset classification.
-    linked_images=()
-    linked_videos=()
-    linked_marquees=()
-    linked_thumbnails=()
-
+    # ----------------------------------------------------------------------
+    # UNLINKED FILES
+    # ----------------------------------------------------------------------
     unlinked_images=()
     unlinked_videos=()
     unlinked_marquees=()
     unlinked_thumbnails=()
 
-    # Auxiliary and configuration files.
-    linked_auxiliary=()
     unlinked_auxiliary=()
-
-    linked_configs=()
     unlinked_configs=()
 
-    # Uncategorized files.
+    # ----------------------------------------------------------------------
+    # UNKNOWN FILES
+    # ----------------------------------------------------------------------
     unknown_files=()
 }
 
 analyze_directory() {
 # Executes the complete directory analysis pipeline.
+
     local system_dir="$1"
 
-    # Collect all files from the selected directory.
+    # Collect every file from the selected directory.
     get_all_files unclassified_files
 
-    # Load and classify files referenced by gamelist.xml.
+    # Load all entries referenced by gamelist.xml.
     load_xml_metadata \
         xml_unclassified_games \
         unclassified_images \
@@ -1080,6 +1226,7 @@ analyze_directory() {
         unclassified_marquees \
         unclassified_thumbnails
 
+    # Classify XML game entries.
     classify_xml_games \
         unclassified_files \
         xml_unclassified_games \
@@ -1097,10 +1244,10 @@ analyze_directory() {
         # Skip empty asset collections.
         (( ${#arr_ref[@]} == 0 )) && continue
 
-        build_asset_index \
-            "unclassified_${name}" \
-            relation_context \
-            "$name"
+        # build_asset_index \
+        #     "unclassified_${name}" \
+        #     relation_context \
+        #     "$name"
 
         classify_xml_asset \
             unclassified_files \
@@ -1112,24 +1259,22 @@ analyze_directory() {
             "orphan_${name}_total" \
             "ghost_${name}_total" \
             valid_games
-
     done
 
-    # Removes assets from unclassified_files since they were classified above 
+    # Remove XML assets from the unclassified file collection.
     local asset_path=""
     for asset_path in "${!asset_refs[@]}"; do
         unset 'unclassified_files[$asset_path]'
-    
     done
 
-    # Identify and classify ROM files.
+    # Identify ROM candidates and classify orphan games.
     local -A possible_roms=()
 
     extract_possible_roms \
         unclassified_files \
         possible_roms \
         "$system_dir"
-        
+
     if (( ${#possible_roms[@]} > 0 )); then
         classify_possible_roms \
             possible_roms \
@@ -1143,10 +1288,9 @@ analyze_directory() {
         orphan_games \
         game_library
 
-
     # Classify all remaining files.
     # ------------------------------------------------------------------------------
-    # The most disgusting, horrendous, idious and grossy function of all program 
+    # The most disgusting, horrendous, idious and grossy function of all program
     # ------------------------------------------------------------------------------
     classify_remaining_files \
         unclassified_files \
@@ -1155,6 +1299,30 @@ analyze_directory() {
         relation_context \
         unknown_files
 
+
+    # ghost_* are not real files, so there is no rason (so far) to put them on the index
+    local relations=( "valid" "orphan" "linked" )
+    local relation=""
+    for relation in "${relations[@]}"; do
+        for name in "${assets_names[@]}"; do
+            local -n arr_ref="${relation}_${name}"
+
+            # Skip empty asset collections.
+            (( ${#arr_ref[@]} == 0 )) && continue
+
+            printf "${CYAN}%s_%s${ENDCOLOR}\n" "$relation" "$name"
+
+            build_asset_index \
+                arr_ref \
+                relation_context
+                # "$name"
+        done
+
+    # DAQUI: tentando att build_asset_index p/ aceitas coleções
+    done
+    print_assoc_array "asset_games" asset_games
+    print_assoc_array "asset_game_count" asset_game_count
+    exit
 }
 
 print_summary_line() {
@@ -1173,13 +1341,13 @@ print_summary_line() {
     printf "\n"
 }
 
-print_directory_summary() {
+print_directory_dashboard() {
 # Displays a summary of the current directory analysis.
     local system_dir="$1"
     system_dir="${system_dir%/}"
 
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
-    printf "${PINK}                 %s SUMMARY${ENDCOLOR}\n" "${SYSTEM_NAMES["$system_dir"]:-}"
+    printf "${PINK}                 %s Dashboard${ENDCOLOR}\n" "${SYSTEM_NAMES["$system_dir"]:-}"
     printf "${PINK}============================================================${ENDCOLOR}\n"
 
     printf "\n${YELLOW}────────────── Games ──────────────${ENDCOLOR}\n"
@@ -1255,7 +1423,18 @@ print_directory_summary() {
 
     print_summary_line "Unknown Files" "${#unknown_files[@]}"
 
+    printf "\n${YELLOW}───────────────────────────────────${ENDCOLOR}\n"
+
+
+    printf "\n${CYAN}NOTE:${ENDCOLOR} Asset and support-file totals represent file relations,\n"
+    printf "      not the actual number of physical files in the directory.\n"
+    printf "      The same file may appear in multiple relations or categories\n"
+    printf "      (e.g. Valid, Orphan, and Linked), causing summed totals to\n"
+    printf "      overstate the actual number of files present.\n"
+
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
+
+    
 }
 
 count_by_dir() {
@@ -1972,11 +2151,19 @@ mv_game() {
     # se sim, conferir ual tipo de referência
     # perguntar se ele prefere copiar ao invés de mover
 
+        local asset_prefix="${relation_context_ref[asset]}"
+
+        local -n asset_refs_ref="${asset_prefix}_refs"
+        local -n asset_refs_count_ref="${asset_prefix}_refs_count"
+        local -n asset_games_ref="${asset_prefix}_games"
+        local -n asset_game_count_ref="${asset_prefix}_game_count"
+
+
         if [[ "${game_context_ref["status"]}" == "Valid" ]]; then
             echo "Valid"
-            for key in "${!game_context_ref[@]}"; do
-                printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
-            done
+            # for key in "${!game_context_ref[@]}"; do
+            #     printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
+            # done
             # validos podem conter assets, linked ou ghost
         
         elif [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
@@ -2379,38 +2566,59 @@ main_menu() {
     # USER INTERACTION
     # --------------------------------------------------------------------------
     local user_answer=""
+
     local selected_system_dir=""
     local selected_game_name=""
     local selected_game_path=""
 
-    local using_find=0 # Indicates whether execution originated from the "Find Games" workflow.
+    # Indicates whether execution originated from the "Find Games" workflow.
+    local using_find=0
+
+    # --------------------------------------------------------------------------
+    # MENU CONTEXT
+    # --------------------------------------------------------------------------
+    local menu_options=()
+
+    # Stores contextual information about the currently selected directory.
+    local -A target_dir_context=()
+
+    declare -A relation_context=(
+        [valid]="valid"
+        [orphan]="orphan"
+        [asset]="asset"
+        [linked]="linked"
+        [unlinked]="unlinked"
+    )
 
     # --------------------------------------------------------------------------
     # DIRECTORY DISCOVERY
     # --------------------------------------------------------------------------
-    local dirs_list=(*/) # Immediate subdirectories in the current working directory.
+    # Immediate subdirectories in the current working directory.
+    local dirs_list=(*/)
+
     local dirs_with_games=()
     local dirs_without_games=()
     local dirs_to_look=()
-    local -A target_dir_context=()
-
 
     # --------------------------------------------------------------------------
-    # GAME CLASSIFICATION PIPELINE
+    # GAME CLASSIFICATION
     # --------------------------------------------------------------------------
     local -A unclassified_files=()
 
     local -A xml_unclassified_games=()
+
     local -A valid_games=()
+    local -A orphan_games=()
     local -A ghost_games=()
 
-    local -A orphan_games=()
-
+    # --------------------------------------------------------------------------
+    # GAME INDEXES
+    # --------------------------------------------------------------------------
     # Maps a game file path to its display name.
     local -A game_library=()
 
     # --------------------------------------------------------------------------
-    # XML ASSETS
+    # XML ASSET CLASSIFICATION
     # --------------------------------------------------------------------------
     local -A unclassified_images=()
     local -A unclassified_videos=()
@@ -2432,6 +2640,9 @@ main_menu() {
     local -A ghost_marquees=()
     local -A ghost_thumbnails=()
 
+    # --------------------------------------------------------------------------
+    # XML ASSET STATISTICS
+    # --------------------------------------------------------------------------
     local valid_images_total=0
     local valid_videos_total=0
     local valid_marquees_total=0
@@ -2447,14 +2658,20 @@ main_menu() {
     local ghost_marquees_total=0
     local ghost_thumbnails_total=0
 
+    # --------------------------------------------------------------------------
+    # XML ASSET INDEXES
+    # --------------------------------------------------------------------------
+    # Inverted indexes used to track XML asset references.
     local -A asset_refs=()
     local -Ai asset_refs_count=()
+
     local -A asset_games=()
     local -Ai asset_game_count=()
+
     local -A asset_tags=()
 
     # --------------------------------------------------------------------------
-    # FILES ASSOCIATED WITH KNOWN GAMES
+    # LINKED FILES
     # --------------------------------------------------------------------------
     local -A linked_images=()
     local -A linked_videos=()
@@ -2464,6 +2681,9 @@ main_menu() {
     local -A linked_auxiliary=()
     local -A linked_configs=()
 
+    # --------------------------------------------------------------------------
+    # LINKED FILE STATISTICS
+    # --------------------------------------------------------------------------
     local linked_images_total=0
     local linked_videos_total=0
     local linked_marquees_total=0
@@ -2472,22 +2692,20 @@ main_menu() {
     local linked_auxiliary_total=0
     local linked_configs_total=0
 
+    # --------------------------------------------------------------------------
+    # LINKED FILE INDEXES
+    # --------------------------------------------------------------------------
     local -Ai linked_images_count=()
     local -Ai linked_videos_count=()
     local -Ai linked_marquees_count=()
+
     local -Ai linked_thumbnails_count=()
 
     local -Ai linked_auxiliary_count=()
     local -Ai linked_configs_count=()
 
-    declare -A relation_context=(
-        [asset]="asset"
-        [linked]="linked"
-        [unlinked]="unlinked"
-    )
-
     # --------------------------------------------------------------------------
-    # FILES NOT ASSOCIATED WITH ANY GAME
+    # UNLINKED FILES
     # --------------------------------------------------------------------------
     local -A unlinked_images=()
     local -A unlinked_videos=()
@@ -2503,16 +2721,12 @@ main_menu() {
     local -A unknown_files=()
 
     # --------------------------------------------------------------------------
-    # MENUS
-    # --------------------------------------------------------------------------
-    local menu_options=()
-
-    # --------------------------------------------------------------------------
     # SYSTEM DATABASE
     # --------------------------------------------------------------------------
     # Loaded once and treated as read-only lookup tables throughout the application.
     local -Ag SYSTEM_PATHS=()
     local -Ag SYSTEM_NAMES=()
+
     local -Ag VALID_EXTENSIONS=()
     local -Ag VALID_SYSTEM_EXTENSIONS=()
     local -Ag SYSTEMS_BY_EXTENSION=()
@@ -2614,7 +2828,7 @@ main_menu() {
                 
                 fi
 
-                print_directory_summary "$selected_system_dir"
+                print_directory_dashboard "$selected_system_dir"
 
                 ask_user "" user_answer \
                     "Browse Games" \
@@ -2725,9 +2939,9 @@ main_menu() {
                 print_game_context game_context
 
 # --------------------------TESTES-----------------------------------
-                # prepare_target_directory target_dir_context
-                # mv_game game_context target_dir_context \
-                #             relation_context
+                prepare_target_directory target_dir_context
+                mv_game game_context target_dir_context \
+                            relation_context
 # --------------------------TESTES-----------------------------------
                 menu_options=()
 
