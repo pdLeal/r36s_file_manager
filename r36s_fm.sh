@@ -839,15 +839,11 @@ classify_remaining_files() {
     local -n valid_videos_ref="${valid_prefix}_videos"
     local -n valid_marquees_ref="${valid_prefix}_marquees"
     local -n valid_thumbnails_ref="${valid_prefix}_thumbnails"
-    local -n valid_auxiliary_ref="${valid_prefix}_auxiliary"
-    local -n valid_configs_ref="${valid_prefix}_configs"
 
     local -n orphan_images_ref="${orphan_prefix}_images"
     local -n orphan_videos_ref="${orphan_prefix}_videos"
     local -n orphan_marquees_ref="${orphan_prefix}_marquees"
     local -n orphan_thumbnails_ref="${orphan_prefix}_thumbnails"
-    local -n orphan_auxiliary_ref="${orphan_prefix}_auxiliary"
-    local -n orphan_configs_ref="${orphan_prefix}_configs"
 
     local -n linked_images_ref="${linked_prefix}_images"
     local -n linked_videos_ref="${linked_prefix}_videos"
@@ -926,8 +922,8 @@ classify_remaining_files() {
             fi
 
             for game_path in "${game_paths[@]}"; do
-                list=()
 
+                list=""
                 case "$category" in
                     # ====================================================================
                     # Images
@@ -935,12 +931,12 @@ classify_remaining_files() {
                     "IMAGE")
                         image_suffix="${group_key##*-}"
 
-                        list="|${valid_images_ref["$game_path"]:-}|"
-                        list+="${valid_marquees_ref["$game_path"]:-}|"
-                        list+="${valid_thumbnails_ref["$game_path"]:-}|"
-                        list+="${orphan_images_ref["$game_path"]:-}|"
-                        list+="${orphan_marquees_ref["$game_path"]:-}|"
-                        list+="${orphan_thumbnails_ref["$game_path"]:-}|"
+                        list="|${valid_images_ref["$game_path"]:-"NOT SET"}|"
+                        list+="${valid_marquees_ref["$game_path"]:-"NOT SET"}|"
+                        list+="${valid_thumbnails_ref["$game_path"]:-"NOT SET"}|"
+                        list+="${orphan_images_ref["$game_path"]:-"NOT SET"}|"
+                        list+="${orphan_marquees_ref["$game_path"]:-"NOT SET"}|"
+                        list+="${orphan_thumbnails_ref["$game_path"]:-"NOT SET"}|"
 
                         if [[ "$list" != *"|$file|"* ]]; then
 
@@ -975,8 +971,8 @@ classify_remaining_files() {
                     # Videos
                     # ====================================================================
                     "VIDEO")
-                        list="|${valid_videos_ref["$game_path"]:-}|"
-                        list+="${orphan_videos_ref["$game_path"]:-}|"
+                        list="|${valid_videos_ref["$game_path"]:-"NOT SET"}|"
+                        list+="${orphan_videos_ref["$game_path"]:-"NOT SET"}|"
 
                         if [[ "$list" != *"|$file|"* ]]; then
 
@@ -992,15 +988,9 @@ classify_remaining_files() {
                     # user-generated data.
                     # ====================================================================
                     "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                        list="|${valid_configs_ref["$game_path"]:-}|"
-                        list+="${orphan_configs_ref["$game_path"]:-}|"
-
-                        if [[ "$list" != *"|$file|"* ]]; then
-                            
                             register_reference "$game_path" "$file" \
                                 linked_configs_ref linked_configs_total_ref \
                                 linked_configs_count_ref
-                        fi
                             
                         ;;
 
@@ -1011,15 +1001,9 @@ classify_remaining_files() {
                     "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                     "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                     "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                        list="|${valid_auxiliary_ref["$game_path"]:-}|"
-                        list+="${orphan_auxiliary_ref["$game_path"]:-}|"
-
-                        if [[ "$list" != *"|$file|"* ]]; then
-                        
                             register_reference "$game_path" "$file" \
                                     linked_auxiliary_ref linked_auxiliary_total_ref \
                                     linked_auxiliary_count_ref
-                        fi
                         ;;
 
                     # ====================================================================
