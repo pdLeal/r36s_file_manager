@@ -471,90 +471,36 @@ register_reference() {
 
 }
 
-# build_asset_index() {
-# # Builds inverted indexes for XML asset references.
-#     # =========================================================================
-#     # For each asset, stores:
-#     #
-#     # <prefix>_refs[path]
-#     #     game1:image|game1:thumbnail|game2:image
-#     #
-#     # <prefix>_refs_count[path]
-#     #     Total number of XML references.
-#     #
-#     # <prefix>_games[path]
-#     #     game1|game2
-#     #
-#     # <prefix>_game_count[path]
-#     #     Number of distinct games referencing the asset.
-#     #
-#     # <prefix>_tags[path]
-#     #     image|thumbnail
-#     # =========================================================================
-
-#     local -n unclassified_assets_ref="$1"
-#     local -n relation_context_ref="$2"
-
-#     local asset_type="${3%s}"
-
-#     local asset_prefix="${relation_context_ref[asset]}"
-
-#     local -n asset_refs_ref="${asset_prefix}_refs"
-#     local -n asset_refs_count_ref="${asset_prefix}_refs_count"
-#     local -n asset_games_ref="${asset_prefix}_games"
-#     local -n asset_game_count_ref="${asset_prefix}_game_count"
-#     local -n asset_tags_ref="${asset_prefix}_tags"
-
-#     # Internal lookup tables used to avoid duplicate games/tags.
-#     local list=""
-
-#     local game_path=""
-#     local asset_path=""
-
-#     for game_path in "${!unclassified_assets_ref[@]}"; do
-#         asset_path="${unclassified_assets_ref[$game_path]}"
-
-#         # ---------------------------------------------------------------------
-#         # Register the complete reference.
-#         # ---------------------------------------------------------------------
-#         register_reference \
-#             "$asset_path" \
-#             "$game_path:$asset_type" \
-#             asset_refs_ref "" \
-#             asset_refs_count_ref
-
-#         # ---------------------------------------------------------------------
-#         # Register the game only once per asset.
-#         # ---------------------------------------------------------------------
-#         list="|${asset_games_ref["$asset_path"]:-}|"
-
-#         if [[ "$list" != *"|$game_path|"* ]]; then
-#             register_reference \
-#                 "$asset_path" \
-#                 "$game_path" \
-#                 asset_games_ref "" \
-#                 asset_game_count_ref
-#         fi
-
-#         # ---------------------------------------------------------------------
-#         # Register the tag only once per asset.
-#         # ---------------------------------------------------------------------
-#         list="|${asset_tags_ref["$asset_path"]:-}|"
-
-#         if [[ "$list" != *"|$asset_type|"* ]]; then
-#             register_reference \
-#                 "$asset_path" \
-#                 "$asset_type" \
-#                 asset_tags_ref
-#         fi
-#     done
-# }
-
 build_asset_index() {
+# Builds inverted indexes for assets and support files
+    # =========================================================================
+    # For each file, stores:
+    #
+    # <prefix>_refs[path]
+    #     game1:image|game1:thumbnail|game2:image
+    #
+    # <prefix>_refs_count[path]
+    #     Total number of XML references.
+    #
+    # <prefix>_games[path]
+    #     game1|game2
+    #
+    # <prefix>_game_count[path]
+    #     Number of distinct games referencing the asset.
+    #
+    # <prefix>_tags[path]
+    #     image|thumbnail
+    # =========================================================================
     local -n asset_collection_ref="$1"
     local -n relation_context_ref="$2"
 
     # local asset_type="${3%s}"
+    local asset_type
+    if [[ -n "${3:-}" ]]; then
+    asset_type="${3%s}"
+    else
+    asset_type="NOT SET"
+    fi
 
     local asset_prefix="${relation_context_ref[asset]}"
 
@@ -573,16 +519,20 @@ build_asset_index() {
     for game_path in "${!asset_collection_ref[@]}"; do
         asset_path="${asset_collection_ref[$game_path]}"
 
-        printf "Game: %s\nAsset: %s\n\n" "$game_path" "$asset_path"
+        # printf "Game: %s\nAsset: %s\n\n" "$game_path" "$asset_path"
 
         # ---------------------------------------------------------------------
         # Register the complete reference.
         # ---------------------------------------------------------------------
-        # register_reference \
-        #     "$asset_path" \
-        #     "$game_path:$asset_type" \
-        #     asset_refs_ref "" \
-        #     asset_refs_count_ref
+
+        # Resquícios de uma outra versão e não utilizadas pelo programa atualmente
+        # APAGAR CASO REALMENTE SE MOSTRE SEM USO ATÉ O FINAL!!!
+
+        register_reference \
+            "$asset_path" \
+            "$game_path:$asset_type" \
+            asset_refs_ref "" \
+            asset_refs_count_ref
 
         # ---------------------------------------------------------------------
         # Register the game only once per asset.
@@ -1285,28 +1235,33 @@ analyze_directory() {
 
 
     # ghost_* are not real files, so there is no rason (so far) to put them on the index
+    assets_names+=( "auxiliary" "configs" )
     local relations=( "valid" "orphan" "linked" )
     local relation=""
     for relation in "${relations[@]}"; do
         for name in "${assets_names[@]}"; do
-            local -n arr_ref="${relation}_${name}"
+            local combo="${relation}_${name}"
+
+            case "$combo" in
+            # Skip unset arrays
+            "valid_auxiliary"|"orphan_auxiliary"|"valid_configs"|"orphan_configs")
+                continue
+                ;;
+            esac
+
+            local -n arr_ref="$combo"
 
             # Skip empty asset collections.
             (( ${#arr_ref[@]} == 0 )) && continue
+            # printf "${CYAN}%s_%s${ENDCOLOR}\n" "$relation" "$name"
 
-            printf "${CYAN}%s_%s${ENDCOLOR}\n" "$relation" "$name"
 
             build_asset_index \
                 arr_ref \
-                relation_context
-                # "$name"
+                relation_context "$name"
         done
 
-    # DAQUI: tentando att build_asset_index p/ aceitas coleções
     done
-    print_assoc_array "asset_games" asset_games
-    print_assoc_array "asset_game_count" asset_game_count
-    exit
 }
 
 print_summary_line() {
@@ -1968,7 +1923,7 @@ process_related_files() {
 
     local -n game_ctx_ref="$1"
     local command="$2"
-    local target_dir="${3:-}"
+    local target_dir="${4:-}"
 
     local key=""
     local file=""
@@ -1976,23 +1931,27 @@ process_related_files() {
     local target_sub_dir=""
     local answer=""
     local failed=0
+    local original_command="$command"
+
+    local -A processed_files=()
 
     for key in "${!game_ctx_ref[@]}"; do
-        # Skip context metadata and ghost assets.
+        file="${game_ctx_ref["$key"]}"
+        # Skip context metadata, ghost assets and processed files
         # Only entries representing existing related files are processed.
-        if [[ "$key" != "name" ]] &&
-           [[ "$key" != "path" ]] &&
-           [[ "$key" != "status" ]] &&
+        if [[ "$key" != "name" ]]     &&
+           [[ "$key" != "path" ]]     &&
+           [[ "$key" != "status" ]]   &&
            [[ "$key" != "xml_node" ]] &&
-           [[ "$key" != *_count ]] &&
-           [[ "$key" != ghost_* ]]; then
+           [[ "$key" != *_count ]]    &&
+           [[ "$key" != ghost_* ]]    &&
+           [[ -z "${processed_files["$file"]:-}" ]]; then
 
-            file="${game_ctx_ref["$key"]}"
-
-            printf "Processing ${PINK}%s${ENDCOLOR}\n" "$file"
+            printf "Processing %s${PINK}%s${ENDCOLOR}\n" "$key" "$file"
 
             # Removing files does not require a destination.
             # Skip all target directory handling and execute the command directly.
+            # maybe this handling could be it's own auxiliary function...
             if [[ "$command" != "rm" ]]; then
 
                 # Preserve the original directory structure whenever possible.
@@ -2064,6 +2023,35 @@ process_related_files() {
                 fi
             fi
 
+            if [[ -n "${3:-}" ]]; then
+                local -n relation_ctx_ref="$3"
+
+                local asset_prefix="${relation_context_ref[asset]}"
+                local -n asset_game_count_ref="${asset_prefix}_game_count"
+
+                if (( "${asset_game_count_ref["$file"]:-}" > 1 )) &&  [[ "$command" != "cp" ]]; then
+                    printf "${RED}%s is shared by multiples games, would you like to copy it instead of moving/removing? (y/n)${ENDCOLOR}" "$file"
+                    while true; do
+                        read -r -p "-> " answer
+
+                        case "$answer" in
+                            [Yy])
+                                command="cp"
+                                break
+                                ;;
+
+                            [Nn])
+                                continue
+                                ;;
+
+                            *)
+                                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                                ;;
+                        esac
+                    done
+                fi            
+            fi
+
             case "$command" in
                 "mv")
                     printf "Moving ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
@@ -2101,6 +2089,8 @@ process_related_files() {
                     ;;
             esac
         fi
+        processed_files["$file"]=1
+        command="$original_command"
     done
 
     return "$failed"
@@ -2120,53 +2110,15 @@ mv_game() {
         "${target_dir_context_ref["dir"]}"
 
     # Move the main game file.
-    # if sudo mv "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
-    #     printf "${YELLOW}Main file moved successfully!${ENDCOLOR}\n"
-    # else
-    #     printf "${BLUE}Failed to move main file!${ENDCOLOR}\n"
-    #     return 1
-    # fi
+    if sudo mv "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
+        printf "${YELLOW}Main file moved successfully!${ENDCOLOR}\n"
+    else
+        printf "${BLUE}Failed to move main file!${ENDCOLOR}\n"
+        return 1
+    fi
 
     # Optionally move all related files.
-    # if (( game_context_ref["related_file_count"] > 0 )); then
-
-    # checar o status do jogo
-    # conferir se os assets  ele tem possuem mais de uma referência
-    # se sim, conferir ual tipo de referência
-    # perguntar se ele prefere copiar ao invés de mover
-
-        local asset_prefix="${relation_context_ref[asset]}"
-
-        local -n asset_refs_ref="${asset_prefix}_refs"
-        local -n asset_refs_count_ref="${asset_prefix}_refs_count"
-        local -n asset_games_ref="${asset_prefix}_games"
-        local -n asset_game_count_ref="${asset_prefix}_game_count"
-
-
-        if [[ "${game_context_ref["status"]}" == "Valid" ]]; then
-            echo "Valid"
-            # for key in "${!game_context_ref[@]}"; do
-            #     printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
-            # done
-            # validos podem conter assets, linked ou ghost
-        
-        elif [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
-            echo "Orphan"
-            for key in "${!game_context_ref[@]}"; do
-                printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
-            done
-            #  orfãos podem conter linked
-
-        else
-            echo "Ghost"
-            for key in "${!game_context_ref[@]}"; do
-                printf "Key: %s\nValue: %s\n\n" "$key" "${game_context_ref["$key"]}"
-            done
-            #  ghost podem conter ghost e orphan
-
-        fi
-        exit
-
+    if (( game_context_ref["related_file_count"] > 0 )); then
         printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
         while true; do
             read -r -p "-> " answer
@@ -2175,7 +2127,9 @@ mv_game() {
             case "$answer" in
                 [Yy])
                     if ! process_related_files \
-                        game_context_ref "mv" "${target_dir_context_ref["dir"]}"; then
+                        game_context_ref "mv" \
+                        relation_context_ref \
+                        "${target_dir_context_ref["dir"]}"; then
                         
                         printf "\n${BLUE}Warning:${ENDCOLOR} Some related files could not be moved.\n"
                     else
@@ -2196,7 +2150,7 @@ mv_game() {
 
             break
         done
-    # fi
+    fi
 
     # Update the destination gamelist when applicable.
     if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
@@ -2228,6 +2182,7 @@ cp_game() {
 # Copies the selected game and optionally copies its related files and metadata.
     local -n game_context_ref="$1"
     local -n target_dir_context_ref="$2"
+    local -n relation_context_ref="$3"
 
     local answer=""
 
@@ -2257,7 +2212,9 @@ cp_game() {
             case "$answer" in
                 [Yy])
                     if ! process_related_files \
-                        game_context_ref "cp" "${target_dir_context_ref["dir"]}"; then
+                        game_context_ref "cp" \
+                        relation_context_ref \
+                        "${target_dir_context_ref["dir"]}"; then
 
                         printf "\n${BLUE}Warning:${ENDCOLOR} Some related files could not be copied.\n"
                         
@@ -2301,8 +2258,9 @@ cp_game() {
 
 rm_game() {
 # Deletes the selected game and optionally removes its related files and metadata.
-
     local -n game_context_ref="$1"
+    local -n relation_context_ref="$2"
+
 
     local answer=""
 
@@ -2327,7 +2285,9 @@ rm_game() {
 
             case "$answer" in
                 [Yy])
-                    if ! process_related_files game_context_ref "rm"; then
+                    if ! process_related_files \
+                        game_context_ref "rm" \
+                        relation_context_ref; then
 
                         printf "\n${BLUE}Warning:${ENDCOLOR} Some related files could not be deleted.\n"
                    
@@ -2922,11 +2882,6 @@ main_menu() {
                 load_game_context game_context "$selected_game_path" "$selected_game_name"
                 print_game_context game_context
 
-# --------------------------TESTES-----------------------------------
-                prepare_target_directory target_dir_context
-                mv_game game_context target_dir_context \
-                            relation_context
-# --------------------------TESTES-----------------------------------
                 menu_options=()
 
                 # Build the list of available actions according to the game status.
@@ -2982,7 +2937,8 @@ main_menu() {
                     ;;
 
                     "Copy Game")
-                        if cp_game game_context target_dir_context; then
+                        if cp_game game_context target_dir_context \
+                            relation_context; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
 
                         else
@@ -2994,7 +2950,7 @@ main_menu() {
                     ;;
 
                     "Delete Game")
-                        if rm_game game_context; then
+                        if rm_game game_context relation_context; then
                             printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
 
                         else
