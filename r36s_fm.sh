@@ -575,7 +575,9 @@ classify_xml_asset() {
     local -n valid_assets_total_ref="$6"
     local -n orphan_assets_total_ref="$7"
     local -n ghost_assets_total_ref="$8"
-    local -n valid_games_ref="$9"
+    local -n valid_assets_count_ref="$9"
+    local -n orphan_assets_count_ref="${10}"
+    local -n valid_games_ref="${11}"
 
     local game_path=""
     local asset_path=""
@@ -587,11 +589,13 @@ classify_xml_asset() {
             
                 if [[ -n "${valid_games_ref["$game_path"]:-}" ]]; then
                     register_reference "$game_path" "$asset_path" \
-                        valid_assets_ref valid_assets_total_ref
+                        valid_assets_ref valid_assets_total_ref \
+                        valid_assets_count_ref
 
                 else
                     register_reference "$game_path" "$asset_path" \
-                        orphan_assets_ref orphan_assets_total_ref
+                        orphan_assets_ref orphan_assets_total_ref \
+                        orphan_assets_count_ref
 
                 fi
         
@@ -1178,11 +1182,6 @@ analyze_directory() {
         # Skip empty asset collections.
         (( ${#arr_ref[@]} == 0 )) && continue
 
-        # build_asset_index \
-        #     "unclassified_${name}" \
-        #     relation_context \
-        #     "$name"
-
         classify_xml_asset \
             unclassified_files \
             "unclassified_${name}" \
@@ -1192,6 +1191,8 @@ analyze_directory() {
             "valid_${name}_total" \
             "orphan_${name}_total" \
             "ghost_${name}_total" \
+            "valid_${name}_count" \
+            "orphan_${name}_count" \
             valid_games
     done
 
@@ -2405,32 +2406,45 @@ add_to_gamelist() {
 
 show_related_files() {
 # Displays all files associated with the selected game.
-    local -n game_context_ref="$1"
-
-    local suffixes=( "image" "video" "marquee" "thumbnail" "auxiliary" "configs" )
+    local prefixes=( "valid" "orphan" "linked" )
+    local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" )
+    local prefix=""
     local suffix=""
+    local group=()
+    
+    printf "\n${PINK}============================================================${ENDCOLOR}\n"
+    for prefix in "${prefixes[@]}"; do
+        for suffix in "${suffixes[@]}"; do
+            local combo="${prefix}_${suffix}"
 
-    for suffix in "${suffixes[@]}"; do
+            # só segue se o array de fato existir.
+            declare -p "$combo" &>/dev/null || continue
 
-        if [[ -n "${game_context_ref["valid_${suffix}"]:-}" ]]; then
-            printf "Valid %s: ${PINK}%s${ENDCOLOR}\n" \
-                "$suffix" \
-                "${game_context_ref["valid_${suffix}"]}"
-        fi
+            local -n arr_ref="$combo"
 
-        if [[ -n "${game_context_ref["orphan_${suffix}"]:-}" ]]; then
-            printf "Orphan %s: ${PINK}%s${ENDCOLOR}\n" \
-                "$suffix" \
-                "${game_context_ref["orphan_${suffix}"]}"
-        fi
+            # Skip empty asset collections.
+            (( ${#arr_ref[@]} == 0 )) && continue
 
-        if [[ -n "${game_context_ref["linked_${suffix}"]:-}" ]]; then
-            printf "Linked %s: ${PINK}%s${ENDCOLOR}\n" \
-                "$suffix" \
-                "${game_context_ref["linked_${suffix}"]}"
-        fi
+            local count_var="${combo}_count"
+            local -n count_ref="$count_var"
 
-    done | sort -f
+            if (( "${count_ref["$selected_game_path"]:-0}" == 1 )); then
+                printf "\n${YELLOW}────────────── %s %s ─────────────${ENDCOLOR}\n" "${prefix^}" "${suffix^}"
+                printf "%s\n" "${arr_ref["$selected_game_path"]:-}"
+
+            elif (( "${count_ref["$selected_game_path"]:-0}" > 1 )); then
+                printf "\n${YELLOW}────────────── %s %s ─────────────${ENDCOLOR}\n" "${prefix^}" "${suffix^}"
+
+                IFS='|' read -ra group <<< "${arr_ref["$selected_game_path"]:-}"
+
+                printf "%s\n" "${group[@]}"
+            
+            fi
+
+        done
+    done
+    printf "\n${PINK}============================================================${ENDCOLOR}\n"
+
 }
 
 show_gamelist_data() {
@@ -2601,6 +2615,16 @@ main_menu() {
     local ghost_videos_total=0
     local ghost_marquees_total=0
     local ghost_thumbnails_total=0
+
+    local -A valid_images_count=()
+    local -A valid_videos_count=()
+    local -A valid_marquees_count=()
+    local -A valid_thumbnails_count=()
+
+    local -A orphan_images_count=()
+    local -A orphan_videos_count=()
+    local -A orphan_marquees_count=()
+    local -A orphan_thumbnails_count=()
 
     # --------------------------------------------------------------------------
     # XML ASSET INDEXES
@@ -3002,7 +3026,7 @@ main_menu() {
                     ;;
 
                     "See Related Files")
-                        show_related_files game_context
+                        show_related_files
                         read -p "Press ENTER to continue..."
                         PREV_STATE="GAME_ACTION_MENU"
                         continue
