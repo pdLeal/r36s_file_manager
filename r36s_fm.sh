@@ -1599,23 +1599,31 @@ context_status_icon() {
 
 print_game_context() {
 # Displays a summary of the selected game.
-# TODO: assim como só ghost tem orfãos, apenas valid tem valid/linked
-# e orfãos só podem ter linked. fazer validação como pro ghost no resto
 
     local -n context_ref="$1"
 
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
-    printf "                    %s Data\n" "${context_ref[name]}"
+    printf "                    %s\n" "${context_ref[name]}"
     printf "${PINK}============================================================${ENDCOLOR}\n\n"
 
     printf " Status: %s\n" "${context_ref[status]}"
 
-    printf "\n${YELLOW}──────────────Valid Assets ─────────────${ENDCOLOR}\n"
-    print_summary_line "Image"     "$(context_status_icon context_ref valid_image)"
-    print_summary_line "Video"     "$(context_status_icon context_ref valid_video)"
-    print_summary_line "Marquee"   "$(context_status_icon context_ref valid_marquee)"
-    print_summary_line "Thumbnail" "$(context_status_icon context_ref valid_thumbnail)"
-
+    if [[ "${context_ref[status]}" == "Valid" ]]; then
+        printf "\n${YELLOW}──────────────Valid Assets ─────────────${ENDCOLOR}\n"
+        print_summary_line "Image"     "$(context_status_icon context_ref valid_image)"
+        print_summary_line "Video"     "$(context_status_icon context_ref valid_video)"
+        print_summary_line "Marquee"   "$(context_status_icon context_ref valid_marquee)"
+        print_summary_line "Thumbnail" "$(context_status_icon context_ref valid_thumbnail)"
+    fi
+    
+    printf "\n${YELLOW}────────────── Linked Files ─────────────${ENDCOLOR}\n"
+    print_summary_line "Image"      "$(context_status_icon context_ref linked_image)"
+    print_summary_line "Video"      "$(context_status_icon context_ref linked_video)"
+    print_summary_line "Marquee"    "$(context_status_icon context_ref linked_marquee)"
+    print_summary_line "Thumbnail"  "$(context_status_icon context_ref linked_thumbnail)"
+    print_summary_line "Auxiliary"  "$(context_status_icon context_ref linked_auxiliary)"
+    print_summary_line "Config"     "$(context_status_icon context_ref linked_configs)"
+   
 
     if [[ "${context_ref[status]}" == "Ghost" ]]; then
         printf "\n${YELLOW}────────────── Orphan Assets ─────────────${ENDCOLOR}\n"
@@ -1625,20 +1633,16 @@ print_game_context() {
         print_summary_line "Thumbnail" "$(context_status_icon context_ref orphan_thumbnail)"
     fi
 
-    printf "\n${YELLOW}──────────────Ghost Assets ─────────────${ENDCOLOR}\n"
-    print_summary_line "Image"     "$(context_status_icon context_ref ghost_image)"
-    print_summary_line "Video"     "$(context_status_icon context_ref ghost_video)"
-    print_summary_line "Marquee"   "$(context_status_icon context_ref ghost_marquee)"
-    print_summary_line "Thumbnail" "$(context_status_icon context_ref ghost_thumbnail)"
+    if [[ "${context_ref[status]}" == "Valid" ]] || \
+        [[ "${context_ref[status]}" == "Ghost" ]]; then
+        printf "\n${YELLOW}──────────────Ghost Assets ─────────────${ENDCOLOR}\n"
+        print_summary_line "Image"     "$(context_status_icon context_ref ghost_image)"
+        print_summary_line "Video"     "$(context_status_icon context_ref ghost_video)"
+        print_summary_line "Marquee"   "$(context_status_icon context_ref ghost_marquee)"
+        print_summary_line "Thumbnail" "$(context_status_icon context_ref ghost_thumbnail)"
+    fi
 
-
-    printf "\n${YELLOW}────────────── Linked Files ─────────────${ENDCOLOR}\n"
-    print_summary_line "Image"      "$(context_status_icon context_ref linked_image)"
-    print_summary_line "Video"      "$(context_status_icon context_ref linked_video)"
-    print_summary_line "Marquee"    "$(context_status_icon context_ref linked_marquee)"
-    print_summary_line "Thumbnail"  "$(context_status_icon context_ref linked_thumbnail)"
-    print_summary_line "Auxiliary"  "$(context_status_icon context_ref linked_auxiliary)"
-    print_summary_line "Config"     "$(context_status_icon context_ref linked_configs)"
+   
     
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
 }
