@@ -1615,7 +1615,7 @@ print_game_context() {
         print_summary_line "Marquee"   "$(context_status_icon context_ref valid_marquee)"
         print_summary_line "Thumbnail" "$(context_status_icon context_ref valid_thumbnail)"
     fi
-    
+
     printf "\n${YELLOW}────────────── Linked Files ─────────────${ENDCOLOR}\n"
     print_summary_line "Image"      "$(context_status_icon context_ref linked_image)"
     print_summary_line "Video"      "$(context_status_icon context_ref linked_video)"
@@ -1826,7 +1826,7 @@ update_gamelist_node() {
     #   - Edit Metadata
     # =========================================================================
 
-    local -n game_ctx_ref="$1"
+    local -n game_ctext_ref="$1"
 
     local target_gamelist="$2"
     local remove_from_source="${3:-true}"
@@ -1838,7 +1838,7 @@ update_gamelist_node() {
     printf "Creating and validating temporary gamelist...\n"
 
     if ! duplicate_gamelist_with_entry \
-        "${game_ctx_ref["xml_node"]}" \
+        "${game_ctext_ref["xml_node"]}" \
         "$target_gamelist" \
         tmp_gamelist \
         "$edit_node"; then
@@ -1859,9 +1859,80 @@ update_gamelist_node() {
         printf "Removing original entry...\n"
 
         if ! rm_gamelist_node \
-            "${game_ctx_ref["path"]}"; then
+            "${game_ctext_ref["path"]}"; then
             return 1
         fi
+    fi
+
+    return 0
+}
+
+add_to_gamelist() {
+# Creates a new gamelist entry for an orphan game and appends it to the
+# current gamelist.xml.
+
+    local -n game_ctx_ref="$1"
+    local target_gamelist="${2:-"./gamelist.xml"}"
+
+    local tags=( "path" "name" "image" "video" "marquee" "thumbnail" )
+    local tag=""
+
+    game_ctx_ref["xml_node"]=""
+
+    # Build the XML node using the information available in the game context.
+    # Obs: this could be its own function if needed - build_xml_node
+   for tag in "${tags[@]}"; do
+    case "$tag" in
+        "path")
+            game_ctx_ref["xml_node"]+="<game>"$'\n\t'"<path>$(xml_escape "${game_ctx_ref["path"]}")</path>"$'\n'
+            ;;
+
+        "name")
+            game_ctx_ref["xml_node"]+=$'\t'"<name>$(xml_escape "${game_ctx_ref["name"]}")</name>"$'\n'
+            ;;
+    esac
+
+    if [[ -n "${game_ctx_ref["linked_${tag}"]:-}" ]]; then
+        game_ctx_ref["xml_node"]+=$'\t'"<$tag>$(xml_escape "${game_ctx_ref["linked_${tag}"]}")</$tag>"$'\n'
+    fi
+
+    [[ "$tag" == "thumbnail" ]] && \
+        game_ctx_ref["xml_node"]+="</game>"
+    done
+
+    local answer=""
+    local edit_metadata="false"
+
+    printf "${RED}Do you want to edit the game metadata? (y/n) ${ENDCOLOR}"
+
+    while true; do
+        read -r -p "-> " answer
+        echo ""
+
+        case "$answer" in
+            [Yy])
+                edit_metadata="true"
+                break
+            ;;
+
+            [Nn])
+                edit_metadata="false"
+                break
+            ;;
+
+            *)
+                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+            ;;
+        esac
+    done
+
+
+    if ! update_gamelist_node \
+        game_ctx_ref \
+        "$target_gamelist" \
+        false \
+        "$edit_metadata"; then
+        return 1
     fi
 
     return 0
@@ -2115,7 +2186,7 @@ mv_game() {
         "${target_dir_context_ref["dir"]}"
 
     # Move the main game file.
-    if sudo mv "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
+    if sudo rsync -ah --relative --info=progress2 --remove-source-files "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"; then
         printf "${YELLOW}Main file moved successfully!${ENDCOLOR}\n"
     else
         printf "${BLUE}Failed to move main file!${ENDCOLOR}\n"
@@ -2158,10 +2229,37 @@ mv_game() {
     fi
 
     # Update the destination gamelist when applicable.
-    if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
-        # TODO:
-        # Normalize the destination gamelist after moving an orphan game.
-        :
+    if [[ "${game_context_ref["status"]}" == "Orphan" ]] && \
+        [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
+        printf "${RED}Do you want to add this game to gamelist.xml? (y/n) ${ENDCOLOR}"
+        while true; do
+            read -r -p "-> " answer
+            echo ""
+
+            case "$answer" in
+                [Yy])
+                    if add_to_gamelist game_context_ref "${target_dir_context_ref["gamelist"]}"; then
+                            printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
+                        
+                        else
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
+                        fi
+                ;;
+
+                [Nn])
+                    :
+                ;;
+
+                *)
+                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                    continue
+                ;;
+            esac
+
+            break
+        done
 
     elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
         if ! update_gamelist_node game_context \
@@ -2173,14 +2271,6 @@ mv_game() {
     fi
 
     return 0
-
-    # rsync -ah --info=progress2 --remove-source-files "${game_context_ref["path"]}" "${target_dir_context_ref["dir"]}"
-    # rsync --remove-source-files is a safer alternative than mv,
-    # because it copies the files first and removes the source only
-    # after the transfer completes successfully.
-    # It is currently not used because it requires enough free space
-    # to keep both the source and destination during the transfer.
-    # Re-evaluate this approach in the future.
 }
 
 cp_game() {
@@ -2196,7 +2286,7 @@ cp_game() {
         "${target_dir_context_ref["dir"]}"
 
     # Copy the main game file.
-    if sudo rsync -ah --info=progress2 \
+    if sudo rsync -ah --relative --info=progress2 \
         "${game_context_ref["path"]}" \
         "${target_dir_context_ref["dir"]}"; then
         printf "${YELLOW}Main file copied successfully!${ENDCOLOR}\n"
@@ -2243,10 +2333,37 @@ cp_game() {
     fi
 
     # Update the destination gamelist when applicable.
-    if [[ "${game_context_ref["status"]}" == "Orphan" ]]; then
-        # TODO:
-        # Normalize the destination gamelist after copying an orphan game.
-        :
+    if [[ "${game_context_ref["status"]}" == "Orphan" ]] && \
+        [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
+        printf "${RED}Do you want to add this game to gamelist.xml? (y/n) ${ENDCOLOR}"
+        while true; do
+            read -r -p "-> " answer
+            echo ""
+
+            case "$answer" in
+                [Yy])
+                    if add_to_gamelist game_context_ref "${target_dir_context_ref["gamelist"]}"; then
+                            printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
+                        
+                        else
+                            printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                            printf "Please review the messages above to identify the failed step.\n"
+                            exit 1
+                        fi
+                ;;
+
+                [Nn])
+                    :
+                ;;
+
+                *)
+                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                    continue
+                ;;
+            esac
+
+            break
+        done
 
     elif [[ -n "${target_dir_context_ref["gamelist"]:-}" ]]; then
         if ! update_gamelist_node game_context \
@@ -2338,74 +2455,19 @@ show_game_metadata() {
 
 }
 
-add_to_gamelist() {
-# Creates a new gamelist entry for an orphan game and appends it to the
-# current gamelist.xml.
+xml_escape() {
+# Escapa os cinco caracteres reservados do XML em uma string de texto.
+    # Uso: xml_escape "texto cru"   -> imprime o texto escapado via stdout
+    # Ex.:  novo_valor="$(xml_escape "$valor_bruto")"
+    local s="$1"
 
-    local -n game_context_ref="$1"
+    s="${s//&/\&amp;}"    # & precisa vir primeiro, senão re-escapa as próprias entidades
+    s="${s//</\&lt;}"
+    s="${s//>/\&gt;}"
+    s="${s//\"/\&quot;}"
+    s="${s//\'/\&apos;}"
 
-    local tags=( "path" "name" "image" "video" "marquee" "thumbnail" )
-    local tag=""
-
-    game_context_ref["xml_node"]=""
-
-    # Build the XML node using the information available in the game context.
-    # Obs: this could be its own function if needed - build_xml_node
-    for tag in "${tags[@]}"; do
-        case "$tag" in
-            "path")
-                game_context_ref["xml_node"]+="<game>"$'\n\t'"<path>${game_context_ref["path"]}</path>"$'\n'
-                ;;
-
-            "name")
-                game_context_ref["xml_node"]+=$'\t'"<name>${game_context_ref["name"]}</name>"$'\n'
-                ;;
-        esac
-
-        if [[ -n "${game_context_ref["linked_${tag}"]:-}" ]]; then
-            game_context_ref["xml_node"]+=$'\t'"<$tag>${game_context_ref["linked_${tag}"]}</$tag>"$'\n'
-        fi
-
-        [[ "$tag" == "thumbnail" ]] && \
-            game_context_ref["xml_node"]+="</game>"
-    done
-
-    local answer=""
-    local edit_metadata="false"
-
-    printf "${RED}Do you want to edit the game metadata? (y/n) ${ENDCOLOR}"
-
-    while true; do
-        read -r -p "-> " answer
-        echo ""
-
-        case "$answer" in
-            [Yy])
-                edit_metadata="true"
-                break
-            ;;
-
-            [Nn])
-                edit_metadata="false"
-                break
-            ;;
-
-            *)
-                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
-            ;;
-        esac
-    done
-
-
-    if ! update_gamelist_node \
-        game_context_ref \
-        "./gamelist.xml" \
-        false \
-        "$edit_metadata"; then
-        return 1
-    fi
-
-    return 0
+    printf '%s' "$s"
 }
 
 show_related_files() {
