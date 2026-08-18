@@ -981,17 +981,17 @@ classify_remaining_files() {
 
                     case "$image_suffix" in
                         "marquee")
-                            unlinked_marquees_ref["$file"]="$group_key"
+                            unlinked_marquees_ref["$file"]="$file"
                             (( unlinked_total_ref++ ))
                             ;;
 
                         "thumb")
-                            unlinked_thumbnails_ref["$file"]="$group_key"
+                            unlinked_thumbnails_ref["$file"]="$file"
                             (( unlinked_total_ref++ ))
                             ;;
 
                         *)
-                            unlinked_images_ref["$file"]="$group_key"
+                            unlinked_images_ref["$file"]="$file"
                             (( unlinked_total_ref++ ))
                             ;;
                     esac
@@ -1001,7 +1001,7 @@ classify_remaining_files() {
                 # Videos
                 # ====================================================================
                 "VIDEO")
-                    unlinked_videos_ref["$file"]="$group_key"
+                    unlinked_videos_ref["$file"]="$file"
                     (( unlinked_total_ref++ ))
                     ;;
 
@@ -1009,7 +1009,7 @@ classify_remaining_files() {
                 # Configuration Files
                 # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    unlinked_configs_ref["$file"]="$group_key"
+                    unlinked_configs_ref["$file"]="$file"
                     (( unlinked_total_ref++ ))
                     ;;
 
@@ -1019,7 +1019,7 @@ classify_remaining_files() {
                 "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                 "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                 "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                    unlinked_auxiliary_ref["$file"]="$group_key"
+                    unlinked_auxiliary_ref["$file"]="$file"
                     (( unlinked_total_ref++ ))
                     ;;
 
@@ -1027,7 +1027,7 @@ classify_remaining_files() {
                 # Unknown
                 # ====================================================================
                 *)
-                    unknown_files_ref["$file"]="$group_key"
+                    unknown_files_ref["$file"]="$file"
                     ;;
             esac
         fi
@@ -3162,7 +3162,7 @@ main_menu() {
 
 
                 local prefixes=( "valid" "orphan" "linked" )
-                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" )
+                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
                 local prefix=""
                 local suffix=""
                 local combo=""
@@ -3195,10 +3195,6 @@ main_menu() {
                 (( "$unlinked_total" > 0 )) && menu_options+=( "Unliked Files" )
                 (( ${#unknown_files[@]} > 0 )) && menu_options+=( "Unknow Files" )
 
-                # TODO: consertar bug p/ unlinked e unknow files
-
-
-
                 ask_user "Which file collection would you like to browse?" user_answer \
                     "${menu_options[@]}" "Back"
 
@@ -3215,7 +3211,6 @@ main_menu() {
                                     "$combo"
                             done
                         done
-                        print_assoc_array "asset_collection" asset_collection
                     ;;
 
                     "Valid Files")
@@ -3229,7 +3224,6 @@ main_menu() {
                                     asset_collection \
                                     "$combo"
                             done
-                        print_assoc_array "asset_collection" asset_collection
 
                     ;;
 
@@ -3244,7 +3238,6 @@ main_menu() {
                                     asset_collection \
                                     "$combo"
                             done
-                        print_assoc_array "asset_collection" asset_collection
 
                     ;;
 
@@ -3259,7 +3252,6 @@ main_menu() {
                                     asset_collection \
                                     "$combo"
                             done
-                        print_assoc_array "asset_collection" asset_collection
 
                     ;;
 
@@ -3274,12 +3266,11 @@ main_menu() {
                                     asset_collection \
                                     "$combo"
                             done
-                        print_assoc_array "asset_collection" asset_collection
 
                     ;;
 
                     "Unknow Files")
-                        prefix="unknow"
+                        prefix="unknown"
                             for suffix in "${suffixes[@]}"; do
                                 local combo="${prefix}_${suffix}"
 
@@ -3289,7 +3280,6 @@ main_menu() {
                                     asset_collection \
                                     "$combo"
                             done
-                        print_assoc_array "asset_collection" asset_collection
 
                     ;;
 
