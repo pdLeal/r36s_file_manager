@@ -828,6 +828,8 @@ classify_remaining_files() {
     local -n unlinked_auxiliary_ref="${unlinked_prefix}_auxiliary"
     local -n unlinked_configs_ref="${unlinked_prefix}_configs"
 
+    local -n unlinked_total_ref="${unlinked_prefix}_total"
+
     local -A grouped_known_games=()
     local -A group_count=()
     local group_key=""
@@ -980,14 +982,17 @@ classify_remaining_files() {
                     case "$image_suffix" in
                         "marquee")
                             unlinked_marquees_ref["$file"]="$group_key"
+                            (( unlinked_total_ref++ ))
                             ;;
 
                         "thumb")
                             unlinked_thumbnails_ref["$file"]="$group_key"
+                            (( unlinked_total_ref++ ))
                             ;;
 
                         *)
                             unlinked_images_ref["$file"]="$group_key"
+                            (( unlinked_total_ref++ ))
                             ;;
                     esac
                     ;;
@@ -997,6 +1002,7 @@ classify_remaining_files() {
                 # ====================================================================
                 "VIDEO")
                     unlinked_videos_ref["$file"]="$group_key"
+                    (( unlinked_total_ref++ ))
                     ;;
 
                 # ====================================================================
@@ -1004,6 +1010,7 @@ classify_remaining_files() {
                 # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
                     unlinked_configs_ref["$file"]="$group_key"
+                    (( unlinked_total_ref++ ))
                     ;;
 
                 # ====================================================================
@@ -1013,6 +1020,7 @@ classify_remaining_files() {
                 "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                 "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
                     unlinked_auxiliary_ref["$file"]="$group_key"
+                    (( unlinked_total_ref++ ))
                     ;;
 
                 # ====================================================================
@@ -1130,6 +1138,11 @@ reset_analysis_state() {
 
     linked_auxiliary_total=0
     linked_configs_total=0
+
+    valid_total=0
+    orphan_total=0
+    linked_total=0
+    unlinked_total=0
 
     # ----------------------------------------------------------------------
     # UNLINKED FILES
@@ -2513,6 +2526,20 @@ show_related_files() {
 
 }
 
+build_asset_collection() {
+    local -n collection_ref="$1"
+    local -n source_ref="$2"
+
+    local asset=""
+
+    for asset in "${source_ref[@]}"; do
+        # Skip assets already present in the collection.
+        [[ -v "collection_ref[$asset]" ]] && continue
+
+        collection_ref["$asset"]=1
+    done
+}
+
 show_gamelist_data() {
     xmlstarlet sel -t -m "//game/*" -v "name()" -o ": " -v "normalize-space(.)" -n ./gamelist.xml \
     | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
@@ -2672,10 +2699,14 @@ main_menu() {
     local valid_marquees_total=0
     local valid_thumbnails_total=0
 
+    local valid_total=0
+
     local orphan_images_total=0
     local orphan_videos_total=0
     local orphan_marquees_total=0
     local orphan_thumbnails_total=0
+   
+    local orphan_total=0
 
     local ghost_images_total=0
     local ghost_videos_total=0
@@ -2726,6 +2757,8 @@ main_menu() {
     local linked_auxiliary_total=0
     local linked_configs_total=0
 
+    local linked_total=0
+
     # --------------------------------------------------------------------------
     # LINKED FILE INDEXES
     # --------------------------------------------------------------------------
@@ -2748,7 +2781,8 @@ main_menu() {
 
     local -A unlinked_auxiliary=()
     local -A unlinked_configs=()
-
+    
+    local unlinked_total=0
     # --------------------------------------------------------------------------
     # UNKNOWN FILES
     # --------------------------------------------------------------------------
@@ -3123,10 +3157,151 @@ main_menu() {
             ;;
 
             "OTHERS_COLLECTION_MENU")
-                menu_options=( "See all files" )
+                local -A asset_collection=()
+                menu_options=( "See All Files" )
 
 
-                STATE="ASSETS_MENU"
+                local prefixes=( "valid" "orphan" "linked" )
+                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" )
+                local prefix=""
+                local suffix=""
+                local combo=""
+                local combo_total=""
+
+                for prefix in "${prefixes[@]}"; do
+                    for suffix in "${suffixes[@]}"; do
+                        combo="${prefix}_${suffix}"
+                        combo_total="${combo}_total"
+
+                        # Só segue se a collection existir.
+                        declare -p "$combo" &>/dev/null || continue
+
+                        # Só segue se o total da collection existir.
+                        declare -p "$combo_total" &>/dev/null || continue
+
+                        local -n count_ref="$combo_total"
+                        local -n total_ref="${prefix}_total"
+
+                        # Skip empty asset collections.
+                        (( count_ref == 0 )) && continue
+
+                        total_ref=$(( total_ref + count_ref ))
+                    done
+                done
+
+                (( "$valid_total" > 0 )) && menu_options+=( "Valid Files" )
+                (( "$orphan_total" > 0 )) && menu_options+=( "Orphan Files" )
+                (( "$linked_total" > 0 )) && menu_options+=( "Linked Files" )
+                (( "$unlinked_total" > 0 )) && menu_options+=( "Unliked Files" )
+                (( ${#unknown_files[@]} > 0 )) && menu_options+=( "Unknow Files" )
+
+                # TODO: consertar bug p/ unlinked e unknow files
+
+
+
+                ask_user "Which file collection would you like to browse?" user_answer \
+                    "${menu_options[@]}" "Back"
+
+                case "$user_answer" in
+                    "See All Files")
+                        for prefix in "${prefixes[@]}"; do
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                build_asset_collection \
+                                    asset_collection \
+                                    "$combo"
+                            done
+                        done
+                        print_assoc_array "asset_collection" asset_collection
+                    ;;
+
+                    "Valid Files")
+                        prefix="valid"
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                build_asset_collection \
+                                    asset_collection \
+                                    "$combo"
+                            done
+                        print_assoc_array "asset_collection" asset_collection
+
+                    ;;
+
+                    "Orphan Files")
+                        prefix="orphan"
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                build_asset_collection \
+                                    asset_collection \
+                                    "$combo"
+                            done
+                        print_assoc_array "asset_collection" asset_collection
+
+                    ;;
+
+                    "Linked Files")
+                        prefix="linked"
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                build_asset_collection \
+                                    asset_collection \
+                                    "$combo"
+                            done
+                        print_assoc_array "asset_collection" asset_collection
+
+                    ;;
+
+                    "Unliked Files")
+                        prefix="unlinked"
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                build_asset_collection \
+                                    asset_collection \
+                                    "$combo"
+                            done
+                        print_assoc_array "asset_collection" asset_collection
+
+                    ;;
+
+                    "Unknow Files")
+                        prefix="unknow"
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                build_asset_collection \
+                                    asset_collection \
+                                    "$combo"
+                            done
+                        print_assoc_array "asset_collection" asset_collection
+
+                    ;;
+
+                    "Back")
+                        STATE="SYSTEM_DASHBOARD"
+                        PREV_STATE="GAMES_COLLECTION_MENU"
+                        continue
+
+                    ;;
+                esac
+                STATE="OTHERS_COLLECTION_MENU"
+                PREV_STATE="OTHERS_COLLECTION_MENU"
             ;;
 
             # "GAMELIST_MENU")
