@@ -979,6 +979,37 @@ classify_remaining_files() {
                 "IMAGE")
                     image_suffix="${group_key##*-}"
 
+                    # Some XML-referenced assets may not match their associated ROM by basename.
+                    # They can therefore remain in unclassified_files despite already being valid,
+                    # orphan, or linked. Check existing asset relations before classifying the file
+                    # as unlinked, preventing these edge cases from being misclassified.
+                    # TODO: make it a function
+                    local prefixes=( "valid" "orphan" "linked" )
+                    local suffixes=( "images" "marquees" "thumbnails" )
+                    local prefix=""
+                    local suffix=""
+                    local combo=""
+                    local value=""
+                    local skip="false"
+
+                    for prefix in "${prefixes[@]}"; do
+                        for suffix in "${suffixes[@]}"; do
+                            combo="${prefix}_${suffix}"
+
+                            declare -p "$combo" &>/dev/null || continue
+
+                            local -n arr_ref="$combo"
+                            for value in "${arr_ref[@]}"; do
+                                if [[ "$file" == "$value" ]]; then
+                                    skip="true"
+                                    break 3
+                                fi
+                            done
+                        done
+                    done
+
+                    [[ "$skip" == "true" ]] && continue
+
                     case "$image_suffix" in
                         "marquee")
                             unlinked_marquees_ref["$file"]="$file"
@@ -1001,6 +1032,30 @@ classify_remaining_files() {
                 # Videos
                 # ====================================================================
                 "VIDEO")
+
+                    local prefixes=( "valid" "orphan" "linked" )
+                    local prefix=""
+                    local suffix="videos"
+                    local combo=""
+                    local value=""
+                    local skip="false"
+
+                    for prefix in "${prefixes[@]}"; do
+                        combo="${prefix}_${suffix}"
+
+                        declare -p "$combo" &>/dev/null || continue
+
+                        local -n arr_ref="$combo"
+                        for value in "${arr_ref[@]}"; do
+                            if [[ "$file" == "$value" ]]; then
+                                skip="true"
+                                break 3
+                            fi
+                        done
+                    done
+
+                    [[ "$skip" == "true" ]] && continue
+                    
                     unlinked_videos_ref["$file"]="$file"
                     (( unlinked_total_ref++ ))
                     ;;
