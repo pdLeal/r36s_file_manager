@@ -1055,7 +1055,7 @@ classify_remaining_files() {
                     done
 
                     [[ "$skip" == "true" ]] && continue
-                    
+
                     unlinked_videos_ref["$file"]="$file"
                     (( unlinked_total_ref++ ))
                     ;;
@@ -2992,7 +2992,7 @@ main_menu() {
 
                     "Browse Other Files")
                     # DAQUI: construir menu de assets
-                        STATE="OTHERS_COLLECTION_MENU"
+                        STATE="ASSETS_COLLECTION_MENU"
                     ;;
 
                     "Back")
@@ -3197,6 +3197,7 @@ main_menu() {
                     ;;
 
                     "Remove from gamelist.xml")
+                        # TODO: perguntar se tbm uer deletar os arquivos relacionados
                         if rm_gamelist_node "${game_context["path"]}"; then
                             printf "${GREEN}gamelist.xml updated successfully.${ENDCOLOR}\n"
                         
@@ -3238,7 +3239,7 @@ main_menu() {
                 PREV_STATE="GAME_ACTION_MENU"
             ;;
 
-            "OTHERS_COLLECTION_MENU")
+            "ASSETS_COLLECTION_MENU")
                 local -A asset_collection=()
                 menu_options=( "See All Files" )
 
@@ -3246,6 +3247,7 @@ main_menu() {
                 local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
                 local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
                 local prefix=""
+                local selected_prefix=""
                 local suffix=""
                 local combo=""
                 local combo_total=""
@@ -3305,118 +3307,243 @@ main_menu() {
                                 esac
                             done
                         done
+                        local -n selected_asset_collection="asset_collection"
+                        selected_prefix="all"
+                        STATE="FILE_SELECTION_MENU"
+                        continue
                     ;;
 
                     "Valid Files")
                         prefix="${prefixes[0]}"
-                            for suffix in "${suffixes[@]}"; do
-                                local combo="${prefix}_${suffix}"
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="${prefix}_${suffix}"
 
-                                declare -p "$combo" &>/dev/null || continue
+                            declare -p "$combo" &>/dev/null || continue
 
-                                build_asset_collection \
-                                    asset_collection \
-                                    "$combo" \
-                                    "${combo}_count"
-                            done
+                            build_asset_collection \
+                                asset_collection \
+                                "$combo" \
+                                "${combo}_count"
+                        done
 
                     ;;
 
                     "Orphan Files")
                         prefix="${prefixes[1]}"
-                            for suffix in "${suffixes[@]}"; do
-                                local combo="${prefix}_${suffix}"
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="${prefix}_${suffix}"
 
-                                declare -p "$combo" &>/dev/null || continue
+                            declare -p "$combo" &>/dev/null || continue
 
-                                build_asset_collection \
-                                    asset_collection \
-                                    "$combo" \
-                                    "${combo}_count"
-                            done
+                            build_asset_collection \
+                                asset_collection \
+                                "$combo" \
+                                "${combo}_count"
+                        done
 
                     ;;
 
                     "Linked Files")
                         prefix="${prefixes[2]}"
-                            for suffix in "${suffixes[@]}"; do
-                                local combo="${prefix}_${suffix}"
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="${prefix}_${suffix}"
 
-                                declare -p "$combo" &>/dev/null || continue
+                            declare -p "$combo" &>/dev/null || continue
 
-                                build_asset_collection \
-                                    asset_collection \
-                                    "$combo" \
-                                    "${combo}_count"
-                            done
+                            build_asset_collection \
+                                asset_collection \
+                                "$combo" \
+                                "${combo}_count"
+                        done
 
                     ;;
 
                     "Unliked Files")
-                        # Está colocando linked files aqui
-                        # TODO: rastrear de onde está vindo o erro
                         prefix="${prefixes[3]}"
-                            for suffix in "${suffixes[@]}"; do
-                                local combo="${prefix}_${suffix}"
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="${prefix}_${suffix}"
 
-                                declare -p "$combo" &>/dev/null || continue
+                            declare -p "$combo" &>/dev/null || continue
 
-                                build_asset_collection \
-                                    asset_collection \
-                                    "$combo"
-                            done
+                            build_asset_collection \
+                                asset_collection \
+                                "$combo"
+                        done
 
                     ;;
 
                     "Unknow Files")
                         prefix="${prefixes[4]}"
-                            for suffix in "${suffixes[@]}"; do
-                                local combo="${prefix}_${suffix}"
-
-                                declare -p "$combo" &>/dev/null || continue
-
-                                build_asset_collection \
-                                    asset_collection \
-                                    "$combo"
-                            done
+                        local -n selected_asset_collection="${prefix}_files"
+                        selected_prefix="unknown"
+                        STATE="FILE_SELECTION_MENU"
+                        continue
 
                     ;;
 
                     "Back")
                         STATE="SYSTEM_DASHBOARD"
-                        PREV_STATE="OTHERS_COLLECTION_MENU"
+                        PREV_STATE="ASSETS_COLLECTION_MENU"
                         continue
 
                     ;;
                 esac
-                STATE="OTHERS_SELECTION_MENU"
-                PREV_STATE="OTHERS_COLLECTION_MENU"
+                STATE="ASSETS_CATEGORY_MENU"
+                PREV_STATE="ASSETS_COLLECTION_MENU"
             ;;
 
-            "OTHERS_SELECTION_MENU")
-                ask_user "Which file would you like to select?" user_answer \
-                    "${!asset_collection[@]}" \
-                    "Back"
+            "ASSETS_CATEGORY_MENU")
+                menu_options=( "All" )
+                case "$prefix" in
+                    "unlinked")
 
-                 case "$user_answer" in
-                    "Back")
-                        STATE="OTHERS_COLLECTION_MENU"
-                        PREV_STATE="OTHERS_SELECTION_MENU"
-                        continue
+                        local -n images_ref="${prefix}_images"
+                        local -n marquees_ref="${prefix}_marquees"
+                        local -n thumbnails_ref="${prefix}_thumbnails"
+                        local -n videos_ref="${prefix}_videos"
 
+                        local -n auxiliary_ref="${prefix}_auxiliary"
+                        local -n configs_ref="${prefix}_configs"
+
+                        (( "${#images_ref[@]}" > 0 )) && menu_options+=( "Images" )
+                        (( "${#marquees_ref[@]}" > 0 )) && menu_options+=( "Marquees" )
+                        (( "${#thumbnails_ref[@]}" > 0 )) && menu_options+=( "Thumbnails" )
+                        (( "${#videos_ref[@]}" > 0 )) && menu_options+=( "Videos" )
+
+                        (( "${#auxiliary_ref[@]}" > 0 )) && menu_options+=( "Auxiliary" )
+                        (( "${#configs_ref[@]}" > 0 )) && menu_options+=( "Configs" )
                     ;;
 
                     *)
-                        # selected_game_name="$user_answer"
-                        # selected_game_path="${target_collection["$selected_game_name"]}"
+                        local -n images_total_ref="${prefix}_images_total"
+                        local -n marquees_total_ref="${prefix}_marquees_total"
+                        local -n thumbnails_total_ref="${prefix}_thumbnails_total"
+                        local -n videos_total_ref="${prefix}_videos_total"
+                       
+                        (( "$images_total_ref" > 0 )) && menu_options+=( "Images" )
+                        (( "$marquees_total_ref" > 0 )) && menu_options+=( "Marquees" )
+                        (( "$thumbnails_total_ref" > 0 )) && menu_options+=( "Thumbnails" )
+                        (( "$videos_total_ref" > 0 )) && menu_options+=( "Videos" )
+                    ;;&
 
-                        printf "Selected file: ${GREEN}%s${ENDCOLOR}\n" "$user_answer"
+                    "linked")
+
+                        local -n auxiliary_total_ref="${prefix}_auxiliary_total"
+                        local -n configs_total_ref="${prefix}_configs_total"
+
+                        (( "$auxiliary_total_ref" > 0 )) && menu_options+=( "Auxiliary" )
+                        (( "$configs_total_ref" > 0 )) && menu_options+=( "Configs" )
+                    ;;
+                
+                esac
+
+                ask_user "Which category would you like to select?" user_answer \
+                    "${menu_options[@]}" "Back"
+
+                
+
+                 case "$user_answer" in
+                    "Images")
+                        local -n selected_asset_collection="${prefix}_images"
 
                     ;;
+
+                    "Marquees")
+                        local -n selected_asset_collection="${prefix}_marquees"
+
+                    ;;
+                    
+                    "Thumbnails")
+                        local -n selected_asset_collection="${prefix}_thumbnails"
+
+                    ;;
+                    
+                    "Videos")
+                        local -n selected_asset_collection="${prefix}_videos"
+
+                    ;;
+                    
+                    "Auxiliary")
+                        local -n selected_asset_collection="${prefix}_auxiliary"
+
+                    ;;
+                    
+                    "Configs")
+                        local -n selected_asset_collection="${prefix}_configs"
+
+                    ;;
+
+                    "Back")
+                        STATE="ASSETS_COLLECTION_MENU"
+                        PREV_STATE="ASSETS_CATEGORY_MENU"
+                        continue
+
+                    ;;
+
                 esac
-                STATE="OTHERS_SELECTION_MENU"
-                PREV_STATE="OTHERS_SELECTION_MENU"
+                STATE="FILE_SELECTION_MENU"
+                PREV_STATE="ASSETS_CATEGORY_MENU"
             
+            ;;
+
+            "FILE_SELECTION_MENU")
+                    ask_user "Which file would you like to see?" user_answer \
+                    "${!selected_asset_collection[@]}" "Back"
+                    local selected_file=""
+
+                    case "$user_answer" in
+                        "Back")
+                            if [[ "$selected_prefix" == "all" ]] || \
+                                [[ "$selected_prefix" == "unknown" ]]; then
+                                STATE="ASSETS_COLLECTION_MENU"
+                            else
+                                STATE="ASSETS_CATEGORY_MENU"
+
+                            fi
+                            PREV_STATE="FILE_SELECTION_MENU"
+                            continue                       
+                        ;;
+
+                        *)
+                            selected_file="$user_answer"
+                        ;;
+
+                    esac
+
+                    STATE="FILE_ACTION_MENU"
+                    PREV_STATE="FILE_SELECTION_MENU"
+            ;;
+
+            "FILE_ACTION_MENU")
+            # CONTINUAR DAQUI
+                # mover/copiar/deletar
+                # ver relações se != unlinked/unknown
+                
+                    # ask_user "Which file would you like to see?" user_answer \
+                    # "${!selected_asset_collection[@]}" "Back"
+                    # local selected_file=""
+
+                    # case "$user_answer" in
+                    #     "Back")
+                    #         if [[ "$selected_prefix" == "all" ]] || \
+                    #             [[ "$selected_prefix" == "unknown" ]]; then
+                    #             STATE="ASSETS_COLLECTION_MENU"
+                    #         else
+                    #             STATE="ASSETS_CATEGORY_MENU"
+
+                    #         fi
+                    #         PREV_STATE="FILE_SELECTION_MENU"
+                    #         continue                       
+                    #     ;;
+
+                    #     *)
+                    #         selected_file="$user_answer"
+                    #     ;;
+
+                    # esac
+
+                    STATE="FILE_ACTION_MENU"
+                    PREV_STATE="FILE_SELECTION_MENU"
             ;;
 
             # "GAMELIST_MENU")
