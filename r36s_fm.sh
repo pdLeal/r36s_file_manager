@@ -2091,7 +2091,9 @@ process_related_files() {
            [[ "$key" != ghost_* ]]    &&
            [[ -z "${processed_files["$file"]:-}" ]]; then
 
-            printf "Processing %s${PINK}%s${ENDCOLOR}\n" "$key" "$file"
+            # TODO: consertar bug p/ casos com mais de um asset
+            # EX: Processing linked_auxiliary ./YuGiOh_FMMP.srm|./YuGiOh_FMMP.state1
+            printf "Processing %s${PINK} %s${ENDCOLOR}\n" "$key" "$file"
 
             # Removing files does not require a destination.
             # Skip all target directory handling and execute the command directly.
@@ -2622,6 +2624,67 @@ build_asset_collection() {
     done
 }
 
+print_asset_context() {
+    local asset_path="$1"
+
+    # Reference data stored in the asset index
+    local -n refs_ref="asset_refs"
+    local -n refs_count_ref="asset_refs_count"
+    local -n game_count_ref="asset_game_count"
+
+    local -a reference_list=()
+
+    local reference=""
+    local game_path=""
+    local reference_type=""
+    local current_game=""
+
+    printf "\n"
+    printf "ASSET: ${PINK}%s${ENDCOLOR}\n" "$asset_path"
+    printf "\n────────────────────────────────────────────────────────────\n"
+
+    # Display summary information for the asset
+    printf "%-18s %s\n" \
+        "Total References:" \
+        "${refs_count_ref["$asset_path"]}"
+
+    printf "%-18s %s\n" \
+        "Games References:" \
+        "${game_count_ref["$asset_path"]}"
+
+    printf "\n"
+    printf "%s\n" "References:"
+
+    # Each reference is stored as:
+    #   game_path:reference_type
+    #
+    # Multiple references are separated by '|'.
+    IFS='|' read -ra reference_list <<< "${refs_ref["$asset_path"]}"
+
+    # Group references by game.
+    # The game path is printed once as the group header,
+    # followed by all reference types associated with that game.
+    for reference in "${reference_list[@]}"; do
+        [[ -z "$reference" ]] && continue
+
+        game_path="${reference%:*}"
+        reference_type="${reference##*:}"
+
+        # Start a new game group when the game path changes.
+        if [[ "$game_path" != "$current_game" ]]; then
+            printf "\n"
+            printf "  → %s\n" "$game_path"
+
+            current_game="$game_path"
+        fi
+
+        # Print the asset reference type under its game.
+        printf "       [%s]\n" "$reference_type"
+    done
+
+    printf "\n"
+}
+
 show_gamelist_data() {
     xmlstarlet sel -t -m "//game/*" -v "name()" -o ": " -v "normalize-space(.)" -n ./gamelist.xml \
     | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
@@ -2991,7 +3054,6 @@ main_menu() {
                     ;;
 
                     "Browse Other Files")
-                    # DAQUI: construir menu de assets
                         STATE="ASSETS_COLLECTION_MENU"
                     ;;
 
@@ -3281,6 +3343,8 @@ main_menu() {
 
                 ask_user "Which file collection would you like to browse?" user_answer \
                     "${menu_options[@]}" "Back"
+                
+                local indirect="false"
 
                 case "$user_answer" in
                     "See All Files")
@@ -3376,6 +3440,7 @@ main_menu() {
                         prefix="${prefixes[4]}"
                         local -n selected_asset_collection="${prefix}_files"
                         selected_prefix="unknown"
+                        indirect="true"
                         STATE="FILE_SELECTION_MENU"
                         continue
 
@@ -3393,7 +3458,7 @@ main_menu() {
             ;;
 
             "ASSETS_CATEGORY_MENU")
-                menu_options=( "All" )
+                menu_options=()
                 case "$prefix" in
                     "unlinked")
 
@@ -3412,6 +3477,7 @@ main_menu() {
 
                         (( "${#auxiliary_ref[@]}" > 0 )) && menu_options+=( "Auxiliary" )
                         (( "${#configs_ref[@]}" > 0 )) && menu_options+=( "Configs" )
+                        indirect="true"
                     ;;
 
                     *)
@@ -3487,37 +3553,45 @@ main_menu() {
             ;;
 
             "FILE_SELECTION_MENU")
+
+                if [[ "$indirect" == "true" ]]; then
                     ask_user "Which file would you like to see?" user_answer \
                     "${!selected_asset_collection[@]}" "Back"
-                    local selected_file=""
+                else
+                    ask_user "Which file would you like to see?" user_answer \
+                    "${selected_asset_collection[@]}" "Back"
+                fi
+                local selected_file=""
 
-                    case "$user_answer" in
-                        "Back")
-                            if [[ "$selected_prefix" == "all" ]] || \
-                                [[ "$selected_prefix" == "unknown" ]]; then
-                                STATE="ASSETS_COLLECTION_MENU"
-                            else
-                                STATE="ASSETS_CATEGORY_MENU"
+                case "$user_answer" in
+                    "Back")
+                        if [[ "$selected_prefix" == "all" ]] || \
+                            [[ "$selected_prefix" == "unknown" ]]; then
+                            STATE="ASSETS_COLLECTION_MENU"
+                        else
+                            STATE="ASSETS_CATEGORY_MENU"
 
-                            fi
-                            PREV_STATE="FILE_SELECTION_MENU"
-                            continue                       
-                        ;;
+                        fi
+                        PREV_STATE="FILE_SELECTION_MENU"
+                        continue                       
+                    ;;
 
-                        *)
-                            selected_file="$user_answer"
-                        ;;
+                    *)
+                        selected_file="$user_answer"
+                    ;;
 
-                    esac
+                esac
 
-                    STATE="FILE_ACTION_MENU"
-                    PREV_STATE="FILE_SELECTION_MENU"
+                STATE="FILE_ACTION_MENU"
+                PREV_STATE="FILE_SELECTION_MENU"
             ;;
 
             "FILE_ACTION_MENU")
             # CONTINUAR DAQUI
                 # mover/copiar/deletar
                 # ver relações se != unlinked/unknown
+                    print_asset_context "$selected_file"
+                    # exit
                 
                     # ask_user "Which file would you like to see?" user_answer \
                     # "${!selected_asset_collection[@]}" "Back"
@@ -3542,7 +3616,7 @@ main_menu() {
 
                     # esac
 
-                    STATE="FILE_ACTION_MENU"
+                    STATE="FILE_SELECTION_MENU"
                     PREV_STATE="FILE_SELECTION_MENU"
             ;;
 
