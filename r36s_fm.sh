@@ -3440,7 +3440,7 @@ main_menu() {
                         prefix="${prefixes[4]}"
                         local -n selected_asset_collection="${prefix}_files"
                         selected_prefix="unknown"
-                        indirect="true"
+                        # indirect="true"
                         STATE="FILE_SELECTION_MENU"
                         continue
 
@@ -3587,36 +3587,76 @@ main_menu() {
             ;;
 
             "FILE_ACTION_MENU")
-            # CONTINUAR DAQUI
-                # mover/copiar/deletar
-                # ver relações se != unlinked/unknown
                     print_asset_context "$selected_file"
-                    # exit
                 
-                    # ask_user "Which file would you like to see?" user_answer \
-                    # "${!selected_asset_collection[@]}" "Back"
-                    # local selected_file=""
+                    ask_user "What would you like to do?" user_answer \
+                    "Move" \
+                    "Copy" \
+                    "Delete" "Back"
 
-                    # case "$user_answer" in
-                    #     "Back")
-                    #         if [[ "$selected_prefix" == "all" ]] || \
-                    #             [[ "$selected_prefix" == "unknown" ]]; then
-                    #             STATE="ASSETS_COLLECTION_MENU"
-                    #         else
-                    #             STATE="ASSETS_CATEGORY_MENU"
+                    local target_dir=""
 
-                    #         fi
-                    #         PREV_STATE="FILE_SELECTION_MENU"
-                    #         continue                       
-                    #     ;;
+                    case "$user_answer" in
+                        "Move"|"Copy")
+                            while true; do
+                            # Always returns a valid existing directory in target_dir_context["dir"].
+                                read -r -p "Enter target directory: " target_dir
 
-                    #     *)
-                    #         selected_file="$user_answer"
-                    #     ;;
+                                if [[ ! -d "$target_dir" ]]; then
+                                    printf "${BLUE}Directory not found. Try again.${ENDCOLOR}\n"
+                                    continue
+                                fi
 
-                    # esac
+                                printf "${GREEN}Directory validated.${ENDCOLOR}\n"
+                                break
+                            done
 
-                    STATE="FILE_SELECTION_MENU"
+                        ;;&
+
+                        "Move")
+                            if sudo rsync -ah --relative --info=progress2 --remove-source-files \
+                                "$selected_file" "$target_dir"; then
+                                printf "${YELLOW}File moved successfully!${ENDCOLOR}\n"
+
+                            else
+                                printf "${BLUE}Failed to move file!${ENDCOLOR}\n"
+                                exit 1
+                            fi                      
+                        ;;
+
+                        "Copy")
+                            if sudo rsync -ah --relative --info=progress2 \
+                                "$selected_file" "$target_dir"; then
+                                printf "${YELLOW}File coied successfully!${ENDCOLOR}\n"
+
+                            else
+                                printf "${BLUE}Failed to copy file!${ENDCOLOR}\n"
+                                exit 1
+                            fi                      
+                        ;;
+
+                        "Delete")
+                            if sudo rm -f "$selected_file"; then
+                                printf "${YELLOW}File deleted successfully!${ENDCOLOR}\n"
+
+                            else
+                                printf "${BLUE}Failed to delete file!${ENDCOLOR}\n"
+                                exit 1
+                            fi                        
+                        ;;
+
+
+                        "Back")
+                            STATE="FILE_SELECTION_MENU"
+                            PREV_STATE="FILE_ACTION_MENU"
+                            continue                       
+                        ;;
+
+                    esac
+
+                    printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                    cd -- "$OLDPWD" || exit 1
+                    STATE="LOOK"
                     PREV_STATE="FILE_SELECTION_MENU"
             ;;
 
