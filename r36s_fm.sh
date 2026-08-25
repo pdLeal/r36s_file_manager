@@ -822,13 +822,26 @@ classify_remaining_files() {
     local -n linked_auxiliary_total_ref="${linked_prefix}_auxiliary_total"
     local -n linked_configs_total_ref="${linked_prefix}_configs_total"
 
-    # TODO: avaliar a real necessidade de unlinked_* context
     local -n unlinked_images_ref="${unlinked_prefix}_images"
     local -n unlinked_videos_ref="${unlinked_prefix}_videos"
     local -n unlinked_marquees_ref="${unlinked_prefix}_marquees"
     local -n unlinked_thumbnails_ref="${unlinked_prefix}_thumbnails"
     local -n unlinked_auxiliary_ref="${unlinked_prefix}_auxiliary"
     local -n unlinked_configs_ref="${unlinked_prefix}_configs"
+
+    local -n unlinked_images_count_ref="${unlinked_prefix}_images_count"
+    local -n unlinked_videos_count_ref="${unlinked_prefix}_videos_count"
+    local -n unlinked_marquees_count_ref="${unlinked_prefix}_marquees_count"
+    local -n unlinked_thumbnails_count_ref="${unlinked_prefix}_thumbnails_count"
+    local -n unlinked_auxiliary_count_ref="${unlinked_prefix}_auxiliary_count"
+    local -n unlinked_configs_count_ref="${unlinked_prefix}_configs_count"
+
+    local -n unlinked_images_total_ref="${unlinked_prefix}_images_total"
+    local -n unlinked_videos_total_ref="${unlinked_prefix}_videos_total"
+    local -n unlinked_marquees_total_ref="${unlinked_prefix}_marquees_total"
+    local -n unlinked_thumbnails_total_ref="${unlinked_prefix}_thumbnails_total"
+    local -n unlinked_auxiliary_total_ref="${unlinked_prefix}_auxiliary_total"
+    local -n unlinked_configs_total_ref="${unlinked_prefix}_configs_total"
 
     local -n unlinked_total_ref="${unlinked_prefix}_total"
 
@@ -968,7 +981,7 @@ classify_remaining_files() {
                     # Unknown
                     # ====================================================================
                     *)
-                        unknown_files_ref["$game_path"]="$file"
+                        unknown_files_ref["$file"]="$file"
                         ;;
                 esac
             done
@@ -1014,18 +1027,24 @@ classify_remaining_files() {
 
                     case "$image_suffix" in
                         "marquee")
-                            unlinked_marquees_ref["$file"]="$file"
-                            (( unlinked_total_ref++ ))
+                            register_reference "$file" "$file" \
+                                unlinked_marquees_ref unlinked_marquees_total_ref \
+                                unlinked_marquees_count_ref
+
                             ;;
 
                         "thumb")
-                            unlinked_thumbnails_ref["$file"]="$file"
-                            (( unlinked_total_ref++ ))
+                            register_reference "$file" "$file" \
+                                unlinked_thumbnails_ref unlinked_thumbnails_total_ref \
+                                unlinked_thumbnails_count_ref
+
                             ;;
 
                         *)
-                            unlinked_images_ref["$file"]="$file"
-                            (( unlinked_total_ref++ ))
+                            register_reference "$file" "$file" \
+                                unlinked_images_ref  unlinked_images_total_ref \
+                                unlinked_images_count_ref
+
                             ;;
                     esac
                     ;;
@@ -1034,40 +1053,20 @@ classify_remaining_files() {
                 # Videos
                 # ====================================================================
                 "VIDEO")
-
-                    local prefixes=( "valid" "orphan" "linked" )
-                    local prefix=""
-                    local suffix="videos"
-                    local combo=""
-                    local value=""
-                    local skip="false"
-
-                    for prefix in "${prefixes[@]}"; do
-                        combo="${prefix}_${suffix}"
-
-                        declare -p "$combo" &>/dev/null || continue
-
-                        local -n arr_ref="$combo"
-                        for value in "${arr_ref[@]}"; do
-                            if [[ "$file" == "$value" ]]; then
-                                skip="true"
-                                break 3
-                            fi
-                        done
-                    done
-
-                    [[ "$skip" == "true" ]] && continue
-
-                    unlinked_videos_ref["$file"]="$file"
-                    (( unlinked_total_ref++ ))
+                    register_reference "$file" "$file" \
+                        unlinked_videos_ref   unlinked_videos_total_ref \
+                        unlinked_videos_count_ref
+                        
                     ;;
 
                 # ====================================================================
                 # Configuration Files
                 # ====================================================================
                 "CONFIG" | "FIRMWARE" | "METADATA" | "DATABASE" | "CACHE" | "INDEX" | "SHADER")
-                    unlinked_configs_ref["$file"]="$file"
-                    (( unlinked_total_ref++ ))
+                    register_reference "$file" "$file" \
+                        unlinked_configs_ref   unlinked_configs_total_ref \
+                        unlinked_configs_count_ref
+                        
                     ;;
 
                 # ====================================================================
@@ -1076,8 +1075,10 @@ classify_remaining_files() {
                 "SAVE" | "SAVE_STATE" | "HIGH_SCORE" | "DIFF" | "CHEAT" | "REPLAY" | "PATCH" | \
                 "DISC_DESCRIPTOR" | "DISC_METADATA" | "PLAYLIST" | "AUDIO" | "ARTWORK" | \
                 "FONT" | "DOCUMENT" | "LOG" | "BACKUP")
-                    unlinked_auxiliary_ref["$file"]="$file"
-                    (( unlinked_total_ref++ ))
+                    register_reference "$file" "$file" \
+                        unlinked_auxiliary_ref   unlinked_auxiliary_total_ref \
+                        unlinked_auxiliary_count_ref
+                        
                     ;;
 
                 # ====================================================================
@@ -1136,6 +1137,21 @@ reset_analysis_state() {
     ghost_videos=()
     ghost_marquees=()
     ghost_thumbnails=()
+
+    valid_images_count=()
+    valid_videos_count=()
+    valid_marquees_count=()
+    valid_thumbnails_count=()
+
+    orphan_images_count=()
+    orphan_videos_count=()
+    orphan_marquees_count=()
+    orphan_thumbnails_count=()
+
+    ghost_images_count=()
+    ghost_videos_count=()
+    ghost_marquees_count=()
+    ghost_thumbnails_count=()
 
     # ----------------------------------------------------------------------
     # XML ASSET INDEXES
@@ -1211,6 +1227,22 @@ reset_analysis_state() {
 
     unlinked_auxiliary=()
     unlinked_configs=()
+
+    unlinked_images_count=()
+    unlinked_videos_count=()
+    unlinked_marquees_count=()
+    unlinked_thumbnails_count=()
+
+    unlinked_auxiliary_count=()
+    unlinked_configs_count=()
+
+    unlinked_images_total=0
+    unlinked_videos_total=0
+    unlinked_marquees_total=0
+    unlinked_thumbnails_total=0
+
+    unlinked_auxiliary_total=0
+    unlinked_configs_total=0
 
     # ----------------------------------------------------------------------
     # UNKNOWN FILES
@@ -1514,7 +1546,7 @@ count_by_dir() {
     printf "Total de jogos   : %d\n" "$total_games"
 }
 
-sort_games() {
+sort_files() {
 # Sorts the provided game names alphabetically (case-insensitive).
     local -n sorted="$1"
     shift
@@ -2976,6 +3008,22 @@ main_menu() {
 
     local -A unlinked_auxiliary=()
     local -A unlinked_configs=()
+
+    local -Ai unlinked_images_count=()
+    local -Ai unlinked_videos_count=()
+    local -Ai unlinked_marquees_count=()
+    local -Ai unlinked_thumbnails_count=()
+
+    local -Ai unlinked_auxiliary_count=()
+    local -Ai unlinked_configs_count=()
+
+    local unlinked_images_total=0
+    local unlinked_videos_total=0
+    local unlinked_marquees_total=0
+    local unlinked_thumbnails_total=0
+
+    local unlinked_auxiliary_total=0
+    local unlinked_configs_total=0
     
     local unlinked_total=0
     # --------------------------------------------------------------------------
@@ -3165,7 +3213,7 @@ main_menu() {
             "GAMES_SELECTION_MENU")
                 sorted_games=()
 
-                sort_games sorted_games "${!target_collection[@]}"
+                sort_files sorted_games "${!target_collection[@]}"
 
                 ask_user "Which game would you like to select?" user_answer \
                     "${sorted_games[@]}" \
@@ -3354,8 +3402,6 @@ main_menu() {
             "ASSETS_COLLECTION_MENU")
                 local -A asset_collection=()
                 menu_options=( "See All Files" )
-            # TODO: consertar bug p/ casos com mais de um asset
-            # EX: Processing linked_auxiliary ./YuGiOh_FMMP.srm|./YuGiOh_FMMP.state1
 
                 local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
                 local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
@@ -3394,9 +3440,7 @@ main_menu() {
 
                 ask_user "Which file collection would you like to browse?" user_answer \
                     "${menu_options[@]}" "Back"
-                
-                local indirect="false"
-
+                    
                 case "$user_answer" in
                     "See All Files")
                         for prefix in "${prefixes[@]}"; do
@@ -3430,60 +3474,21 @@ main_menu() {
 
                     "Valid Files")
                         prefix="${prefixes[0]}"
-                        for suffix in "${suffixes[@]}"; do
-                            local combo="${prefix}_${suffix}"
-
-                            declare -p "$combo" &>/dev/null || continue
-
-                            build_asset_collection \
-                                asset_collection \
-                                "$combo" \
-                                "${combo}_count"
-                        done
 
                     ;;
 
                     "Orphan Files")
                         prefix="${prefixes[1]}"
-                        for suffix in "${suffixes[@]}"; do
-                            local combo="${prefix}_${suffix}"
-
-                            declare -p "$combo" &>/dev/null || continue
-
-                            build_asset_collection \
-                                asset_collection \
-                                "$combo" \
-                                "${combo}_count"
-                        done
 
                     ;;
 
                     "Linked Files")
                         prefix="${prefixes[2]}"
-                        for suffix in "${suffixes[@]}"; do
-                            local combo="${prefix}_${suffix}"
-
-                            declare -p "$combo" &>/dev/null || continue
-
-                            build_asset_collection \
-                                asset_collection \
-                                "$combo" \
-                                "${combo}_count"
-                        done
 
                     ;;
 
                     "Unliked Files")
                         prefix="${prefixes[3]}"
-                        for suffix in "${suffixes[@]}"; do
-                            local combo="${prefix}_${suffix}"
-
-                            declare -p "$combo" &>/dev/null || continue
-
-                            build_asset_collection \
-                                asset_collection \
-                                "$combo"
-                        done
 
                     ;;
 
@@ -3491,7 +3496,6 @@ main_menu() {
                         prefix="${prefixes[4]}"
                         local -n selected_asset_collection="${prefix}_files"
                         selected_prefix="unknown"
-                        # indirect="true"
                         STATE="FILE_SELECTION_MENU"
                         continue
 
@@ -3557,36 +3561,54 @@ main_menu() {
                 ask_user "Which category would you like to select?" user_answer \
                     "${menu_options[@]}" "Back"
 
-                
+                local -A selected_asset_collection=()
 
-                 case "$user_answer" in
+                case "$user_answer" in
                     "Images")
-                        local -n selected_asset_collection="${prefix}_images"
+                        build_asset_collection \
+                            selected_asset_collection \
+                            "${prefix}_images" \
+                            "${prefix}_images_count"
 
                     ;;
 
                     "Marquees")
-                        local -n selected_asset_collection="${prefix}_marquees"
+                        build_asset_collection \
+                            selected_asset_collection \
+                            "${prefix}_marquees" \
+                            "${prefix}_marquees_count"
 
                     ;;
                     
                     "Thumbnails")
-                        local -n selected_asset_collection="${prefix}_thumbnails"
+                        build_asset_collection \
+                            selected_asset_collection \
+                            "${prefix}_thumbnails" \
+                            "${prefix}_thumbnails_count"
 
                     ;;
                     
                     "Videos")
-                        local -n selected_asset_collection="${prefix}_videos"
+                        build_asset_collection \
+                            selected_asset_collection \
+                            "${prefix}_videos" \
+                            "${prefix}_videos_count"
 
                     ;;
                     
                     "Auxiliary")
-                        local -n selected_asset_collection="${prefix}_auxiliary"
-
+                        build_asset_collection \
+                            selected_asset_collection \
+                            "${prefix}_auxiliary" \
+                            "${prefix}_auxiliary_count"
+                    
                     ;;
                     
                     "Configs")
-                        local -n selected_asset_collection="${prefix}_configs"
+                        build_asset_collection \
+                            selected_asset_collection \
+                            "${prefix}_configs" \
+                            "${prefix}_configs_count"
 
                     ;;
 
@@ -3604,14 +3626,13 @@ main_menu() {
             ;;
 
             "FILE_SELECTION_MENU")
+                local sorted_files=()
 
-                if [[ "$indirect" == "true" ]]; then
-                    ask_user "Which file would you like to see?" user_answer \
-                    "${!selected_asset_collection[@]}" "Back"
-                else
-                    ask_user "Which file would you like to see?" user_answer \
-                    "${selected_asset_collection[@]}" "Back"
-                fi
+                sort_files sorted_files "${!selected_asset_collection[@]}"
+
+                ask_user "Which file would you like to see?" user_answer \
+                "${sorted_files[@]}" "Back"
+
                 local selected_file=""
 
                 case "$user_answer" in
