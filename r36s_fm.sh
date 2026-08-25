@@ -2087,6 +2087,7 @@ process_related_files() {
     local target_dir="${4:-}"
 
     local key=""
+    local files=()
     local file=""
     local sub_dir=""
     local target_sub_dir=""
@@ -2097,170 +2098,191 @@ process_related_files() {
     local -A processed_files=()
 
     for key in "${!game_ctx_ref[@]}"; do
-        file="${game_ctx_ref["$key"]}"
         # Skip context metadata, ghost assets and processed files
         # Only entries representing existing related files are processed.
         if [[ "$key" != "name" ]]     &&
            [[ "$key" != "path" ]]     &&
            [[ "$key" != "status" ]]   &&
            [[ "$key" != "xml_node" ]] &&
+           [[ "$key" != "related_file_total" ]] &&
            [[ "$key" != *_count ]]    &&
-           [[ "$key" != ghost_* ]]    &&
-           [[ -z "${processed_files["$file"]:-}" ]]; then
+           [[ "$key" != ghost_* ]]; then
 
-            # TODO: consertar bug p/ casos com mais de um asset
-            # EX: Processing linked_auxiliary ./YuGiOh_FMMP.srm|./YuGiOh_FMMP.state1
-            # repensar todo o game_context em vista dos arrays
-            # linked_images_ref linked_images_total_ref linked_images_count_ref
+            if (( "${game_ctx_ref["${key}_count"]}" > 1 )); then
+                IFS='|' read -ra files <<< "${game_ctx_ref["$key"]}"
 
-            # local -n asset_count="${key}_count"
-            local game_path="${game_ctx_ref["path"]}"
-            printf "${PINK}%s${ENDCOLOR}\n" "${!asset_count[@]}"
+            else
+                files=( "${game_ctx_ref["$key"]}" )
             
-            printf "Processing %s${PINK} %s${ENDCOLOR}\n" "$key" "$file"
+            fi
+            
+            for file in "${files[@]}"; do
+            # Each file goes through three processing stages: destination preparation,
+            # relationship validation, and file operation. These stages could be
+            # extracted into helper functions, but remain inline since their logic is
+            # currently specific to related-file processing and not reused elsewhere.
+                [[ -n "${processed_files["$file"]:-}" ]] && continue
 
-            # Removing files does not require a destination.
-            # Skip all target directory handling and execute the command directly.
-            # maybe this handling could be it's own auxiliary function...
-            if [[ "$command" != "rm" ]]; then
+                key="${key//_/ }"
+                key="${key^}"
+                key="${key// / }"
+                printf "Processing %s: ${PINK}%s${ENDCOLOR}\n" "$key" "$file"
 
-                # Preserve the original directory structure whenever possible.
-                # Example:
-                #   ./images/game.png -> target/images/
-                #   ./saves/game.srm  -> target/saves/
-                sub_dir="${file%/*}"
-                sub_dir="${sub_dir#./}"
+                # --------------------------------------------------------------------
+                # DIRECTORY PREPARATION
+                # --------------------------------------------------------------------
+                if [[ "$command" != "rm" ]]; then
+                # Removing files does not require a destination.
+                # Skip all target directory handling and execute the command directly.
+                # maybe this handling could be it's own auxiliary function...
 
-                if [[ "$sub_dir" =~ ^\. ]]; then
-                    target_sub_dir="$target_dir"
-                else
-                    target_sub_dir="$target_dir/$sub_dir"
-                fi
+                    # Preserve the original directory structure whenever possible.
+                    # Example:
+                    #   ./images/game.png -> target/images/
+                    #   ./saves/game.srm  -> target/saves/
+                    sub_dir="${file%/*}"
+                    sub_dir="${sub_dir#./}"
 
-                if [[ ! -d "$target_sub_dir" ]]; then
-                    printf "${BLUE}%s doesn't exist${ENDCOLOR}\n" "$target_sub_dir"
-                    printf "${RED}Create %s? (y/n) ${ENDCOLOR}" "$target_sub_dir"
+                    if [[ "$sub_dir" =~ ^\. ]]; then
+                        target_sub_dir="$target_dir"
+                    else
+                        target_sub_dir="$target_dir/$sub_dir"
+                    fi
 
-                    while true; do
-                        read -r -p "-> " answer
+                    if [[ ! -d "$target_sub_dir" ]]; then
+                        printf "${BLUE}%s doesn't exist${ENDCOLOR}\n" "$target_sub_dir"
+                        printf "${RED}Create %s? (y/n) ${ENDCOLOR}" "$target_sub_dir"
 
-                        case "$answer" in
-                            [Yy])
-                                if sudo mkdir -p "$target_sub_dir"; then
-                                    printf "${GREEN}%s created${ENDCOLOR}\n" "$target_sub_dir"
+                        while true; do
+                            read -r -p "-> " answer
+
+                            case "$answer" in
+                                [Yy])
+                                    if sudo mkdir -p "$target_sub_dir"; then
+                                        printf "${GREEN}%s created${ENDCOLOR}\n" "$target_sub_dir"
+                                        break
+                                    fi
+
+                                    printf "${RED}Failed to create %s.${ENDCOLOR}\n" "$target_sub_dir"
+
+                                    # If the directory cannot be created, allow the
+                                    # user to either place the files directly in the
+                                    # target directory or skip this group entirely.
+                                    while true; do
+                                        printf "${RED}Process these files in the main target directory instead? (y/n) ${ENDCOLOR}"
+                                        read -r -p "-> " answer
+
+                                        case "$answer" in
+                                            [Yy])
+                                                target_sub_dir="$target_dir"
+                                                break 2
+                                                ;;
+
+                                            [Nn])
+                                                printf "${YELLOW}Skipping files from %s.${ENDCOLOR}\n" "$sub_dir"
+                                                continue 2
+                                                ;;
+
+                                            *)
+                                                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                                                ;;
+                                        esac
+                                    done
+                                    ;;
+
+                                [Nn])
+                                    # User chose not to recreate the directory.
+                                    # Store the files directly in the destination root.
+                                    target_sub_dir="$target_dir"
                                     break
-                                fi
+                                    ;;
 
-                                printf "${RED}Failed to create %s.${ENDCOLOR}\n" "$target_sub_dir"
-
-                                # If the directory cannot be created, allow the
-                                # user to either place the files directly in the
-                                # target directory or skip this group entirely.
-                                while true; do
-                                    printf "${RED}Process these files in the main target directory instead? (y/n) ${ENDCOLOR}"
-                                    read -r -p "-> " answer
-
-                                    case "$answer" in
-                                        [Yy])
-                                            target_sub_dir="$target_dir"
-                                            break 2
-                                            ;;
-
-                                        [Nn])
-                                            printf "${YELLOW}Skipping files from %s.${ENDCOLOR}\n" "$sub_dir"
-                                            continue 2
-                                            ;;
-
-                                        *)
-                                            printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
-                                            ;;
-                                    esac
-                                done
-                                ;;
-
-                            [Nn])
-                                # User chose not to recreate the directory.
-                                # Store the files directly in the destination root.
-                                target_sub_dir="$target_dir"
-                                break
-                                ;;
-
-                            *)
-                                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
-                                ;;
-                        esac
-                    done
+                                *)
+                                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                                    ;;
+                            esac
+                        done
+                    fi
                 fi
-            fi
 
-            if [[ -n "${3:-}" ]]; then
-                local -n relation_ctx_ref="$3"
 
-                local asset_prefix="${relation_context_ref[asset]}"
-                local -n asset_game_count_ref="${asset_prefix}_game_count"
+                # --------------------------------------------------------------------
+                # RELATIONSHIP VALIDATION
+                # --------------------------------------------------------------------
+                if [[ -n "${3:-}" ]]; then
+                    local -n relation_ctx_ref="$3"
 
-                if (( "${asset_game_count_ref["$file"]:-}" > 1 )) &&  [[ "$command" != "cp" ]]; then
-                    printf "${RED}%s is shared by multiples games, would you like to copy it instead of moving/removing? (y/n)${ENDCOLOR}" "$file"
-                    while true; do
-                        read -r -p "-> " answer
+                    local asset_prefix="${relation_ctx_ref[asset]}"
+                    local -n asset_game_count_ref="${asset_prefix}_game_count"
 
-                        case "$answer" in
-                            [Yy])
-                                command="cp"
-                                break
-                                ;;
+                    if (( "${asset_game_count_ref["$file"]:-0}" > 1 )) &&  [[ "$command" != "cp" ]]; then
+                        printf "${RED}%s is shared by multiples games, would you like to copy it instead of moving/removing? (y/n)${ENDCOLOR}" "$file"
+                        while true; do
+                            read -r -p "-> " answer
 
-                            [Nn])
-                                continue
-                                ;;
+                            case "$answer" in
+                                [Yy])
+                                    command="cp"
+                                    break
+                                    ;;
 
-                            *)
-                                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
-                                ;;
-                        esac
-                    done
-                fi            
-            fi
+                                [Nn])
+                                    continue
+                                    ;;
 
-            case "$command" in
-                "mv")
-                    printf "Moving ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
-                        "$file" "$target_sub_dir"
+                                *)
+                                    printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                                    ;;
+                            esac
+                        done
+                    fi            
+                fi
 
-                    if sudo mv "$file" "$target_sub_dir"; then
-                        printf "${GREEN}File moved successfully!${ENDCOLOR}\n\n"
-                    else
-                        printf "${RED}Failed to move %s.${ENDCOLOR}\n\n" "$file"
-                        failed=1
-                    fi
-                    ;;
 
-                "cp")
-                    printf "Copying ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
-                        "$file" "$target_sub_dir"
+                # --------------------------------------------------------------------
+                # FILE OPERATION
+                # --------------------------------------------------------------------
+                case "$command" in
+                    "mv")
+                        printf "Moving ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
+                            "$file" "$target_sub_dir"
 
-                    if sudo cp "$file" "$target_sub_dir"; then
-                        printf "${GREEN}File copied successfully!${ENDCOLOR}\n\n"
-                    else
-                        printf "${RED}Failed to copy %s.${ENDCOLOR}\n\n" "$file"
-                        failed=1
-                    fi
-                    ;;
+                        if sudo mv "$file" "$target_sub_dir"; then
+                            printf "${GREEN}File moved successfully!${ENDCOLOR}\n\n"
+                        else
+                            printf "${RED}Failed to move %s.${ENDCOLOR}\n\n" "$file"
+                            failed=1
+                        fi
+                        ;;
 
-                "rm")
-                    printf "Removing ${GREEN}%s${ENDCOLOR}\n" "$file"
+                    "cp")
+                        printf "Copying ${GREEN}%s${ENDCOLOR} to ${GREEN}%s${ENDCOLOR}\n" \
+                            "$file" "$target_sub_dir"
 
-                    if sudo rm "$file"; then
-                        printf "${GREEN}File removed successfully!${ENDCOLOR}\n\n"
-                    else
-                        printf "${RED}Failed to remove %s.${ENDCOLOR}\n\n" "$file"
-                        failed=1
-                    fi
-                    ;;
-            esac
+                        if sudo cp "$file" "$target_sub_dir"; then
+                            printf "${GREEN}File copied successfully!${ENDCOLOR}\n\n"
+                        else
+                            printf "${RED}Failed to copy %s.${ENDCOLOR}\n\n" "$file"
+                            failed=1
+                        fi
+                        ;;
+
+                    "rm")
+                        printf "Removing ${GREEN}%s${ENDCOLOR}\n" "$file"
+
+                        if sudo rm "$file"; then
+                            printf "${GREEN}File removed successfully!${ENDCOLOR}\n\n"
+                        else
+                            printf "${RED}Failed to remove %s.${ENDCOLOR}\n\n" "$file"
+                            failed=1
+                        fi
+                        ;;
+                esac
+
+                processed_files["$file"]=1
+                command="$original_command"
+            done
         fi
-        processed_files["$file"]=1
-        command="$original_command"
     done
 
     return "$failed"
