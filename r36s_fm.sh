@@ -577,7 +577,8 @@ classify_xml_asset() {
     local -n ghost_assets_total_ref="$8"
     local -n valid_assets_count_ref="$9"
     local -n orphan_assets_count_ref="${10}"
-    local -n valid_games_ref="${11}"
+    local -n ghost_assets_count_ref="${11}"
+    local -n valid_games_ref="${12}"
 
     local game_path=""
     local asset_path=""
@@ -602,7 +603,8 @@ classify_xml_asset() {
         else
             # The referenced asset does not exist on disk.
             register_reference "$game_path" "$asset_path" \
-                ghost_assets_ref ghost_assets_total_ref
+                ghost_assets_ref ghost_assets_total_ref \
+                ghost_assets_count_ref
             
         fi
         
@@ -1261,6 +1263,7 @@ analyze_directory() {
             "ghost_${name}_total" \
             "valid_${name}_count" \
             "orphan_${name}_count" \
+            "ghost_${name}_count" \
             valid_games
     done
 
@@ -1568,87 +1571,101 @@ load_game_context() {
         )"
     fi
 
+    game_context_ref["related_file_total"]=0
+
     [[ -n "${valid_images["$game_path"]:-}"      ]] && \
         game_context_ref["valid_image"]="${valid_images["$game_path"]}" && \
-            (( game_context_ref["valid_asset_count"]+=1 ))
+        game_context_ref["valid_image_count"]="${valid_images_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${valid_images_count["$game_path"]}" ))
 
     [[ -n "${valid_videos["$game_path"]:-}"      ]] && \
         game_context_ref["valid_video"]="${valid_videos["$game_path"]}" && \
-            (( game_context_ref["valid_asset_count"]+=1 ))
+        game_context_ref["valid_video_count"]="${valid_videos_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${valid_videos_count["$game_path"]}" ))
 
     [[ -n "${valid_marquees["$game_path"]:-}"    ]] && \
         game_context_ref["valid_marquee"]="${valid_marquees["$game_path"]}" && \
-            (( game_context_ref["valid_asset_count"]+=1 ))
+        game_context_ref["valid_marquee_count"]="${valid_marquees_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${valid_marquees_count["$game_path"]}" ))
 
     [[ -n "${valid_thumbnails["$game_path"]:-}"  ]] && \
         game_context_ref["valid_thumbnail"]="${valid_thumbnails["$game_path"]}" && \
-            (( game_context_ref["valid_asset_count"]+=1 ))
+        game_context_ref["valid_thumbnail_count"]="${valid_thumbnails_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${valid_thumbnails_count["$game_path"]}" ))
 
 
     [[ -n "${orphan_images["$game_path"]:-}"     ]] && \
         game_context_ref["orphan_image"]="${orphan_images["$game_path"]}" && \
-            (( game_context_ref["orphan_asset_count"]+=1 ))
+        game_context_ref["orphan_image_count"]="${orphan_images_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${orphan_images_count["$game_path"]}" ))
 
     [[ -n "${orphan_videos["$game_path"]:-}"     ]] && \
         game_context_ref["orphan_video"]="${orphan_videos["$game_path"]}" && \
-            (( game_context_ref["orphan_asset_count"]+=1 ))
+        game_context_ref["orphan_video_count"]="${orphan_videos_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${orphan_videos_count["$game_path"]}" ))
 
     [[ -n "${orphan_marquees["$game_path"]:-}"   ]] && \
         game_context_ref["orphan_marquee"]="${orphan_marquees["$game_path"]}" && \
-            (( game_context_ref["orphan_asset_count"]+=1 ))
+        game_context_ref["orphan_marquee_count"]="${orphan_marquees_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${orphan_marquees_count["$game_path"]}" ))
 
     [[ -n "${orphan_thumbnails["$game_path"]:-}" ]] && \
         game_context_ref["orphan_thumbnail"]="${orphan_thumbnails["$game_path"]}" && \
-            (( game_context_ref["orphan_asset_count"]+=1 ))
+        game_context_ref["orphan_thumbnail_count"]="${orphan_thumbnails_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${orphan_thumbnails_count["$game_path"]}" ))
 
 
     [[ -n "${ghost_images["$game_path"]:-}"      ]] && \
         game_context_ref["ghost_image"]="${ghost_images["$game_path"]}" && \
-            (( game_context_ref["ghost_asset_count"]+=1 ))
+        game_context_ref["ghost_image_count"]="${ghost_images_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${ghost_images_count["$game_path"]}" ))
 
     [[ -n "${ghost_videos["$game_path"]:-}"      ]] && \
         game_context_ref["ghost_video"]="${ghost_videos["$game_path"]}" && \
-            (( game_context_ref["ghost_asset_count"]+=1 ))
+        game_context_ref["ghost_video_count"]="${ghost_videos_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${ghost_videos_count["$game_path"]}" ))
 
     [[ -n "${ghost_marquees["$game_path"]:-}"    ]] && \
         game_context_ref["ghost_marquee"]="${ghost_marquees["$game_path"]}" && \
-            (( game_context_ref["ghost_asset_count"]+=1 ))
+        game_context_ref["ghost_marquee_count"]="${ghost_marquees_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${ghost_marquees_count["$game_path"]}" ))
 
     [[ -n "${ghost_thumbnails["$game_path"]:-}"  ]] && \
         game_context_ref["ghost_thumbnail"]="${ghost_thumbnails["$game_path"]}" && \
-            (( game_context_ref["ghost_asset_count"]+=1 ))
+        game_context_ref["ghost_thumbnail_count"]="${ghost_thumbnails_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${ghost_thumbnails_count["$game_path"]}" ))
 
 
     [[ -n "${linked_images["$game_path"]:-}"     ]] && \
         game_context_ref["linked_image"]="${linked_images["$game_path"]}" && \
-            (( game_context_ref["linked_asset_count"]+=1 ))
+        game_context_ref["linked_image_count"]="${linked_images_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${linked_images_count["$game_path"]}" ))
 
     [[ -n "${linked_videos["$game_path"]:-}"     ]] && \
         game_context_ref["linked_video"]="${linked_videos["$game_path"]}" && \
-            (( game_context_ref["linked_asset_count"]+=1 ))
+        game_context_ref["linked_video_count"]="${linked_videos_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${linked_videos_count["$game_path"]}" ))
 
     [[ -n "${linked_marquees["$game_path"]:-}"   ]] && \
         game_context_ref["linked_marquee"]="${linked_marquees["$game_path"]}" && \
-            (( game_context_ref["linked_asset_count"]+=1 ))
+        game_context_ref["linked_marquee_count"]="${linked_marquees_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${linked_marquees_count["$game_path"]}" ))
 
     [[ -n "${linked_thumbnails["$game_path"]:-}" ]] && \
         game_context_ref["linked_thumbnail"]="${linked_thumbnails["$game_path"]}" && \
-            (( game_context_ref["linked_asset_count"]+=1 ))
+        game_context_ref["linked_thumbnail_count"]="${linked_thumbnails_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${linked_thumbnails_count["$game_path"]}" ))
 
 
     [[ -n "${linked_auxiliary["$game_path"]:-}"  ]] && \
         game_context_ref["linked_auxiliary"]="${linked_auxiliary["$game_path"]}" && \
-            (( game_context_ref["linked_support_count"]+=1 ))
+        game_context_ref["linked_auxiliary_count"]="${linked_auxiliary_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${linked_auxiliary_count["$game_path"]}" ))
 
     [[ -n "${linked_configs["$game_path"]:-}"    ]] && \
         game_context_ref["linked_configs"]="${linked_configs["$game_path"]}" && \
-            (( game_context_ref["linked_support_count"]+=1 ))
-
-    (( game_context_ref["related_file_count"] =
-    game_context_ref["valid_asset_count"] +
-    game_context_ref["orphan_asset_count"] +
-    game_context_ref["linked_asset_count"] +
-    game_context_ref["linked_support_count"] ))
+        game_context_ref["linked_configs_count"]="${linked_configs_count["$game_path"]}" && \
+            (( game_context_ref["related_file_total"]+="${linked_configs_count["$game_path"]}" ))
 
 }
 
@@ -2093,6 +2110,13 @@ process_related_files() {
 
             # TODO: consertar bug p/ casos com mais de um asset
             # EX: Processing linked_auxiliary ./YuGiOh_FMMP.srm|./YuGiOh_FMMP.state1
+            # repensar todo o game_context em vista dos arrays
+            # linked_images_ref linked_images_total_ref linked_images_count_ref
+
+            # local -n asset_count="${key}_count"
+            local game_path="${game_ctx_ref["path"]}"
+            printf "${PINK}%s${ENDCOLOR}\n" "${!asset_count[@]}"
+            
             printf "Processing %s${PINK} %s${ENDCOLOR}\n" "$key" "$file"
 
             # Removing files does not require a destination.
@@ -2264,7 +2288,7 @@ mv_game() {
     fi
 
     # Optionally move all related files.
-    if (( game_context_ref["related_file_count"] > 0 )); then
+    if (( game_context_ref["related_file_total"] > 0 )); then
         printf "${RED}Do you want to move all related files too? (y/n) ${ENDCOLOR}"
         while true; do
             read -r -p "-> " answer
@@ -2366,7 +2390,7 @@ cp_game() {
     fi
 
     # Optionally copy all related files.
-    if (( game_context_ref["related_file_count"] > 0 )); then
+    if (( game_context_ref["related_file_total"] > 0 )); then
 
         printf "${RED}Do you want to copy all related files too? (y/n) ${ENDCOLOR}"
 
@@ -2468,7 +2492,7 @@ rm_game() {
     fi
 
     # Optionally delete all related files.
-    if (( game_context_ref["related_file_count"] > 0 )); then
+    if (( game_context_ref["related_file_total"] > 0 )); then
 
         printf "${RED}Do you want to delete all related files too? (y/n) ${ENDCOLOR}"
         while true; do
@@ -2858,15 +2882,20 @@ main_menu() {
     local ghost_marquees_total=0
     local ghost_thumbnails_total=0
 
-    local -A valid_images_count=()
-    local -A valid_videos_count=()
-    local -A valid_marquees_count=()
-    local -A valid_thumbnails_count=()
+    local -Ai valid_images_count=()
+    local -Ai valid_videos_count=()
+    local -Ai valid_marquees_count=()
+    local -Ai valid_thumbnails_count=()
 
-    local -A orphan_images_count=()
-    local -A orphan_videos_count=()
-    local -A orphan_marquees_count=()
-    local -A orphan_thumbnails_count=()
+    local -Ai orphan_images_count=()
+    local -Ai orphan_videos_count=()
+    local -Ai orphan_marquees_count=()
+    local -Ai orphan_thumbnails_count=()
+
+    local -Ai ghost_images_count=()
+    local -Ai ghost_videos_count=()
+    local -Ai ghost_marquees_count=()
+    local -Ai ghost_thumbnails_count=()
 
     # --------------------------------------------------------------------------
     # XML ASSET INDEXES
@@ -2910,7 +2939,6 @@ main_menu() {
     local -Ai linked_images_count=()
     local -Ai linked_videos_count=()
     local -Ai linked_marquees_count=()
-
     local -Ai linked_thumbnails_count=()
 
     local -Ai linked_auxiliary_count=()
@@ -3178,7 +3206,7 @@ main_menu() {
                 fi
 
                 # Show the related files option only when additional files exist.
-                (( game_context["related_file_count"] > 0 )) && \
+                (( game_context["related_file_total"] > 0 )) && \
                     menu_options+=( "See Related Files" )
 
                 ask_user "What would you like to do with this game?" user_answer \
@@ -3304,7 +3332,8 @@ main_menu() {
             "ASSETS_COLLECTION_MENU")
                 local -A asset_collection=()
                 menu_options=( "See All Files" )
-
+            # TODO: consertar bug p/ casos com mais de um asset
+            # EX: Processing linked_auxiliary ./YuGiOh_FMMP.srm|./YuGiOh_FMMP.state1
 
                 local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
                 local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
