@@ -779,7 +779,6 @@ classify_remaining_files() {
 # At this stage, all XML-referenced resources and ROMs have already been
 # processed. The remaining files are classified by extension and associated
 # with the game library using filename matching.
-
     local -n unclassified_files_ref="$1"
     local -n game_library_ref="$2"
     local -n ghost_games_ref="$3"
@@ -842,8 +841,6 @@ classify_remaining_files() {
     local -n unlinked_thumbnails_total_ref="${unlinked_prefix}_thumbnails_total"
     local -n unlinked_auxiliary_total_ref="${unlinked_prefix}_auxiliary_total"
     local -n unlinked_configs_total_ref="${unlinked_prefix}_configs_total"
-
-    local -n unlinked_total_ref="${unlinked_prefix}_total"
 
     local -A grouped_known_games=()
     local -A group_count=()
@@ -2662,6 +2659,7 @@ show_related_files() {
 }
 
 build_asset_collection() {
+# Builds a unique asset collection from the specified source array.
     local -n collection_ref="$1"
     local -n source_ref="$2"
 
@@ -2673,6 +2671,9 @@ build_asset_collection() {
     for game_path in "${!source_ref[@]}"; do
         asset_path="${source_ref["$game_path"]:-}"
 
+        # Collections with a corresponding count array may contain either:
+        # - one asset path per game (count = 1);
+        # - multiple asset paths stored in a single value, separated by "|".
         if [[ -n "${3:-}" ]]; then
             local -n count_ref="$3"
             count="${count_ref["$game_path"]:-}"
@@ -2686,19 +2687,20 @@ build_asset_collection() {
                 local asset=""
                 IFS='|' read -ra group <<< "$asset_path"
 
+                # Add each related asset individually to the collection.
+                # The associative array also prevents duplicate assets.
                 for asset in "${group[@]}"; do
                     [[ -v "collection_ref[$asset]" ]] && continue
                     collection_ref["$asset"]=1
-
                 done
-
             fi
-        
+
         else
+            # Collections without a count array already contain one asset
+            # path per entry, so it can be added directly.
             [[ -v "collection_ref[$asset_path]" ]] && continue
             collection_ref["$asset_path"]=1
         fi
-
     done
 }
 
@@ -2706,29 +2708,31 @@ print_asset_context() {
     local asset_path="$1"
 
     # Reference data stored in the asset index
-    local -n refs_ref="asset_refs"
-    local -n refs_count_ref="asset_refs_count"
-    local -n game_count_ref="asset_game_count"
+    local -n refs_ref="$2"
+    local -n refs_count_ref="$3"
+    local -n game_count_ref="$4"
 
     local -a reference_list=()
+    local -a sorted_games=()
 
     local reference=""
     local game_path=""
     local reference_type=""
-    local current_game=""
+
+    local -A game_references=()
 
     printf "\n"
     printf "ASSET: ${PINK}%s${ENDCOLOR}\n" "$asset_path"
     printf "\n────────────────────────────────────────────────────────────\n"
 
-    # Display summary information for the asset
+    # Display summary information for the asset.
     printf "%-18s %s\n" \
         "Total References:" \
-        "${refs_count_ref["$asset_path"]}"
+        "${refs_count_ref["$asset_path"]:-}"
 
     printf "%-18s %s\n" \
-        "Games References:" \
-        "${game_count_ref["$asset_path"]}"
+        "Referenced Games:" \
+        "${game_count_ref["$asset_path"]:-}"
 
     printf "\n"
     printf "%s\n" "References:"
@@ -2739,25 +2743,34 @@ print_asset_context() {
     # Multiple references are separated by '|'.
     IFS='|' read -ra reference_list <<< "${refs_ref["$asset_path"]}"
 
-    # Group references by game.
-    # The game path is printed once as the group header,
-    # followed by all reference types associated with that game.
+    # Group reference types by game so the output does not depend
+    # on the order in which references were stored in the index.
     for reference in "${reference_list[@]}"; do
         [[ -z "$reference" ]] && continue
 
         game_path="${reference%:*}"
         reference_type="${reference##*:}"
 
-        # Start a new game group when the game path changes.
-        if [[ "$game_path" != "$current_game" ]]; then
-            printf "\n"
-            printf "  → %s\n" "$game_path"
-
-            current_game="$game_path"
+        if [[ -n "${game_references["$game_path"]:-}" ]]; then
+            game_references["$game_path"]+="|$reference_type"
+        else
+            game_references["$game_path"]="$reference_type"
         fi
+    done
 
-        # Print the asset reference type under its game.
-        printf "       [%s]\n" "$reference_type"
+    # Sort the games before displaying the grouped references.
+    sort_files sorted_games "${!game_references[@]}"
+
+    # Display each game once, followed by all of its reference types.
+    for game_path in "${sorted_games[@]}"; do
+        printf "\n"
+        printf "  → %s\n" "$game_path"
+
+        IFS='|' read -ra reference_list <<< "${game_references["$game_path"]}"
+
+        for reference_type in "${reference_list[@]}"; do
+            printf "       [%s]\n" "$reference_type"
+        done
     done
 
     printf "\n"
@@ -3400,26 +3413,33 @@ main_menu() {
             ;;
 
             "ASSETS_COLLECTION_MENU")
-                local -A asset_collection=()
+                local -A selected_asset_collection=()
                 menu_options=( "See All Files" )
 
                 local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
                 local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
+
                 local prefix=""
                 local selected_prefix=""
                 local suffix=""
                 local combo=""
                 local combo_total=""
 
+                # --------------------------------------------------------------------------
+                # BUILD COLLECTION TOTALS
+                # --------------------------------------------------------------------------
+
+                # Accumulate the number of files for each asset collection.
+                # The individual collection totals are stored in <prefix>_total.
                 for prefix in "${prefixes[@]}"; do
                     for suffix in "${suffixes[@]}"; do
                         combo="${prefix}_${suffix}"
                         combo_total="${combo}_total"
 
-                        # Só segue se a collection existir.
+                        # Skip collections that do not exist.
                         declare -p "$combo" &>/dev/null || continue
 
-                        # Só segue se o total da collection existir.
+                        # Skip collections without a corresponding total.
                         declare -p "$combo_total" &>/dev/null || continue
 
                         local -n count_ref="$combo_total"
@@ -3432,88 +3452,98 @@ main_menu() {
                     done
                 done
 
-                (( "$valid_total" > 0 )) && menu_options+=( "Valid Files" )
-                (( "$orphan_total" > 0 )) && menu_options+=( "Orphan Files" )
-                (( "$linked_total" > 0 )) && menu_options+=( "Linked Files" )
-                (( "$unlinked_total" > 0 )) && menu_options+=( "Unliked Files" )
-                (( ${#unknown_files[@]} > 0 )) && menu_options+=( "Unknow Files" )
+                # --------------------------------------------------------------------------
+                # BUILD MENU OPTIONS
+                # --------------------------------------------------------------------------
+
+                (( valid_total > 0 )) && menu_options+=( "Valid Files" )
+                (( orphan_total > 0 )) && menu_options+=( "Orphan Files" )
+                (( linked_total > 0 )) && menu_options+=( "Linked Files" )
+                (( unlinked_total > 0 )) && menu_options+=( "Unlinked Files" )
+                (( ${#unknown_files[@]} > 0 )) && menu_options+=( "Unknown Files" )
 
                 ask_user "Which file collection would you like to browse?" user_answer \
                     "${menu_options[@]}" "Back"
-                    
+
                 case "$user_answer" in
+
                     "See All Files")
+                        # All categories are merged into a single collection.
+                        # Therefore, no category selection is required in the next menu.
                         for prefix in "${prefixes[@]}"; do
                             for suffix in "${suffixes[@]}"; do
                                 local combo="${prefix}_${suffix}"
 
                                 declare -p "$combo" &>/dev/null || continue
+
                                 case "$prefix" in
                                     "unlinked"|"unknown")
                                         build_asset_collection \
-                                        asset_collection \
-                                        "$combo"
+                                            selected_asset_collection \
+                                            "$combo"
                                     ;;
 
                                     *)
                                         build_asset_collection \
-                                            asset_collection \
+                                            selected_asset_collection \
                                             "$combo" \
                                             "${combo}_count"
-                                    
                                     ;;
-                                
                                 esac
                             done
                         done
-                        local -n selected_asset_collection="asset_collection"
                         selected_prefix="all"
+
                         STATE="FILE_SELECTION_MENU"
                         continue
                     ;;
 
                     "Valid Files")
                         prefix="${prefixes[0]}"
-
                     ;;
 
                     "Orphan Files")
                         prefix="${prefixes[1]}"
-
                     ;;
 
                     "Linked Files")
                         prefix="${prefixes[2]}"
-
                     ;;
 
-                    "Unliked Files")
+                    "Unlinked Files")
                         prefix="${prefixes[3]}"
-
                     ;;
 
-                    "Unknow Files")
-                        prefix="${prefixes[4]}"
-                        local -n selected_asset_collection="${prefix}_files"
+                    "Unknown Files")
+                        # Unknown files are not divided into asset categories.
+                        # Therefore, skip the category selection menu.
+                        build_asset_collection \
+                            selected_asset_collection \
+                            "${prefix}_files"
+
                         selected_prefix="unknown"
+
                         STATE="FILE_SELECTION_MENU"
                         continue
-
                     ;;
 
                     "Back")
                         STATE="SYSTEM_DASHBOARD"
                         PREV_STATE="ASSETS_COLLECTION_MENU"
                         continue
-
                     ;;
+
                 esac
+
+                # Valid, orphan, linked and unlinked collections require category selection.
                 STATE="ASSETS_CATEGORY_MENU"
                 PREV_STATE="ASSETS_COLLECTION_MENU"
             ;;
 
             "ASSETS_CATEGORY_MENU")
                 menu_options=()
+
+                # Build the category menu based on the selected asset collection.
                 case "$prefix" in
                     "unlinked")
 
@@ -3525,6 +3555,7 @@ main_menu() {
                         local -n auxiliary_ref="${prefix}_auxiliary"
                         local -n configs_ref="${prefix}_configs"
 
+                        # Unlinked collections are already indexed by individual asset paths.
                         (( "${#images_ref[@]}" > 0 )) && menu_options+=( "Images" )
                         (( "${#marquees_ref[@]}" > 0 )) && menu_options+=( "Marquees" )
                         (( "${#thumbnails_ref[@]}" > 0 )) && menu_options+=( "Thumbnails" )
@@ -3532,7 +3563,6 @@ main_menu() {
 
                         (( "${#auxiliary_ref[@]}" > 0 )) && menu_options+=( "Auxiliary" )
                         (( "${#configs_ref[@]}" > 0 )) && menu_options+=( "Configs" )
-                        indirect="true"
                     ;;
 
                     *)
@@ -3540,7 +3570,9 @@ main_menu() {
                         local -n marquees_total_ref="${prefix}_marquees_total"
                         local -n thumbnails_total_ref="${prefix}_thumbnails_total"
                         local -n videos_total_ref="${prefix}_videos_total"
-                       
+
+                        # Other collections use their category totals to determine
+                        # which categories contain assets.
                         (( "$images_total_ref" > 0 )) && menu_options+=( "Images" )
                         (( "$marquees_total_ref" > 0 )) && menu_options+=( "Marquees" )
                         (( "$thumbnails_total_ref" > 0 )) && menu_options+=( "Thumbnails" )
@@ -3555,14 +3587,13 @@ main_menu() {
                         (( "$auxiliary_total_ref" > 0 )) && menu_options+=( "Auxiliary" )
                         (( "$configs_total_ref" > 0 )) && menu_options+=( "Configs" )
                     ;;
-                
+
                 esac
 
                 ask_user "Which category would you like to select?" user_answer \
                     "${menu_options[@]}" "Back"
 
-                local -A selected_asset_collection=()
-
+                # Build the selected category collection and pass it to the file selection menu.
                 case "$user_answer" in
                     "Images")
                         build_asset_collection \
@@ -3637,9 +3668,12 @@ main_menu() {
 
                 case "$user_answer" in
                     "Back")
+                    # Return directly to the collection menu when no category
+                    # was selected; otherwise, return to the category menu.
                         if [[ "$selected_prefix" == "all" ]] || \
                             [[ "$selected_prefix" == "unknown" ]]; then
                             STATE="ASSETS_COLLECTION_MENU"
+
                         else
                             STATE="ASSETS_CATEGORY_MENU"
 
@@ -3659,77 +3693,82 @@ main_menu() {
             ;;
 
             "FILE_ACTION_MENU")
-                    print_asset_context "$selected_file"
-                
-                    ask_user "What would you like to do?" user_answer \
+                # Display the context of the selected asset before performing an action.
+                print_asset_context "$selected_file" asset_refs \
+                    asset_refs_count asset_game_count
+
+                ask_user "What would you like to do?" user_answer \
                     "Move" \
                     "Copy" \
                     "Delete" "Back"
 
-                    local target_dir=""
+                local target_dir=""
 
-                    case "$user_answer" in
-                        "Move"|"Copy")
-                            while true; do
+                case "$user_answer" in
+                    "Move"|"Copy")
+                        # Validate the target directory before performing file operations.
+                        while true; do
                             # Always returns a valid existing directory in target_dir_context["dir"].
-                                read -r -p "Enter target directory: " target_dir
+                            read -r -p "Enter target directory: " target_dir
 
-                                if [[ ! -d "$target_dir" ]]; then
-                                    printf "${BLUE}Directory not found. Try again.${ENDCOLOR}\n"
-                                    continue
-                                fi
+                            if [[ ! -d "$target_dir" ]]; then
+                                printf "${BLUE}Directory not found. Try again.${ENDCOLOR}\n"
+                                continue
+                            fi
 
-                                printf "${GREEN}Directory validated.${ENDCOLOR}\n"
-                                break
-                            done
+                            printf "${GREEN}Directory validated.${ENDCOLOR}\n"
+                            break
+                        done
 
-                        ;;&
+                    ;;&
 
-                        "Move")
-                            if sudo rsync -ah --relative --info=progress2 --remove-source-files \
-                                "$selected_file" "$target_dir"; then
-                                printf "${YELLOW}File moved successfully!${ENDCOLOR}\n"
+                    "Move")
+                        # Move the selected file while preserving its relative path.
+                        if sudo rsync -ah --relative --info=progress2 --remove-source-files \
+                            "$selected_file" "$target_dir"; then
+                            printf "${YELLOW}File moved successfully!${ENDCOLOR}\n"
 
-                            else
-                                printf "${BLUE}Failed to move file!${ENDCOLOR}\n"
-                                exit 1
-                            fi                      
-                        ;;
+                        else
+                            printf "${BLUE}Failed to move file!${ENDCOLOR}\n"
+                            exit 1
+                        fi
+                    ;;
 
-                        "Copy")
-                            if sudo rsync -ah --relative --info=progress2 \
-                                "$selected_file" "$target_dir"; then
-                                printf "${YELLOW}File coied successfully!${ENDCOLOR}\n"
+                    "Copy")
+                        # Copy the selected file while preserving its relative path.
+                        if sudo rsync -ah --relative --info=progress2 \
+                            "$selected_file" "$target_dir"; then
+                            printf "${YELLOW}File coied successfully!${ENDCOLOR}\n"
 
-                            else
-                                printf "${BLUE}Failed to copy file!${ENDCOLOR}\n"
-                                exit 1
-                            fi                      
-                        ;;
+                        else
+                            printf "${BLUE}Failed to copy file!${ENDCOLOR}\n"
+                            exit 1
+                        fi
+                    ;;
 
-                        "Delete")
-                            if sudo rm -f "$selected_file"; then
-                                printf "${YELLOW}File deleted successfully!${ENDCOLOR}\n"
+                    "Delete")
+                        # Delete the selected file.
+                        if sudo rm -f "$selected_file"; then
+                            printf "${YELLOW}File deleted successfully!${ENDCOLOR}\n"
 
-                            else
-                                printf "${BLUE}Failed to delete file!${ENDCOLOR}\n"
-                                exit 1
-                            fi                        
-                        ;;
+                        else
+                            printf "${BLUE}Failed to delete file!${ENDCOLOR}\n"
+                            exit 1
+                        fi
+                    ;;
 
+                    "Back")
+                        STATE="FILE_SELECTION_MENU"
+                        PREV_STATE="FILE_ACTION_MENU"
+                        continue
+                    ;;
 
-                        "Back")
-                            STATE="FILE_SELECTION_MENU"
-                            PREV_STATE="FILE_ACTION_MENU"
-                            continue                       
-                        ;;
+                esac
 
-                    esac
-
-                    printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
-                    cd -- "$OLDPWD" || exit 1
-                    STATE="LOOK"
-                    PREV_STATE="FILE_SELECTION_MENU"
+                printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                cd -- "$OLDPWD" || exit 1
+                STATE="LOOK"
+                PREV_STATE="FILE_SELECTION_MENU"
             ;;
 
             # "GAMELIST_MENU")
