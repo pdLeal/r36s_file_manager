@@ -2725,14 +2725,17 @@ print_asset_context() {
     printf "ASSET: ${PINK}%s${ENDCOLOR}\n" "$asset_path"
     printf "\n────────────────────────────────────────────────────────────\n"
 
+
     # Display summary information for the asset.
     printf "%-18s %s\n" \
         "Total References:" \
-        "${refs_count_ref["$asset_path"]:-}"
+        "${refs_count_ref["$asset_path"]:-0}"
 
     printf "%-18s %s\n" \
         "Referenced Games:" \
-        "${game_count_ref["$asset_path"]:-}"
+        "${game_count_ref["$asset_path"]:-0}"
+
+    (( "${refs_count_ref["$asset_path"]:-0}" == 0 )) && return 0
 
     printf "\n"
     printf "%s\n" "References:"
@@ -2741,7 +2744,7 @@ print_asset_context() {
     #   game_path:reference_type
     #
     # Multiple references are separated by '|'.
-    IFS='|' read -ra reference_list <<< "${refs_ref["$asset_path"]}"
+    IFS='|' read -ra reference_list <<< "${refs_ref["$asset_path"]:-}"
 
     # Group reference types by game so the output does not depend
     # on the order in which references were stored in the index.
@@ -2780,7 +2783,7 @@ show_gamelist_data() {
     xmlstarlet sel -t -m "//game/*" -v "name()" -o ": " -v "normalize-space(.)" -n ./gamelist.xml \
     | awk -v C="${PINK}" -v E="${ENDCOLOR}" -F':' '
     BEGIN { game_num = 0 }
-    $1 == "path" && NR > 0 { print "\n--- ENTRADA " ++game_num " ---" }
+    $1 == "path" && NR > 0 { print "\n--- NODE " ++game_num " ---" }
     { 
         gsub(/&amp;/, "\\&", $2)
         gsub(/&lt;/, "<", $2)
@@ -3080,18 +3083,18 @@ main_menu() {
 
                 ask_user "" user_answer \
                     "Browse Directories with ROMs" \
-                    "Browse Directories without ROMs" \
-                    "Find Game" \
                     "Overall Report"
+                    # "Find Game" \
+                    # "Browse Directories without ROMs" \
 
                 case "$user_answer" in
                     "Browse Directories with ROMs")
                         dirs_to_look=( "${dirs_with_games[@]}" )
                     ;;
 
-                    "Browse Directories without ROMs")
-                        dirs_to_look=( "${dirs_without_games[@]}" )
-                    ;;
+                    # "Browse Directories without ROMs")
+                    #     dirs_to_look=( "${dirs_without_games[@]}" )
+                    # ;;
 
                     "Find Game")
                         using_find=1
@@ -3157,6 +3160,7 @@ main_menu() {
                 ask_user "" user_answer \
                     "Browse Games" \
                     "Browse Other Files" \
+                    "See gamelist.xml" \
                     "Back"   
 
                 case "$user_answer" in
@@ -3166,6 +3170,13 @@ main_menu() {
 
                     "Browse Other Files")
                         STATE="ASSETS_COLLECTION_MENU"
+                    ;;
+
+                    "See gamelist.xml")
+                        STATE="GAMELIST_MENU"
+                        PREV_STATE="SYSTEM_DASHBOARD"
+                        continue
+
                     ;;
 
                     "Back")
@@ -3771,33 +3782,47 @@ main_menu() {
                 PREV_STATE="FILE_SELECTION_MENU"
             ;;
 
-            # "GAMELIST_MENU")
-                #     ask_user "" user_answer "Usar VS Code" "Ver Entradas" "Deletar gamelist.xml" "Voltar"
-                #     case "$user_answer" in
-                #             "Usar VS Code")
-                #                 code --wait ./gamelist.xml \
-                #                     && printf "${YELLOW}Entrada atualizada com sucesso!${ENDCOLOR}\n"
-                #                 STATE="GAMELIST_MENU"
-                #             ;;
+            "GAMELIST_MENU")
+                ask_user "" user_answer \
+                    "View Metadata" \
+                    "Edit gamelist.xml" \
+                    "Delete gamelist.xml" \
+                    "Back"
 
-                #             "Ver Entradas")
-                #                 show_gamelist_data
-                #                 STATE="GAMELIST_MENU"
-                #             ;;
+                case "$user_answer" in
 
-                #             "Deletar gamelist.xml")
-                #                 echo "sudo rm ./gamelist.xml"
-                #                 STATE="GAMELIST_MENU"
-                #             ;;
+                    "View Metadata")
+                        show_gamelist_data
+                    ;;
 
-                #             "Voltar")
-                #                 STATE="DIR_ACTION"                        
-                #             ;;
+                    "Edit gamelist.xml")
+                        sudo code --no-sandbox --wait ./gamelist.xml \
+                            && printf "${YELLOW}Entry updated successfully!${ENDCOLOR}\n"
+                    ;;
 
-                #     esac
+                    "Delete gamelist.xml")
+                        echo "sudo rm ./gamelist.xml"
+                        STATE="LOOK"
+                        PREV_STATE="GAMELIST_MENU"
 
-                #     PREV_STATE="GAMELIST_MENU"
-            # ;;
+                        printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                        cd -- "$OLDPWD" || exit 1
+                        continue
+
+                    ;;
+
+                    "Back")
+                        STATE="SYSTEM_DASHBOARD"
+                        PREV_STATE="GAMELIST_MENU"
+                        continue
+
+                    ;;
+
+                esac
+
+                STATE="GAMELIST_MENU"
+                PREV_STATE="GAMELIST_MENU"
+            ;;
 
             # "FIND_GAME")
                 #     find_games dirs_to_look game_library
