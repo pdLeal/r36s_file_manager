@@ -514,50 +514,62 @@ build_asset_index() {
     local list=""
 
     local game_path=""
+    local value=""
+
+    local asset_paths=()
     local asset_path=""
 
     for game_path in "${!asset_collection_ref[@]}"; do
-        asset_path="${asset_collection_ref[$game_path]}"
+        value="${asset_collection_ref[$game_path]}"
 
         # printf "Game: %s\nAsset: %s\n\n" "$game_path" "$asset_path"
 
-        # ---------------------------------------------------------------------
-        # Register the complete reference.
-        # ---------------------------------------------------------------------
-
-        # Resquícios de uma outra versão e não utilizadas pelo programa atualmente
-        # APAGAR CASO REALMENTE SE MOSTRE SEM USO ATÉ O FINAL!!!
-
-        register_reference \
-            "$asset_path" \
-            "$game_path:$asset_type" \
-            asset_refs_ref "" \
-            asset_refs_count_ref
-
-        # ---------------------------------------------------------------------
-        # Register the game only once per asset.
-        # ---------------------------------------------------------------------
-        list="|${asset_games_ref["$asset_path"]:-}|"
-
-        if [[ "$list" != *"|$game_path|"* ]]; then
-            register_reference \
-                "$asset_path" \
-                "$game_path" \
-                asset_games_ref "" \
-                asset_game_count_ref
+        if [[ "$value" == *"|"* ]]; then
+            IFS='|' read -ra asset_paths <<< "$value"
+            
+        else
+            asset_paths=( "$value" )
         fi
 
-        # ---------------------------------------------------------------------
-        # Register the tag only once per asset.
-        # ---------------------------------------------------------------------
-        # list="|${asset_tags_ref["$asset_path"]:-}|"
+        for asset_path in "${asset_paths[@]}"; do
+            # ---------------------------------------------------------------------
+            # Register the complete reference.
+            # ---------------------------------------------------------------------
 
-        # if [[ "$list" != *"|$asset_type|"* ]]; then
-        #     register_reference \
-        #         "$asset_path" \
-        #         "$asset_type" \
-        #         asset_tags_ref
-        # fi
+            # Resquícios de uma outra versão e não utilizadas pelo programa atualmente
+            # APAGAR CASO REALMENTE SE MOSTRE SEM USO ATÉ O FINAL!!!
+
+            register_reference \
+                "$asset_path" \
+                "$game_path:$asset_type" \
+                asset_refs_ref "" \
+                asset_refs_count_ref
+
+            # ---------------------------------------------------------------------
+            # Register the game only once per asset.
+            # ---------------------------------------------------------------------
+            list="|${asset_games_ref["$asset_path"]:-}|"
+
+            if [[ "$list" != *"|$game_path|"* ]]; then
+                register_reference \
+                    "$asset_path" \
+                    "$game_path" \
+                    asset_games_ref "" \
+                    asset_game_count_ref
+            fi
+
+            # ---------------------------------------------------------------------
+            # Register the tag only once per asset.
+            # ---------------------------------------------------------------------
+            # list="|${asset_tags_ref["$asset_path"]:-}|"
+
+            # if [[ "$list" != *"|$asset_type|"* ]]; then
+            #     register_reference \
+            #         "$asset_path" \
+            #         "$asset_type" \
+            #         asset_tags_ref
+            # fi
+        done
     done
 }
 
@@ -723,14 +735,14 @@ classify_possible_roms() {
 
         if [[ -n "${blacklist[$group_key]:-}" ]]; then
             local config_path="${grouped_possible_roms[$group_key]}"
-            unlinked_configs_ref["$config_path"]="$group_key" # group_key=config_name
+            unlinked_configs_ref["$config_path"]="$config_path"
 
         else
             IFS='|' read -ra group <<< "${grouped_possible_roms[$group_key]}"
 
             if (( ${#group[@]} == 1 )); then
                 game_path="${group[0]}"
-                orphan_games_ref["$game_path"]="$group_key" # group_key=game_name
+                orphan_games_ref["$game_path"]="$group_key"
 
             else
                 # Multiple files in the same group likely represent different
@@ -1336,19 +1348,15 @@ analyze_directory() {
 
 
     # ghost_* are not real files, so there is no rason (so far) to put them on the index
-    assets_names+=( "auxiliary" "configs" )
-    local relations=( "valid" "orphan" "linked" )
+    assets_names+=( "auxiliary" "configs" "files" )
+    local relations=( "valid" "orphan" "linked" "unlinked" "unknown" )
     local relation=""
     for relation in "${relations[@]}"; do
         for name in "${assets_names[@]}"; do
             local combo="${relation}_${name}"
 
-            case "$combo" in
-            # Skip unset arrays
-            "valid_auxiliary"|"orphan_auxiliary"|"valid_configs"|"orphan_configs")
-                continue
-                ;;
-            esac
+            declare -p "$combo" &>/dev/null || continue
+
 
             local -n arr_ref="$combo"
 
@@ -1384,6 +1392,9 @@ print_summary_line() {
 print_directory_dashboard() {
 # Displays a summary of the current directory analysis.
     local system_dir="$1"
+    local print_note="${2:-"true"}"
+    local -i total_files=0
+
     system_dir="${system_dir%/}"
 
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
@@ -1459,88 +1470,146 @@ print_directory_dashboard() {
     print_summary_line "Linked Config"       "$linked_configs_total"
     print_summary_line "Unlinked Config"     "${#unlinked_configs[@]}"
 
-    printf "\n${YELLOW}────────────── Other ──────────────${ENDCOLOR}\n"
+    if (( "${#unknown_files[@]}" > 0 )); then    
+        printf "\n${YELLOW}────────────── Other ──────────────${ENDCOLOR}\n"
 
-    print_summary_line "Unknown Files" "${#unknown_files[@]}"
+        print_summary_line "Unknown Files" "${#unknown_files[@]}"
+    fi
 
     printf "\n${YELLOW}───────────────────────────────────${ENDCOLOR}\n"
 
+    total_files+="${#game_library[@]}"
+    total_files+="${#asset_refs[@]}"
 
-    printf "\n${CYAN}NOTE:${ENDCOLOR} Asset and support-file totals represent file relations,\n"
-    printf "      not the actual number of physical files in the directory.\n"
-    printf "      The same file may appear in multiple relations or categories\n"
-    printf "      (e.g. Valid, Orphan, and Linked), causing summed totals to\n"
-    printf "      overstate the actual number of files present.\n"
+    print_summary_line "Total Files" "$total_files"
+    printf "\n${YELLOW}───────────────────────────────────${ENDCOLOR}\n"
 
+    if [[ "$print_note" == "true" ]]; then
+        printf "\n${CYAN}NOTE:${ENDCOLOR} Asset and support-file totals represent file relations,\n"
+        printf "      not the actual number of physical files in the directory.\n"
+        printf "      The same file may appear in multiple relations or categories\n"
+        printf "      (e.g. Valid, Orphan, and Linked), causing summed totals to\n"
+        printf "      overstate the actual number of files present.\n"
+    fi
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
 
     
 }
 
-count_by_dir() {
-# GAMBIARRA P/ DEEBUG - IMMPLEMENTAR CORRETAMENTE DEPOIS!!!
+generate_overall_report() {
+# Analyzes all directories containing games and generates an overall report.
     local -n dirs_with_games_ref="$1"
+    local -n library="$2"
 
     local dir=""
+
+    # --------------------------------------------------------------------------
+    # OVERALL TOTALS
+    # --------------------------------------------------------------------------
     local -i total_games=0
+    local -i total_valid_relations=0
+    local -i total_orphan_relations=0
+    local -i total_linked_relations=0
+    local -i total_unlinked_relations=0
+    local -i total_ghost_relations=0
+    local -i total_unknown_files=0
+    local -i total_files=0
+
+    # --------------------------------------------------------------------------
+    # RELATION COLLECTIONS
+    #
+    # Each prefix represents a relation/status category.
+    # Each suffix represents the type of file involved in that relation.
+    # --------------------------------------------------------------------------
+    local prefixes=( "valid" "orphan" "linked" "unlinked" "ghost" "unknown" )
+    local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
+
+    local prefix=""
+    local suffix=""
+    local combo=""
+    local combo_total=""
 
     for dir in "${dirs_with_games_ref[@]}"; do
         cd -- "$dir" || exit 1
 
-        unclassified_files=()
-        xml_unclassified_games=()
-        valid_games=()
-        ghost_games=() 
-        orphan_games=()
-        game_library=()
+        reset_analysis_state
 
-        local -A unclassified_images=() unclassified_videos=() unclassified_marquees=() unclassified_thumbnails=()
-        local -A valid_images=() valid_videos=() valid_marquees=() valid_thumbnails=()
-        local -A unlinked_images=() unlinked_videos=() unlinked_marquees=() unlinked_thumbnails=()
-        local -A ghost_images=() ghost_videos=() ghost_marquees=() ghost_thumbnails=()
+        analyze_directory "$dir"
 
-        get_all_files unclassified_files 
-        
-        load_xml_metadata xml_unclassified_games unclassified_images unclassified_videos unclassified_marquees unclassified_thumbnails
+        # Display the report for the current directory before moving
+        # on to the next one.
+        print_directory_dashboard "$dir" "false"
 
-        classify_xml_games unclassified_files xml_unclassified_games valid_games ghost_games "$dir"
+        # Games are physical entries in the current game library.
+        total_games+="${#library[@]}"
 
-        local assets_names=( "images" "videos" "marquees" "thumbnails" )
-        local name=""
-        # certeza q tem forma de abstrair classify_xml_asset() p/ q lide com todos os assets de uma vez, mas por enquanto isso serve
-        for name in "${assets_names[@]}"; do
-            local -n arr_ref="unclassified_${name}"
-            # printf "Tamanho de %s: %d\n" "${!arr_ref}" "${#arr_ref[@]}"
-            # se ñ há assets p/ serem classificados, ñ há necessidade de classificar oq não existe
-            (( ${#arr_ref[@]} > 0 )) && classify_xml_asset unclassified_files "unclassified_${name}" "valid_${name}" "orphan_${name}" "ghost_${name}" valid_games
+        # ----------------------------------------------------------------------
+        # ACCUMULATE RELATION TOTALS
+        #
+        # The *_total variables represent relations, not necessarily unique
+        # physical files. A single file may therefore contribute to more than
+        # one relation category.
+        # ----------------------------------------------------------------------
+        for prefix in "${prefixes[@]}"; do
+            for suffix in "${suffixes[@]}"; do
+                combo="${prefix}_${suffix}"
+                combo_total="${combo}_total"
+
+                # Skip collections that do not exist.
+                declare -p "$combo" &>/dev/null || continue
+
+                # Skip collections without a corresponding total.
+                declare -p "$combo_total" &>/dev/null || continue
+
+                local -n count_ref="$combo_total"
+                local -n total_ref="${prefix}_total"
+
+                # Do not add empty relation collections to the overall total.
+                (( count_ref == 0 )) && continue
+
+                total_ref=$(( total_ref + count_ref ))
+            done
         done
 
-        local -A possible_roms=() grouped_possible_roms=() grouped_valid_games=() config_files=()
-        
-        extract_possible_roms unclassified_files possible_roms "$dir"
-        group_files possible_roms grouped_possible_roms
-        classify_possible_roms grouped_possible_roms orphan_games config_files
-        build_game_library valid_games orphan_games game_library
+        # ----------------------------------------------------------------------
+        # ACCUMULATE OVERALL COUNTS
+        # ----------------------------------------------------------------------
 
-        total_games+="${#game_library[@]}"
+        total_valid_relations+="$valid_total"
+        total_orphan_relations+="$orphan_total"
+        total_linked_relations+="$linked_total"
+        total_unlinked_relations+="$unlinked_total"
+        total_ghost_relations+="$ghost_total"
 
-        printf "\n========== ${GREEN}%s${ENDCOLOR} ==========\n" "$dir"
-        printf "XML válidos      : %d\n" "${#valid_games[@]}"
-        printf "Jogos órfãos     : %d\n" "${#orphan_games[@]}"
-        printf "Jogos fantasma: %d\n" "${#ghost_games[@]}"
-        printf "${CYAN}Total de jogos   : %d${ENDCOLOR}\n" "${#game_library[@]}"
-        printf "${RED}Não classificados   : %d${ENDCOLOR}\n" "${#unclassified_files[@]}"
-        printf "===========================\n\n"
-        
-        # for file in "${!unclassified_files[@]}"; do
-        #     printf "File: ${PINK}%s${ENDCOLOR}\n" "$file"
-        
-        # done 
-    
+        # Unknown is a special collection whose array size is itself
+        # the authoritative total.
+        total_unknown_files+="${#unknown_files[@]}"
+
+        # Total files represents physical filesystem entries, therefore
+        # games and indexed asset files are counted separately here.
+        total_files+="${#library[@]}"
+        total_files+="${#asset_refs[@]}"
+
         cd "$OLDPWD" || exit 1
     done
 
-    printf "Total de jogos   : %d\n" "$total_games"
+    # --------------------------------------------------------------------------
+    # OVERALL REPORT
+    # --------------------------------------------------------------------------
+    printf "\n${PINK}============================================================\n"
+    printf "                    OVERALL SUMMARY"
+    printf "\n============================================================${ENDCOLOR}\n\n"
+
+    print_summary_line "Total Games" "$total_games"
+    print_summary_line "Valid Relations" "$total_valid_relations"
+    print_summary_line "Orphan Relations" "$total_orphan_relations"
+    print_summary_line "Linked Relations" "$total_linked_relations"
+    print_summary_line "Unlinked Relations" "$total_unlinked_relations"
+    print_summary_line "Ghost Relations" "$total_ghost_relations"
+    print_summary_line "Unknown Files" "$total_unknown_files"
+    print_summary_line "Total Files" "$total_files"
+
+    printf "\n${PINK}------------------------------------------------------------${ENDCOLOR}\n"
 }
 
 sort_files() {
@@ -2678,12 +2747,12 @@ build_asset_collection() {
             local -n count_ref="$3"
             count="${count_ref["$game_path"]:-}"
 
-            if (( "${count_ref["$game_path"]}" == 1 )); then
+            if (( "${count_ref["$game_path"]:-0}" <= 1 )); then
                 # Skip assets already present in the collection.
-                [[ -v "collection_ref[$asset_path]" ]] && continue
+                [[ -v "collection_ref["$asset_path"]" ]] && continue
                 collection_ref["$asset_path"]=1
 
-            elif (( "${count_ref["$game_path"]}" > 1 )); then
+            elif (( "${count_ref["$game_path"]:-0}" > 1 )); then
                 local asset=""
                 IFS='|' read -ra group <<< "$asset_path"
 
@@ -2952,6 +3021,8 @@ main_menu() {
     local ghost_marquees_total=0
     local ghost_thumbnails_total=0
 
+    local ghost_total=0
+
     local -Ai valid_images_count=()
     local -Ai valid_videos_count=()
     local -Ai valid_marquees_count=()
@@ -2968,9 +3039,9 @@ main_menu() {
     local -Ai ghost_thumbnails_count=()
 
     # --------------------------------------------------------------------------
-    # XML ASSET INDEXES
+    # ASSET INDEXES
     # --------------------------------------------------------------------------
-    # Inverted indexes used to track XML asset references.
+    # Inverted indexes used to track asset references.
     local -A asset_refs=()
     local -Ai asset_refs_count=()
 
@@ -3083,18 +3154,14 @@ main_menu() {
 
                 ask_user "" user_answer \
                     "Browse Directories with ROMs" \
-                    "Overall Report"
-                    # "Find Game" \
+                    "Overall Report" \
+                    "Find Game" 
                     # "Browse Directories without ROMs" \
 
                 case "$user_answer" in
                     "Browse Directories with ROMs")
                         dirs_to_look=( "${dirs_with_games[@]}" )
                     ;;
-
-                    # "Browse Directories without ROMs")
-                    #     dirs_to_look=( "${dirs_without_games[@]}" )
-                    # ;;
 
                     "Find Game")
                         using_find=1
@@ -3105,12 +3172,15 @@ main_menu() {
 
                     "Overall Report")
                     # Generate an overview of all detected systems.
-                    # TODO: IMPLEMENTAR CORRETAMENTE DEPOIS
-                        count_by_dir dirs_with_games
+                        generate_overall_report dirs_with_games game_library 
 
                         STATE="LOOK"
                         continue
                     ;;
+
+                    # "Browse Directories without ROMs")
+                    #     dirs_to_look=( "${dirs_without_games[@]}" )
+                    # ;;
 
                 esac
 
@@ -3553,6 +3623,7 @@ main_menu() {
 
             "ASSETS_CATEGORY_MENU")
                 menu_options=()
+                selected_asset_collection=()
 
                 # Build the category menu based on the selected asset collection.
                 case "$prefix" in
@@ -3825,17 +3896,17 @@ main_menu() {
             ;;
 
             # "FIND_GAME")
-                #     find_games dirs_to_look game_library
+            #         find_games dirs_to_look game_library
 
-                #     if [[ "${#game_library[@]}" -lt 1 ]]; then
-                #         printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
-                #     else
-                #         printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
-                #         STATE="GAMES_MENU"    
+            #         if [[ "${#game_library[@]}" -lt 1 ]]; then
+            #             printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
+            #         else
+            #             printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
+            #             STATE="GAMES_MENU"    
 
-                #     fi   
+            #         fi   
 
-                #     PREV_STATE="FIND_GAME" 
+            #         PREV_STATE="FIND_GAME" 
             # ;;
 
         esac
