@@ -360,6 +360,11 @@ load_xml_metadata() {
     local thumbnail_path=""
 
     while IFS='|' read -r game_path game_name image_path video_path marquee_path thumbnail_path; do
+        
+        # xmlstarlet may emit rows containing empty fields when optional XML elements
+        # are missing. So, ignore games without a valid ROM game_path.
+        [[ -z "$game_path" ]] && continue
+
         # Prefix paths with the directory being analyzed when necessary.
         if [[ "$dir_to_analyze" != "./" ]]; then
             game_path="./${dir_to_analyze}${game_path#./}"
@@ -368,10 +373,8 @@ load_xml_metadata() {
             marquee_path="./${dir_to_analyze}${marquee_path#./}"
             thumbnail_path="./${dir_to_analyze}${thumbnail_path#./}"
         fi
-
-        # xmlstarlet may emit rows containing empty fields when optional XML elements
-        # are missing. So, ignore games without a valid ROM game_path.
-        [[ -n "$game_path" ]] && xml_unclassified_games_ref["$game_path"]="$game_name"
+        
+        xml_unclassified_games_ref["$game_path"]="$game_name"
 
         # Store only existing asset paths to avoid unnecessary empty games.
         [[ -f "$image_path" ]] && unclassified_images_ref["$game_path"]="$image_path"
@@ -1293,17 +1296,31 @@ analyze_directory() {
 # Executes the complete directory analysis pipeline.
 
     local system_dir="$1"
+    local using_find="${2:-0}"
 
-    # Collect every file from the selected directory.
-    get_all_files unclassified_files
+    if (( "$using_find" == 1 )); then
+        # Collect every file from the selected directory.
+        get_all_files unclassified_files "$system_dir"
 
-    # Load all entries referenced by gamelist.xml.
-    load_xml_metadata \
-        xml_unclassified_games \
-        unclassified_images \
-        unclassified_videos \
-        unclassified_marquees \
-        unclassified_thumbnails
+        # Load all entries referenced by gamelist.xml.
+        load_xml_metadata \
+            xml_unclassified_games \
+            unclassified_images \
+            unclassified_videos \
+            unclassified_marquees \
+            unclassified_thumbnails \
+            "$system_dir"
+
+    else
+        get_all_files unclassified_files
+
+        load_xml_metadata \
+            xml_unclassified_games \
+            unclassified_images \
+            unclassified_videos \
+            unclassified_marquees \
+            unclassified_thumbnails
+    fi
 
     # Classify XML game entries.
     classify_xml_games \
@@ -3931,31 +3948,12 @@ main_menu() {
             "FIND_GAME")
                 local dir=""
                 for dir in "${dirs_to_look[@]}"; do
-                  # analyze_directory "$selected_system_dir"
-                    get_all_files unclassified_files "$dir"
-
-                    load_xml_metadata \
-                        xml_unclassified_games \
-                        unclassified_images \
-                        unclassified_videos \
-                        unclassified_marquees \
-                        unclassified_thumbnails \
-                        "$dir"
-
+                    analyze_directory "$dir" "$using_find"
 
                 done
 
-                # get_all_files unclassified_files "testes/"
-
-                # load_xml_metadata \
-                #     xml_unclassified_games \
-                #     unclassified_images \
-                #     unclassified_videos \
-                #     unclassified_marquees \
-                #     unclassified_thumbnails \
-                #     "testes/"
-
-                printf "%s\n" "${!xml_unclassified_games[@]}" | wc -l
+                print_directory_dashboard "testes/"
+                # printf "%s\n" "${valid_games[@]}"
                 exit
             
                 # find_games dirs_to_look game_library
