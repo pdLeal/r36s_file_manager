@@ -348,6 +348,9 @@ load_xml_metadata() {
     local -n unclassified_marquees_ref="$4"
     local -n unclassified_thumbnails_ref="$5"
 
+    local dir_to_analyze="${6:-./}"
+    local gamelist_path="${dir_to_analyze}gamelist.xml"
+
     local game_path=""
     local game_name=""
 
@@ -357,21 +360,38 @@ load_xml_metadata() {
     local thumbnail_path=""
 
     while IFS='|' read -r game_path game_name image_path video_path marquee_path thumbnail_path; do
-        # xmlstarlet may emit rows containing empty fields when optional XML elements
-        # are missing. So, ignore games without a valid ROM game_path
-        [[ -n "$game_path" ]] && xml_unclassified_games_ref["$game_path"]="$game_name"
-        
-        # Store only existing asset paths to avoid unnecessary empty games.
-        [[ -n "$image_path" ]] && unclassified_images_ref["$game_path"]="$image_path"
-        [[ -n "$video_path" ]] && unclassified_videos_ref["$game_path"]="$video_path"
-        [[ -n "$marquee_path" ]] && unclassified_marquees_ref["$game_path"]="$marquee_path"
-        [[ -n "$thumbnail_path" ]] && unclassified_thumbnails_ref["$game_path"]="$thumbnail_path"
-        
+        # Prefix paths with the directory being analyzed when necessary.
+        if [[ "$dir_to_analyze" != "./" ]]; then
+            game_path="./${dir_to_analyze}${game_path#./}"
+            image_path="./${dir_to_analyze}${image_path#./}"
+            video_path="./${dir_to_analyze}${video_path#./}"
+            marquee_path="./${dir_to_analyze}${marquee_path#./}"
+            thumbnail_path="./${dir_to_analyze}${thumbnail_path#./}"
+        fi
 
-    done < <(xmlstarlet sel -t -m "//game" -v "path" -o "|" -v "name" -o "|" -v "image" \
-                -o "|" -v "video" -o "|" -v "marquee" -o "|" -v "thumbnail" -n ./gamelist.xml | \
-                sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-        # Decode XML entities (e.g. $amp) so asset game_paths match the actual filesystem names.
+        # xmlstarlet may emit rows containing empty fields when optional XML elements
+        # are missing. So, ignore games without a valid ROM game_path.
+        [[ -n "$game_path" ]] && xml_unclassified_games_ref["$game_path"]="$game_name"
+
+        # Store only existing asset paths to avoid unnecessary empty games.
+        [[ -f "$image_path" ]] && unclassified_images_ref["$game_path"]="$image_path"
+        [[ -f "$video_path" ]] && unclassified_videos_ref["$game_path"]="$video_path"
+        [[ -f "$marquee_path" ]] && unclassified_marquees_ref["$game_path"]="$marquee_path"
+        [[ -f "$thumbnail_path" ]] && unclassified_thumbnails_ref["$game_path"]="$thumbnail_path"
+
+    done < <(
+        xmlstarlet sel -t \
+            -m "//game" \
+            -v "path" -o "|" \
+            -v "name" -o "|" \
+            -v "image" -o "|" \
+            -v "video" -o "|" \
+            -v "marquee" -o "|" \
+            -v "thumbnail" -n \
+            "$gamelist_path" |
+        sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g'
+    )
+    # Decode XML entities (e.g. &amp;) so asset/game paths match the actual filesystem names.
 }
 
 classify_xml_games() {
@@ -3914,9 +3934,28 @@ main_menu() {
                   # analyze_directory "$selected_system_dir"
                     get_all_files unclassified_files "$dir"
 
+                    load_xml_metadata \
+                        xml_unclassified_games \
+                        unclassified_images \
+                        unclassified_videos \
+                        unclassified_marquees \
+                        unclassified_thumbnails \
+                        "$dir"
+
 
                 done
-                printf "%s\n" "${!unclassified_files[@]}"
+
+                # get_all_files unclassified_files "testes/"
+
+                # load_xml_metadata \
+                #     xml_unclassified_games \
+                #     unclassified_images \
+                #     unclassified_videos \
+                #     unclassified_marquees \
+                #     unclassified_thumbnails \
+                #     "testes/"
+
+                printf "%s\n" "${!xml_unclassified_games[@]}" | wc -l
                 exit
             
                 # find_games dirs_to_look game_library
