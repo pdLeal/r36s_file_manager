@@ -304,7 +304,7 @@ ask_user() {
 }
 
 get_all_files() {
-# Collect all files from the current directory.
+# Collect all files from the specified directory.
     # ============================================================================
     # Every discovered file is initially considered unclassified. Later pipeline
     # stages progressively move files from this collection into their respective
@@ -314,17 +314,27 @@ get_all_files() {
     shopt -s globstar nullglob
 
     local -n unclassified_files_ref="$1"
+    local dir_to_analyze="${2:-./}"
 
     local file=""
 
-    # Iterate through every file under the current directory
-    for file in **/*; do
-        if [[ -f "$file" ]];then # Ignore directories and keep only regular files
-            unclassified_files_ref["./$file"]=1
-            # The associative array is used as a set, where keys are file paths and values are placeholders.
-            # Presence of a key indicates that the file has not yet been classified.
-        fi
-    done
+    # Iterate through every file under the directory being analyzed
+    if [[ "$dir_to_analyze" == "./" ]]; then
+        for file in **/*; do
+            if [[ -f "$file" ]]; then
+                unclassified_files_ref["./$file"]=1
+                # The associative array is used as a set, where keys are file paths
+                # and values are placeholders.
+            fi
+        done
+    else
+        for file in "$dir_to_analyze"**/*; do
+            if [[ -f "$file" ]]; then
+                unclassified_files_ref["./$file"]=1
+                
+            fi
+        done
+    fi
 
     shopt -u globstar nullglob
 }
@@ -1499,7 +1509,8 @@ print_directory_dashboard() {
 generate_overall_report() {
 # Analyzes all directories containing games and generates an overall report.
     local -n dirs_with_games_ref="$1"
-    local -n library="$2"
+    local -n game_library_ref="$2"
+    local -n asset_refs_ref="$3"
 
     local dir=""
 
@@ -1541,7 +1552,7 @@ generate_overall_report() {
         print_directory_dashboard "$dir" "false"
 
         # Games are physical entries in the current game library.
-        total_games+="${#library[@]}"
+        total_games+="${#game_library_ref[@]}"
 
         # ----------------------------------------------------------------------
         # ACCUMULATE RELATION TOTALS
@@ -1587,8 +1598,8 @@ generate_overall_report() {
 
         # Total files represents physical filesystem entries, therefore
         # games and indexed asset files are counted separately here.
-        total_files+="${#library[@]}"
-        total_files+="${#asset_refs[@]}"
+        total_files+="${#game_library_ref[@]}"
+        total_files+="${#asset_refs_ref[@]}"
 
         cd "$OLDPWD" || exit 1
     done
@@ -1601,13 +1612,14 @@ generate_overall_report() {
     printf "\n============================================================${ENDCOLOR}\n\n"
 
     print_summary_line "Total Games" "$total_games"
+    print_summary_line "Total Files" "$total_files"
+    echo ""
     print_summary_line "Valid Relations" "$total_valid_relations"
     print_summary_line "Orphan Relations" "$total_orphan_relations"
     print_summary_line "Linked Relations" "$total_linked_relations"
     print_summary_line "Unlinked Relations" "$total_unlinked_relations"
     print_summary_line "Ghost Relations" "$total_ghost_relations"
     print_summary_line "Unknown Files" "$total_unknown_files"
-    print_summary_line "Total Files" "$total_files"
 
     printf "\n${PINK}------------------------------------------------------------${ENDCOLOR}\n"
 }
@@ -3172,7 +3184,8 @@ main_menu() {
 
                     "Overall Report")
                     # Generate an overview of all detected systems.
-                        generate_overall_report dirs_with_games game_library 
+                        generate_overall_report dirs_with_games \
+                            game_library asset_refs 
 
                         STATE="LOOK"
                         continue
@@ -3895,19 +3908,29 @@ main_menu() {
                 PREV_STATE="GAMELIST_MENU"
             ;;
 
-            # "FIND_GAME")
-            #         find_games dirs_to_look game_library
+            "FIND_GAME")
+                local dir=""
+                for dir in "${dirs_to_look[@]}"; do
+                  # analyze_directory "$selected_system_dir"
+                    get_all_files unclassified_files "$dir"
 
-            #         if [[ "${#game_library[@]}" -lt 1 ]]; then
-            #             printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
-            #         else
-            #             printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
-            #             STATE="GAMES_MENU"    
 
-            #         fi   
+                done
+                printf "%s\n" "${!unclassified_files[@]}"
+                exit
+            
+                # find_games dirs_to_look game_library
 
-            #         PREV_STATE="FIND_GAME" 
-            # ;;
+                # if [[ "${#game_library[@]}" -lt 1 ]]; then
+                #     printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
+                # else
+                #     printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
+                #     STATE="GAMES_MENU"    
+
+                # fi   
+
+                PREV_STATE="FIND_GAME" 
+            ;;
 
         esac
     done
