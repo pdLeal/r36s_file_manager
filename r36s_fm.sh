@@ -2915,55 +2915,48 @@ show_gamelist_data() {
 }
 
 find_games() {
-    local -n dirs="$1"
-    local -n games="$2"
-    local target_game
-    local lower_target
-    local dir
-    games=()
+    local -n dirs_to_look_ref="$1"
+    local -n target_collection_ref="$2"
+    local -n game_library_ref="$3"
 
-    read -r -p "Digite o nome do jogo: " target_game
+    local using_find="$4"
 
-    lower_target="${target_game,,}"
+    local dir=""
+    local target_game=""
+    local game_path=""
+    local game_name=""
+    local -A games_found=()
 
+    read -rp "Game to search: " target_game
 
-    for dir in "${dirs[@]}"; do
-
-        local path=""
-        local name=""
-        while IFS='|' read -r path name; do
-
-            path="${path#./}"
-            local game_path="$dir$path"
-                        
-            if [[ -n "${games["$game_path"]:-}" ]]; then
-                printf "${BLUE}DUPLICATA!!!!!!${ENDCOLOR}\n"
-                printf "Name: ${CYAN}%s${ENDCOLOR}\nPath: ${PINK}%s${ENDCOLOR}\n\n" "$name" "$path"
-                continue                   
-
-            fi
-            games["$game_path"]="$name"                        
-
-
-        done < <(xmlstarlet sel -t -m "//game[contains(translate(name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '$lower_target')]" \
-                    -v "path" -o "|" -v "name" -n ./"$dir"/gamelist.xml \
-                    | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'\''/g')
-
+    # Analyze each directory in the search scope.
+    for dir in "${dirs_to_look_ref[@]}"; do
+        echo "Analyzing $dir"
+        analyze_directory "$dir" "$using_find"
     done
-       
-        local file
-        find . -type f -iname "*$lower_target*" -print0 | while IFS= read -r -d '' file; do
-                file=${file#./}
 
-                printf "\n${RED}Testando:${ENDCOLOR} %s\n" "$file"
+    # Search the global game library for games matching the user's query.
+    for game_path in "${!game_library_ref[@]}"; do
+        game_name="${game_library_ref["$game_path"]}"
 
-                if [[ -n "${games["$file"]:-}" ]]; then
-                    printf "Arquivo já encontrado no xml: ${GREEN}%s${ENDCOLOR}\n" "${games["$file"]}"
-                fi
-            done
+        if [[ "${game_name,,}" == *"${target_game,,}"* ]]; then
+            games_found["$game_path"]="$game_name"
+        fi
+    done
 
- 
+    # No matching games were found.
+    if (( "${#games_found[@]}" == 0 )); then
+        printf "${BLUE}No games found.${ENDCOLOR}\n"
+        return 202
+
+    else
+        printf "${YELLOW}%s games found.${ENDCOLOR}\n" "${#games_found[@]}"
+        build_target_collection games_found target_collection_ref
+        return 0
+
+    fi
 }
+
 
 # Initial application state
 STATE="LOOK"
@@ -2986,6 +2979,9 @@ main_menu() {
     # MENU CONTEXT
     # --------------------------------------------------------------------------
     local menu_options=()
+    local -A target_collection=()
+    local using_find=0
+
 
     # Stores contextual information about the currently selected directory.
     local -A target_dir_context=()
@@ -3213,10 +3209,21 @@ main_menu() {
                     ;;
 
                     "Find Game")
+                    # TODO: A LOT os "small" bugs to fix down this path --'
+                    # and i don't wanna deal with this now,
+                    # sooooo do some tests, they will show up =)
                         using_find=1
                         dirs_to_look=( "${dirs_with_games[@]}" )
-                        STATE="FIND_GAME"
-                        continue
+
+                        if find_games dirs_to_look target_collection \
+                            game_library "$using_find"; then
+
+                            STATE="GAMES_SELECTION_MENU"
+                            PREV_STATE="LOOK"
+                            continue
+
+                        fi
+
                     ;;
 
                     "Overall Report")
@@ -3234,8 +3241,8 @@ main_menu() {
 
                 esac
 
-                PREV_STATE="LOOK"
                 STATE="CONSOLE_MENU"
+                PREV_STATE="LOOK"
             ;;
 
             "CONSOLE_MENU")
@@ -3311,8 +3318,8 @@ main_menu() {
 
             "GAMES_COLLECTION_MENU")
             # Build the menu with only the collections that contain games.
-                local -A target_collection=()
                 menu_options=( "All games" )
+                target_collection=()
 
                 (( ${#valid_games[@]} > 0 )) && menu_options+=( "XML games" )
                 (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Orphan games" )
@@ -3365,7 +3372,13 @@ main_menu() {
 
                 case "$user_answer" in
                     "Back")
-                        STATE="GAMES_COLLECTION_MENU"
+                        if (( "$using_find" == 1 )); then
+                            STATE="LOOK"
+                        
+                        else
+                            STATE="GAMES_COLLECTION_MENU"
+
+                        fi
                         PREV_STATE="GAMES_SELECTION_MENU"
                         continue
 
@@ -3522,7 +3535,7 @@ main_menu() {
 
                     "Back")
                         if (( using_find )); then
-                            printf "Voltando p/ ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                           "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
                             cd "$OLDPWD" || exit 1
                         
                         fi
@@ -3532,13 +3545,17 @@ main_menu() {
 
                 esac
 
+                if (( ! using_find )); then
+                printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                cd -- "$OLDPWD" || exit 1
+                fi
+                
+
                 # Most game operations modify the filesystem and/or gamelist.xml.
                 # Returning to the initial state forces a new analysis cycle,
                 # ensuring that all collections, contexts, and classifications
                 # are rebuilt with the current data and preventing stale state
                 # from causing unexpected behavior.
-                printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
-                cd -- "$OLDPWD" || exit 1
                 STATE="LOOK"
                 PREV_STATE="GAME_ACTION_MENU"
             ;;
@@ -3945,42 +3962,8 @@ main_menu() {
                 PREV_STATE="GAMELIST_MENU"
             ;;
 
-            "FIND_GAME")
-                local dir=""
-                for dir in "${dirs_to_look[@]}"; do
-                    analyze_directory "$dir" "$using_find"
-
-                done
-
-                print_directory_dashboard "testes/"
-                # printf "%s\n" "${valid_games[@]}"
-                exit
-            
-                # find_games dirs_to_look game_library
-
-                # if [[ "${#game_library[@]}" -lt 1 ]]; then
-                #     printf "${BLUE}Nenhum jogo encontrado.${ENDCOLOR}\n"
-                # else
-                #     printf "${YELLOW}%s jogos encontrados${ENDCOLOR}\n" "${#game_library[@]}"
-                #     STATE="GAMES_MENU"    
-
-                # fi   
-
-                PREV_STATE="FIND_GAME" 
-            ;;
-
         esac
     done
-
-    # if (( using_find )); then
-        #     using_find=0
-        #     STATE="LOOK"
-        #     continue  
-        # fi
-        # if (( using_find )); then
-        #     printf "Entrando na pasta${GREEN} %s${ENDCOLOR}\n" "${selected_game_path%%/*}"
-        #     cd -- "./${selected_game_path%%/*}" || exit 1  
-        # fi
 
 }
 main_menu "$@"
