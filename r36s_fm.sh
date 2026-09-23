@@ -2981,7 +2981,7 @@ main_menu() {
     local menu_options=()
     local -A target_collection=()
     local using_find=0
-
+    local -A selected_asset_collection=()
 
     # Stores contextual information about the currently selected directory.
     local -A target_dir_context=()
@@ -3287,6 +3287,7 @@ main_menu() {
                 ask_user "" user_answer \
                     "Browse Games" \
                     "Browse Other Files" \
+                    "Batch Operations" \
                     "See gamelist.xml" \
                     "Back"   
 
@@ -3297,6 +3298,10 @@ main_menu() {
 
                     "Browse Other Files")
                         STATE="ASSETS_COLLECTION_MENU"
+                    ;;
+
+                    "Batch Operations")
+                        STATE="BATCH_MENU"
                     ;;
 
                     "See gamelist.xml")
@@ -3561,7 +3566,6 @@ main_menu() {
             ;;
 
             "ASSETS_COLLECTION_MENU")
-                local -A selected_asset_collection=()
                 menu_options=( "See All Files" )
 
                 local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
@@ -3918,6 +3922,171 @@ main_menu() {
                 cd -- "$OLDPWD" || exit 1
                 STATE="LOOK"
                 PREV_STATE="FILE_SELECTION_MENU"
+            ;;
+
+            "BATCH_MENU")
+                local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
+                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
+
+                local prefix=""
+                local suffix=""
+                local combo=""
+                local combo_total=""
+
+                target_collection=()
+                selected_asset_collection=()
+
+                ask_user "Which operation would like to perform?" user_answer \
+                    "Move" \
+                    "Copy" \
+                    "Delete" \
+                    "Add to gamelist.xml" \
+                    "Remove from gamelist.xml" \
+                    "Back"
+
+                case "$user_answer" in
+                # Essa constução inicial é necessário apenas p/ permitir a escolha manual
+                # no próximo menu...?
+
+                    "Move"|"Copy"|"Delete")
+                        build_target_collection game_library target_collection
+
+                        for prefix in "${prefixes[@]}"; do
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                case "$prefix" in
+                                    "unlinked"|"unknown")
+                                        build_asset_collection \
+                                            selected_asset_collection \
+                                            "$combo"
+                                    ;;
+
+                                    *)
+                                        build_asset_collection \
+                                            selected_asset_collection \
+                                            "$combo" \
+                                            "${combo}_count"
+                                    ;;
+                                esac
+                            done
+                        done
+
+                    # valid and orphan
+                    # selecionar uais aruivos aceitam essas operações, tanto jogos completos
+                    # como outros aruivos - um array p/ cada tipo 
+                    ;;
+
+                    "Add to gamelist.xml"|"Remove from gamelist.xml")
+                        :
+                    # ghost
+                    # pensar sobre logo mais =)
+                    ;;
+                
+                esac
+
+                STATE="BATCH_COLLECTION_MENU"
+                PREV_STATE="BATCH_MENU"
+
+            ;;
+
+            "BATCH_COLLECTION_MENU")
+
+                menu_options=( "Manual select: Games" "Manual select: Assets" )
+                local -A selected_games=() # nome provisório
+
+                (( ${#valid_games[@]} > 0 )) && menu_options+=( "XML games" )
+                (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Orphan games" )
+                (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Ghost games" )
+
+
+                ask_user "How would like to select games?" user_answer \
+                    "${menu_options[@]}" "Back"
+
+                case "$user_answer" in
+                    "Manual select: Games")
+                    # HERE
+
+                        sorted_games=()
+
+                        sort_files sorted_games "${!target_collection[@]}"
+                        printf "\n${RED}Select a game by entering their number, then press Enter.${ENDCOLOR}\n"
+
+                        select opt in "${sorted_games[@]}" "End selection"; do
+
+                            if is_valid_option "$REPLY" "${#sorted_games[@]}"; then
+                                selected_games["${sorted_games["$REPLY - 1"]}"]=1
+            
+                            elif [[ "$opt" == "End selection" ]]; then
+                                printf "${GREEN}Selected games:\n${ENDCOLOR}"
+                                printf "%s\n" "${!selected_games[@]}"
+                                break
+
+                            else
+                                printf "${BLUE}Invalid option! Try again${ENDCOLOR}\n"
+
+                            fi               
+                        done
+                        
+                    ;;
+
+                    "Manual select: Assets")
+                        local sorted_assets=()
+                        local -A selected_assets=()
+
+                        sort_files sorted_assets "${!selected_asset_collection[@]}"
+                        printf "\n${RED}Select a file by entering their number, then press Enter.${ENDCOLOR}\n"
+
+                        select opt in "${sorted_assets[@]}" "End selection"; do
+
+                            if is_valid_option "$REPLY" "${#sorted_assets[@]}"; then
+                                selected_assets["${sorted_assets["$REPLY - 1"]}"]=1 
+            
+                            elif [[ "$opt" == "End selection" ]]; then
+                                printf "${GREEN}Selected assets:\n${ENDCOLOR}"
+                                printf "%s\n" "${!selected_assets[@]}"
+                                break
+
+                            else
+                                printf "${BLUE}Invalid option! Try again${ENDCOLOR}\n"
+
+                            fi               
+                        done
+                    
+                    ;;
+
+                    "Select all games")
+                        build_target_collection game_library target_collection
+                    ;;
+
+                    "Select XML games")
+                        build_target_collection valid_games target_collection
+
+                    ;;
+
+                    "Select orphan games")
+                        build_target_collection orphan_games target_collection
+
+                    ;;
+
+                    "Select ghost games")
+                        build_target_collection ghost_games target_collection
+
+                    ;;
+
+                    "Back")
+                        STATE="BATCH_MENU"
+                        PREV_STATE="BATCH_COLLECTION_MENU"
+                        continue
+
+                    ;;
+                esac
+                STATE="BATCH_MENU"
+                PREV_STATE="BATCH_COLLECTION_MENU"  
+
+            
             ;;
 
             "GAMELIST_MENU")
