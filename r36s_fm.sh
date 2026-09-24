@@ -2982,6 +2982,8 @@ main_menu() {
     local -A target_collection=()
     local using_find=0
     local -A selected_asset_collection=()
+    local -A game_context=()
+
 
     # Stores contextual information about the currently selected directory.
     local -A target_dir_context=()
@@ -3404,7 +3406,6 @@ main_menu() {
 
             "GAME_ACTION_MENU")
             
-                local -A game_context=()
 
                 # Load and display all information related to the selected game.
                 load_game_context game_context "$selected_game_path" "$selected_game_name"
@@ -3625,7 +3626,6 @@ main_menu() {
                         for prefix in "${prefixes[@]}"; do
                             for suffix in "${suffixes[@]}"; do
                                 local combo="${prefix}_${suffix}"
-
                                 declare -p "$combo" &>/dev/null || continue
 
                                 case "$prefix" in
@@ -3925,6 +3925,8 @@ main_menu() {
             ;;
 
             "BATCH_MENU")
+            # TODO: add validação p/ opções de menu
+
                 local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
                 local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
 
@@ -3932,6 +3934,8 @@ main_menu() {
                 local suffix=""
                 local combo=""
                 local combo_total=""
+
+                local batch_operation=""
 
                 target_collection=()
                 selected_asset_collection=()
@@ -3974,15 +3978,25 @@ main_menu() {
                             done
                         done
 
-                    # valid and orphan
-                    # selecionar uais aruivos aceitam essas operações, tanto jogos completos
-                    # como outros aruivos - um array p/ cada tipo 
+                    ;;&
+
+                    "Move")
+                        batch_operation="mv"
                     ;;
 
-                    "Add to gamelist.xml"|"Remove from gamelist.xml")
-                        :
-                    # ghost
-                    # pensar sobre logo mais =)
+                    "Copy")
+                        batch_operation="cp"
+                    ;;
+
+                    "Delete")
+                        batch_operation="rm"
+                    ;;
+
+                    "Add to gamelist.xml")
+                        batch_operation="add"
+                    ;;
+                    "Remove from gamelist.xml")
+                        batch_operation="rm_node"
                     ;;
                 
                 esac
@@ -3994,12 +4008,66 @@ main_menu() {
 
             "BATCH_COLLECTION_MENU")
 
-                menu_options=( "Manual select: Games" "Manual select: Assets" )
-                local -A selected_games=() # nome provisório
+                menu_options=( "Manual select: Games" \
+                                "Manual select: Assets" \
+                                "Select all games" \
+                                "Select all assets" )
 
-                (( ${#valid_games[@]} > 0 )) && menu_options+=( "XML games" )
-                (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Orphan games" )
-                (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Ghost games" )
+                local -A selected_batch=()
+                local sorted_assets=()
+
+                (( ${#valid_games[@]} > 0 )) && menu_options+=( "Select XML games" )
+                (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Select orphan games" )
+                (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Select ghost games" )
+
+                # TODO: adicionar ghost_* em uma porrada de lugar ignorado até agora =)
+                local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
+                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
+
+                local prefix=""
+                local selected_prefix=""
+                local suffix=""
+                local combo=""
+                local combo_total=""
+
+                local batch_type=""
+
+                # --------------------------------------------------------------------------
+                # BUILD COLLECTION TOTALS
+                # --------------------------------------------------------------------------
+
+                # Accumulate the number of files for each asset collection.
+                # The individual collection totals are stored in <prefix>_total.
+                for prefix in "${prefixes[@]}"; do
+                    for suffix in "${suffixes[@]}"; do
+                        combo="${prefix}_${suffix}"
+                        combo_total="${combo}_total"
+
+                        # Skip collections that do not exist.
+                        declare -p "$combo" &>/dev/null || continue
+
+                        # Skip collections without a corresponding total.
+                        declare -p "$combo_total" &>/dev/null || continue
+
+                        local -n count_ref="$combo_total"
+                        local -n total_ref="${prefix}_total"
+
+                        # Skip empty asset collections.
+                        (( count_ref == 0 )) && continue
+
+                        total_ref=$(( total_ref + count_ref ))
+                    done
+                done
+
+                # --------------------------------------------------------------------------
+                # BUILD MENU OPTIONS
+                # --------------------------------------------------------------------------
+
+                (( valid_total > 0 )) && menu_options+=( "Select valid files" )
+                (( orphan_total > 0 )) && menu_options+=( "Select orphan files" )
+                (( linked_total > 0 )) && menu_options+=( "Select linked files" )
+                (( unlinked_total > 0 )) && menu_options+=( "Select unlinked files" )
+                (( ${#unknown_files[@]} > 0 )) && menu_options+=( "Select unknown files" )
 
 
                 ask_user "How would like to select games?" user_answer \
@@ -4007,8 +4075,6 @@ main_menu() {
 
                 case "$user_answer" in
                     "Manual select: Games")
-                    # HERE
-
                         sorted_games=()
 
                         sort_files sorted_games "${!target_collection[@]}"
@@ -4017,11 +4083,11 @@ main_menu() {
                         select opt in "${sorted_games[@]}" "End selection"; do
 
                             if is_valid_option "$REPLY" "${#sorted_games[@]}"; then
-                                selected_games["${sorted_games["$REPLY - 1"]}"]=1
+                                selected_batch["${sorted_games["$REPLY - 1"]}"]="${target_collection["${sorted_games["$REPLY - 1"]}"]}"
             
                             elif [[ "$opt" == "End selection" ]]; then
-                                printf "${GREEN}Selected games:\n${ENDCOLOR}"
-                                printf "%s\n" "${!selected_games[@]}"
+                                # printf "${GREEN}Selected games:\n${ENDCOLOR}"
+                                # printf "%s\n" "${!selected_batch[@]}"
                                 break
 
                             else
@@ -4029,12 +4095,11 @@ main_menu() {
 
                             fi               
                         done
+                        batch_type="games"
                         
                     ;;
 
                     "Manual select: Assets")
-                        local sorted_assets=()
-                        local -A selected_assets=()
 
                         sort_files sorted_assets "${!selected_asset_collection[@]}"
                         printf "\n${RED}Select a file by entering their number, then press Enter.${ENDCOLOR}\n"
@@ -4042,11 +4107,11 @@ main_menu() {
                         select opt in "${sorted_assets[@]}" "End selection"; do
 
                             if is_valid_option "$REPLY" "${#sorted_assets[@]}"; then
-                                selected_assets["${sorted_assets["$REPLY - 1"]}"]=1 
+                                selected_batch["${sorted_assets["$REPLY - 1"]}"]=1 
             
                             elif [[ "$opt" == "End selection" ]]; then
-                                printf "${GREEN}Selected assets:\n${ENDCOLOR}"
-                                printf "%s\n" "${!selected_assets[@]}"
+                                # printf "${GREEN}Selected assets:\n${ENDCOLOR}"
+                                # printf "%s\n" "${!selected_batch[@]}"
                                 break
 
                             else
@@ -4058,22 +4123,124 @@ main_menu() {
                     ;;
 
                     "Select all games")
-                        build_target_collection game_library target_collection
+                        build_target_collection game_library selected_batch
+                        batch_type="games"
+                    ;;
+
+                    "Select all assets")
+                        for prefix in "${prefixes[@]}"; do
+                            for suffix in "${suffixes[@]}"; do
+                                local combo="${prefix}_${suffix}"
+
+                                declare -p "$combo" &>/dev/null || continue
+
+                                case "$prefix" in
+                                    "unlinked"|"unknown")
+                                        build_asset_collection \
+                                            selected_batch \
+                                            "$combo"
+                                    ;;
+
+                                    *)
+                                        build_asset_collection \
+                                            selected_batch \
+                                            "$combo" \
+                                            "${combo}_count"
+                                    ;;
+                                esac
+                            done
+                        done
+                    
                     ;;
 
                     "Select XML games")
-                        build_target_collection valid_games target_collection
+                        build_target_collection valid_games selected_batch
+                        batch_type="games"
 
+                    ;;
+
+                    "Select valid files")
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="valid_${suffix}"
+                            declare -p "$combo" &>/dev/null || continue
+
+                            
+                            build_asset_collection \
+                                selected_batch \
+                                "$combo" \
+                                "${combo}_count"
+                                    
+                        done
                     ;;
 
                     "Select orphan games")
-                        build_target_collection orphan_games target_collection
+                        build_target_collection orphan_games selected_batch
+                        batch_type="games"
 
                     ;;
 
-                    "Select ghost games")
-                        build_target_collection ghost_games target_collection
+                    "Select orphan files")
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="orphan_${suffix}"
+                            declare -p "$combo" &>/dev/null || continue
 
+                            
+                            build_asset_collection \
+                                selected_batch \
+                                "$combo" \
+                                "${combo}_count"
+                                    
+                        done
+                    
+                    ;;
+
+                    "Select ghost games")
+                        build_target_collection ghost_games selected_batch
+
+                    ;;
+
+                    "Select linked files")
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="linked_${suffix}"
+                            declare -p "$combo" &>/dev/null || continue
+
+                            
+                            build_asset_collection \
+                                selected_batch \
+                                "$combo" \
+                                "${combo}_count"
+                                    
+                        done
+                    
+                    ;;
+
+                    "Select unlinked files")
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="unlinked_${suffix}"
+                            declare -p "$combo" &>/dev/null || continue
+
+                            
+                            build_asset_collection \
+                                selected_batch \
+                                "$combo" \
+                                "${combo}_count"
+                                    
+                        done
+                    
+                    ;;
+
+                    "Select unknown files")
+                        for suffix in "${suffixes[@]}"; do
+                            local combo="unknown_${suffix}"
+                            declare -p "$combo" &>/dev/null || continue
+
+                            
+                            build_asset_collection \
+                                selected_batch \
+                                "$combo" 
+                                    
+                        done
+                    
                     ;;
 
                     "Back")
@@ -4083,7 +4250,79 @@ main_menu() {
 
                     ;;
                 esac
-                STATE="BATCH_MENU"
+
+                
+                printf "${GREEN}Selected batch:\n${ENDCOLOR}"
+                printf "%s\n" "${!selected_batch[@]}"   
+
+                local game_name=""
+                local game_path=""
+
+                if [[ "$batch_type" == "games" ]]; then
+
+                    case "$batch_operation" in
+                        "mv" | "cp")
+                            prepare_target_directory target_dir_context
+
+                        ;;
+                    esac
+
+                    for game_name in "${!selected_batch[@]}"; do
+                        game_path="${selected_batch["$game_name"]}"
+
+                        printf "Name: ${PINK}%s${ENDCOLOR} - Path: ${CYAN}%s${ENDCOLOR}\n" "$game_name" "$game_path"
+                        game_context=()
+                        load_game_context game_context "$game_path" "$game_name"
+                        print_game_context game_context
+
+
+                        case "$batch_operation" in
+                            "mv")
+                                if mv_game game_context target_dir_context \
+                                    relation_context; then
+                                    printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+
+                                else
+                                    printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                                    printf "Please review the messages above to identify the failed step.\n"
+                                    exit 1
+                                fi
+
+                            ;;
+
+                            "cp")
+                                if cp_game game_context target_dir_context \
+                                    relation_context; then
+                                    printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+
+                                else
+                                    printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                                    printf "Please review the messages above to identify the failed step.\n"
+                                    exit 1
+                                fi
+
+                            ;;
+
+                            "rm")
+                                if rm_game game_context relation_context; then
+                                    printf "\n${GREEN}Operation completed successfully!${ENDCOLOR}\n"
+
+                                else
+                                    printf "\n${RED}Operation aborted due to a critical error!${ENDCOLOR}\n"
+                                    printf "Please review the messages above to identify the failed step.\n"
+                                    exit 1
+                                fi
+                            ;;
+                            esac
+                        
+                    done
+                
+                fi
+
+                printf "Returning to ${GREEN}%s${ENDCOLOR}\n" "$OLDPWD"
+                cd -- "$OLDPWD" || exit 1
+
+                STATE="LOOK"
                 PREV_STATE="BATCH_COLLECTION_MENU"  
 
             
