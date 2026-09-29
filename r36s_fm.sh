@@ -274,6 +274,16 @@ is_valid_option() {
     return 0
 }
 
+is_valid_combo() {
+    local relation="$1"
+    local type="$2"
+
+    local combo="${relation}_${type}"
+    declare -p "$combo" &>/dev/null && return 0
+    return 5
+
+}
+
 ask_user() {
 # Displays an interactive menu and stores the selected option
 # in the variable passed by reference.
@@ -820,10 +830,14 @@ build_game_library() {
 
 }
 
+# ------------------------------------------------------------------------------
+# The most disgusting, horrendous, idious and grossy function of all program!
+# ------------------------------------------------------------------------------
 classify_remaining_files() {
 # At this stage, all XML-referenced resources and ROMs have already been
 # processed. The remaining files are classified by extension and associated
 # with the game library using filename matching.
+
     local -n unclassified_files_ref="$1"
     local -n game_library_ref="$2"
     local -n ghost_games_ref="$3"
@@ -1040,22 +1054,16 @@ classify_remaining_files() {
                     # They can therefore remain in unclassified_files despite already being valid,
                     # orphan, or linked. Check existing asset relations before classifying the file
                     # as unlinked, preventing these edge cases from being misclassified.
-                    # TODO: make it a function
-                    local prefixes=( "valid" "orphan" "linked" )
-                    local suffixes=( "images" "marquees" "thumbnails" )
-                    local prefix=""
-                    local suffix=""
-                    local combo=""
+                    local relation=""
+                    local type=""
                     local value=""
                     local skip="false"
 
-                    for prefix in "${prefixes[@]}"; do
-                        for suffix in "${suffixes[@]}"; do
-                            combo="${prefix}_${suffix}"
+                    for relation in "${RELATIONS[@]:0:4}"; do
+                        for type in "${TYPES[@]:1:4}"; do
+                            is_valid_combo "$relation" "$type" || continue
 
-                            declare -p "$combo" &>/dev/null || continue
-
-                            local -n arr_ref="$combo"
+                            local -n arr_ref="${relation}_${type}"
                             for value in "${arr_ref[@]}"; do
                                 if [[ "$file" == "$value" ]]; then
                                     skip="true"
@@ -1331,27 +1339,28 @@ analyze_directory() {
         "$system_dir"
 
     # Classify assets referenced by gamelist.xml.
-    local assets_names=( "images" "videos" "marquees" "thumbnails" )
-    local name=""
+    local type=""
 
-    for name in "${assets_names[@]}"; do
-        local -n arr_ref="unclassified_${name}"
-
+    for type in "${TYPES[@]:1:4}"; do
+        is_valid_combo "unclassified" "$type" || continue
+        
+        local -n arr_ref="unclassified_${type}"
+        
         # Skip empty asset collections.
         (( ${#arr_ref[@]} == 0 )) && continue
 
         classify_xml_asset \
             unclassified_files \
-            "unclassified_${name}" \
-            "valid_${name}" \
-            "orphan_${name}" \
-            "ghost_${name}" \
-            "valid_${name}_total" \
-            "orphan_${name}_total" \
-            "ghost_${name}_total" \
-            "valid_${name}_count" \
-            "orphan_${name}_count" \
-            "ghost_${name}_count" \
+            "unclassified_${type}" \
+            "valid_${type}" \
+            "orphan_${type}" \
+            "ghost_${type}" \
+            "valid_${type}_total" \
+            "orphan_${type}_total" \
+            "ghost_${type}_total" \
+            "valid_${type}_count" \
+            "orphan_${type}_count" \
+            "ghost_${type}_count" \
             valid_games
     done
 
@@ -1383,9 +1392,6 @@ analyze_directory() {
         game_library
 
     # Classify all remaining files.
-    # ------------------------------------------------------------------------------
-    # The most disgusting, horrendous, idious and grossy function of all program
-    # ------------------------------------------------------------------------------
     classify_remaining_files \
         unclassified_files \
         game_library \
@@ -1393,28 +1399,19 @@ analyze_directory() {
         relation_context \
         unknown_files
 
-
-    # ghost_* are not real files, so there is no rason (so far) to put them on the index
-    assets_names+=( "auxiliary" "configs" "files" )
-    local relations=( "valid" "orphan" "linked" "unlinked" "unknown" )
     local relation=""
-    for relation in "${relations[@]}"; do
-        for name in "${assets_names[@]}"; do
-            local combo="${relation}_${name}"
+    for relation in "${RELATIONS[@]}"; do
+        for type in "${TYPES[@]:1}"; do
+            is_valid_combo "$relation" "$type" || continue
 
-            declare -p "$combo" &>/dev/null || continue
-
-
-            local -n arr_ref="$combo"
+            local -n arr_ref="${relation}_${type}"
 
             # Skip empty asset collections.
             (( ${#arr_ref[@]} == 0 )) && continue
-            # printf "${CYAN}%s_%s${ENDCOLOR}\n" "$relation" "$name"
-
 
             build_asset_index \
                 arr_ref \
-                relation_context "$name"
+                relation_context "$type"
         done
 
     done
@@ -1565,17 +1562,9 @@ generate_overall_report() {
 
     # --------------------------------------------------------------------------
     # RELATION COLLECTIONS
-    #
-    # Each prefix represents a relation/status category.
-    # Each suffix represents the type of file involved in that relation.
     # --------------------------------------------------------------------------
-    local prefixes=( "valid" "orphan" "linked" "unlinked" "ghost" "unknown" )
-    local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
-
-    local prefix=""
-    local suffix=""
-    local combo=""
-    local combo_total=""
+    local relation=""
+    local type=""
 
     for dir in "${dirs_with_games_ref[@]}"; do
         cd -- "$dir" || exit 1
@@ -1598,19 +1587,13 @@ generate_overall_report() {
         # physical files. A single file may therefore contribute to more than
         # one relation category.
         # ----------------------------------------------------------------------
-        for prefix in "${prefixes[@]}"; do
-            for suffix in "${suffixes[@]}"; do
-                combo="${prefix}_${suffix}"
-                combo_total="${combo}_total"
-
-                # Skip collections that do not exist.
-                declare -p "$combo" &>/dev/null || continue
-
+        for relation in "${RELATIONS[@]}"; do
+            for type in "${TYPES[@]:1}"; do
                 # Skip collections without a corresponding total.
-                declare -p "$combo_total" &>/dev/null || continue
+                is_valid_combo "${relation}_${type}" "total" || continue
 
-                local -n count_ref="$combo_total"
-                local -n total_ref="${prefix}_total"
+                local -n count_ref="${relation}_${type}_total"
+                local -n total_ref="${relation}_total"
 
                 # Do not add empty relation collections to the overall total.
                 (( count_ref == 0 )) && continue
@@ -1622,7 +1605,6 @@ generate_overall_report() {
         # ----------------------------------------------------------------------
         # ACCUMULATE OVERALL COUNTS
         # ----------------------------------------------------------------------
-
         total_valid_relations+="$valid_total"
         total_orphan_relations+="$orphan_total"
         total_linked_relations+="$linked_total"
@@ -2735,34 +2717,29 @@ xml_escape() {
 
 show_related_files() {
 # Displays all files associated with the selected game.
-    local prefixes=( "valid" "orphan" "linked" )
-    local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" )
-    local prefix=""
-    local suffix=""
+    local relation=""
+    local type=""
     local group=()
     
     printf "\n${PINK}============================================================${ENDCOLOR}\n"
-    for prefix in "${prefixes[@]}"; do
-        for suffix in "${suffixes[@]}"; do
-            local combo="${prefix}_${suffix}"
+    for relation in "${RELATIONS[@]:0:4}"; do
+        for type in "${TYPES[@]:1:6}"; do
+            is_valid_combo "$relation" "$type" || continue
 
-            # só segue se o array de fato existir.
-            declare -p "$combo" &>/dev/null || continue
-
-            local -n arr_ref="$combo"
+            local -n arr_ref="${relation}_${type}"
 
             # Skip empty asset collections.
             (( ${#arr_ref[@]} == 0 )) && continue
 
-            local count_var="${combo}_count"
+            local count_var="${relation}_${type}_count"
             local -n count_ref="$count_var"
 
             if (( "${count_ref["$selected_game_path"]:-0}" == 1 )); then
-                printf "\n${YELLOW}────────────── %s %s ─────────────${ENDCOLOR}\n" "${prefix^}" "${suffix^}"
+                printf "\n${YELLOW}────────────── %s %s ─────────────${ENDCOLOR}\n" "${relation^}" "${type^}"
                 printf "%s\n" "${arr_ref["$selected_game_path"]:-}"
 
             elif (( "${count_ref["$selected_game_path"]:-0}" > 1 )); then
-                printf "\n${YELLOW}────────────── %s %s ─────────────${ENDCOLOR}\n" "${prefix^}" "${suffix^}"
+                printf "\n${YELLOW}────────────── %s %s ─────────────${ENDCOLOR}\n" "${relation^}" "${type^}"
 
                 IFS='|' read -ra group <<< "${arr_ref["$selected_game_path"]:-}"
 
@@ -2957,7 +2934,6 @@ find_games() {
     fi
 }
 
-
 # Initial application state
 STATE="LOOK"
 PREV_STATE=""
@@ -3023,9 +2999,21 @@ main_menu() {
     # Maps a game file path to its display name.
     local -A game_library=()
 
+    # NOTE: order matters. Index-based slices elsewhere depend on these positions.
+    # Used by: analyze_directory(), classify_remaining_files(), generate_overall_report(),
+    # show_related_files(), "ASSETS_COLLECTION_MENU"), "ASSETS_CATEGORY_MENU")
+    readonly RELATIONS=( "valid" "orphan" "ghost" "linked" "unlinked" "unknown" )
+    readonly TYPES=( "games" "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
+    
+    local relation=""
+    local type=""
+
+    local selected_relation=""
     # --------------------------------------------------------------------------
     # XML ASSET CLASSIFICATION
     # --------------------------------------------------------------------------
+
+
     local -A unclassified_images=()
     local -A unclassified_videos=()
     local -A unclassified_marquees=()
@@ -3569,34 +3557,18 @@ main_menu() {
             "ASSETS_COLLECTION_MENU")
                 menu_options=( "See All Files" )
 
-                local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
-                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
-
-                local prefix=""
-                local selected_prefix=""
-                local suffix=""
-                local combo=""
-                local combo_total=""
-
                 # --------------------------------------------------------------------------
                 # BUILD COLLECTION TOTALS
                 # --------------------------------------------------------------------------
-
                 # Accumulate the number of files for each asset collection.
                 # The individual collection totals are stored in <prefix>_total.
-                for prefix in "${prefixes[@]}"; do
-                    for suffix in "${suffixes[@]}"; do
-                        combo="${prefix}_${suffix}"
-                        combo_total="${combo}_total"
-
-                        # Skip collections that do not exist.
-                        declare -p "$combo" &>/dev/null || continue
-
+                for relation in "${RELATIONS[@]:0:5}"; do
+                    for type in "${TYPES[@]:1}"; do
                         # Skip collections without a corresponding total.
-                        declare -p "$combo_total" &>/dev/null || continue
+                        is_valid_combo "${relation}_${type}" "total" || continue
 
-                        local -n count_ref="$combo_total"
-                        local -n total_ref="${prefix}_total"
+                        local -n count_ref="${relation}_${type}_total"
+                        local -n total_ref="${relation}_total"
 
                         # Skip empty asset collections.
                         (( count_ref == 0 )) && continue
@@ -3608,9 +3580,9 @@ main_menu() {
                 # --------------------------------------------------------------------------
                 # BUILD MENU OPTIONS
                 # --------------------------------------------------------------------------
-
                 (( valid_total > 0 )) && menu_options+=( "Valid Files" )
                 (( orphan_total > 0 )) && menu_options+=( "Orphan Files" )
+                (( ghost_total > 0 )) && menu_options+=( "Ghost Files" )
                 (( linked_total > 0 )) && menu_options+=( "Linked Files" )
                 (( unlinked_total > 0 )) && menu_options+=( "Unlinked Files" )
                 (( ${#unknown_files[@]} > 0 )) && menu_options+=( "Unknown Files" )
@@ -3623,47 +3595,50 @@ main_menu() {
                     "See All Files")
                         # All categories are merged into a single collection.
                         # Therefore, no category selection is required in the next menu.
-                        for prefix in "${prefixes[@]}"; do
-                            for suffix in "${suffixes[@]}"; do
-                                local combo="${prefix}_${suffix}"
-                                declare -p "$combo" &>/dev/null || continue
+                        for relation in "${RELATIONS[@]}"; do
+                            for type in "${TYPES[@]:1}"; do
+                                is_valid_combo "$relation" "$type" || continue
 
-                                case "$prefix" in
+                                case "$relation" in
                                     "unlinked"|"unknown")
                                         build_asset_collection \
                                             selected_asset_collection \
-                                            "$combo"
+                                            "${relation}_${type}"
                                     ;;
 
                                     *)
                                         build_asset_collection \
                                             selected_asset_collection \
-                                            "$combo" \
-                                            "${combo}_count"
+                                            "${relation}_${type}" \
+                                            "${relation}_${type}_count"
                                     ;;
                                 esac
                             done
                         done
-                        selected_prefix="all"
+                        selected_relation="all"
 
                         STATE="FILE_SELECTION_MENU"
                         continue
                     ;;
 
                     "Valid Files")
-                        prefix="${prefixes[0]}"
+                        selected_relation="${RELATIONS[0]}"
                     ;;
 
                     "Orphan Files")
-                        prefix="${prefixes[1]}"
+                        selected_relation="${RELATIONS[1]}"
+                    ;;
+
+                    "Ghost Files")
+                        selected_relation="${RELATIONS[2]}"
                     ;;
 
                     "Linked Files")
-                        prefix="${prefixes[2]}"
+                        selected_relation="${RELATIONS[3]}"
                     ;;
 
                     "Unlinked Files")
-                        prefix="${prefixes[3]}"
+                        selected_relation="${RELATIONS[4]}"
                     ;;
 
                     "Unknown Files")
@@ -3671,9 +3646,9 @@ main_menu() {
                         # Therefore, skip the category selection menu.
                         build_asset_collection \
                             selected_asset_collection \
-                            "${prefix}_files"
+                            "${relation}_files"
 
-                        selected_prefix="unknown"
+                        selected_relation="unknown"
 
                         STATE="FILE_SELECTION_MENU"
                         continue
@@ -3697,16 +3672,16 @@ main_menu() {
                 selected_asset_collection=()
 
                 # Build the category menu based on the selected asset collection.
-                case "$prefix" in
+                case "$selected_relation" in
                     "unlinked")
 
-                        local -n images_ref="${prefix}_images"
-                        local -n marquees_ref="${prefix}_marquees"
-                        local -n thumbnails_ref="${prefix}_thumbnails"
-                        local -n videos_ref="${prefix}_videos"
+                        local -n images_ref="${selected_relation}_images"
+                        local -n marquees_ref="${selected_relation}_marquees"
+                        local -n thumbnails_ref="${selected_relation}_thumbnails"
+                        local -n videos_ref="${selected_relation}_videos"
 
-                        local -n auxiliary_ref="${prefix}_auxiliary"
-                        local -n configs_ref="${prefix}_configs"
+                        local -n auxiliary_ref="${selected_relation}_auxiliary"
+                        local -n configs_ref="${selected_relation}_configs"
 
                         # Unlinked collections are already indexed by individual asset paths.
                         (( "${#images_ref[@]}" > 0 )) && menu_options+=( "Images" )
@@ -3719,10 +3694,10 @@ main_menu() {
                     ;;
 
                     *)
-                        local -n images_total_ref="${prefix}_images_total"
-                        local -n marquees_total_ref="${prefix}_marquees_total"
-                        local -n thumbnails_total_ref="${prefix}_thumbnails_total"
-                        local -n videos_total_ref="${prefix}_videos_total"
+                        local -n images_total_ref="${selected_relation}_images_total"
+                        local -n marquees_total_ref="${selected_relation}_marquees_total"
+                        local -n thumbnails_total_ref="${selected_relation}_thumbnails_total"
+                        local -n videos_total_ref="${selected_relation}_videos_total"
 
                         # Other collections use their category totals to determine
                         # which categories contain assets.
@@ -3734,8 +3709,8 @@ main_menu() {
 
                     "linked")
 
-                        local -n auxiliary_total_ref="${prefix}_auxiliary_total"
-                        local -n configs_total_ref="${prefix}_configs_total"
+                        local -n auxiliary_total_ref="${selected_relation}_auxiliary_total"
+                        local -n configs_total_ref="${selected_relation}_configs_total"
 
                         (( "$auxiliary_total_ref" > 0 )) && menu_options+=( "Auxiliary" )
                         (( "$configs_total_ref" > 0 )) && menu_options+=( "Configs" )
@@ -3751,48 +3726,48 @@ main_menu() {
                     "Images")
                         build_asset_collection \
                             selected_asset_collection \
-                            "${prefix}_images" \
-                            "${prefix}_images_count"
+                            "${selected_relation}_images" \
+                            "${selected_relation}_images_count"
 
                     ;;
 
                     "Marquees")
                         build_asset_collection \
                             selected_asset_collection \
-                            "${prefix}_marquees" \
-                            "${prefix}_marquees_count"
+                            "${selected_relation}_marquees" \
+                            "${selected_relation}_marquees_count"
 
                     ;;
                     
                     "Thumbnails")
                         build_asset_collection \
                             selected_asset_collection \
-                            "${prefix}_thumbnails" \
-                            "${prefix}_thumbnails_count"
+                            "${selected_relation}_thumbnails" \
+                            "${selected_relation}_thumbnails_count"
 
                     ;;
                     
                     "Videos")
                         build_asset_collection \
                             selected_asset_collection \
-                            "${prefix}_videos" \
-                            "${prefix}_videos_count"
+                            "${selected_relation}_videos" \
+                            "${selected_relation}_videos_count"
 
                     ;;
                     
                     "Auxiliary")
                         build_asset_collection \
                             selected_asset_collection \
-                            "${prefix}_auxiliary" \
-                            "${prefix}_auxiliary_count"
+                            "${selected_relation}_auxiliary" \
+                            "${selected_relation}_auxiliary_count"
                     
                     ;;
                     
                     "Configs")
                         build_asset_collection \
                             selected_asset_collection \
-                            "${prefix}_configs" \
-                            "${prefix}_configs_count"
+                            "${selected_relation}_configs" \
+                            "${selected_relation}_configs_count"
 
                     ;;
 
@@ -3823,8 +3798,8 @@ main_menu() {
                     "Back")
                     # Return directly to the collection menu when no category
                     # was selected; otherwise, return to the category menu.
-                        if [[ "$selected_prefix" == "all" ]] || \
-                            [[ "$selected_prefix" == "unknown" ]]; then
+                        if [[ "$selected_relation" == "all" ]] || \
+                            [[ "$selected_relation" == "unknown" ]]; then
                             STATE="ASSETS_COLLECTION_MENU"
 
                         else
@@ -3843,6 +3818,9 @@ main_menu() {
 
                 STATE="FILE_ACTION_MENU"
                 PREV_STATE="FILE_SELECTION_MENU"
+            # HERE HERE HERE
+            # estava refatorando os prefix, esbarrei com um possível bug na classificação
+            # de ghost images e afins, VERIFICAR!!!
             ;;
 
             "FILE_ACTION_MENU")
@@ -4025,7 +4003,7 @@ main_menu() {
                 local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
 
                 local prefix=""
-                local selected_prefix=""
+                local selected_relation=""
                 local suffix=""
                 local combo=""
                 local combo_total=""
@@ -4267,13 +4245,13 @@ main_menu() {
                         ;;
                     esac
 
+                    # HERE: acrescentar as outras operações e concertar eventuais bugs
                     for game_name in "${!selected_batch[@]}"; do
                         game_path="${selected_batch["$game_name"]}"
 
-                        printf "Name: ${PINK}%s${ENDCOLOR} - Path: ${CYAN}%s${ENDCOLOR}\n" "$game_name" "$game_path"
+                        printf "Processing: ${PINK}%s${ENDCOLOR}\n" "$game_name"
                         game_context=()
                         load_game_context game_context "$game_path" "$game_name"
-                        print_game_context game_context
 
 
                         case "$batch_operation" in
