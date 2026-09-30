@@ -387,10 +387,10 @@ load_xml_metadata() {
         xml_unclassified_games_ref["$game_path"]="$game_name"
 
         # Store only existing asset paths to avoid unnecessary empty games.
-        [[ -f "$image_path" ]] && unclassified_images_ref["$game_path"]="$image_path"
-        [[ -f "$video_path" ]] && unclassified_videos_ref["$game_path"]="$video_path"
-        [[ -f "$marquee_path" ]] && unclassified_marquees_ref["$game_path"]="$marquee_path"
-        [[ -f "$thumbnail_path" ]] && unclassified_thumbnails_ref["$game_path"]="$thumbnail_path"
+        [[ -n "$image_path" ]] && unclassified_images_ref["$game_path"]="$image_path"
+        [[ -n "$video_path" ]] && unclassified_videos_ref["$game_path"]="$video_path"
+        [[ -n "$marquee_path" ]] && unclassified_marquees_ref["$game_path"]="$marquee_path"
+        [[ -n "$thumbnail_path" ]] && unclassified_thumbnails_ref["$game_path"]="$thumbnail_path"
 
     done < <(
         xmlstarlet sel -t \
@@ -1264,6 +1264,7 @@ reset_analysis_state() {
 
     valid_total=0
     orphan_total=0
+    ghost_total=0
     linked_total=0
     unlinked_total=0
 
@@ -3819,8 +3820,6 @@ main_menu() {
                 STATE="FILE_ACTION_MENU"
                 PREV_STATE="FILE_SELECTION_MENU"
             # HERE HERE HERE
-            # estava refatorando os prefix, esbarrei com um possível bug na classificação
-            # de ghost images e afins, VERIFICAR!!!
             ;;
 
             "FILE_ACTION_MENU")
