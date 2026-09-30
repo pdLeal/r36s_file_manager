@@ -2020,7 +2020,7 @@ rm_gamelist_node() {
 # Removes the first matching game entry from the source gamelist.xml.
     local game_path="$1"
     
-    local safe_xpath
+    local safe_xpath=""
         
     safe_xpath=$(escape_xpath_string "$game_path")    
 
@@ -2029,6 +2029,66 @@ rm_gamelist_node() {
     else
         printf "${BLUE}Failed to remove the node from the source gamelist. Check permissions and/or file integrity.${ENDCOLOR}\n"
         return 1
+    fi
+}
+
+rm_gamelist_tag() {
+    local asset_path="$1"
+
+    # Reference data stored in the asset index
+    local -n refs_ref="$2"
+    local -n refs_count_ref="$3"
+    local -n game_count_ref="$4"
+
+    local -a reference_list=()
+    local game_path=""
+    local reference=""
+    local tag=""
+    local safe_xpath=""
+    local failed=0
+
+    if (( "${refs_count_ref["$asset_path"]:-0}" > 1 )); then
+        printf "${YELLOW}WARNING:${ENDCOLOR}\n"
+        printf "%s is shared by multiples tags/games\n" "$asset_path"
+        local answer=""
+
+        ask_user "How'd you like to proceed?" answer \
+                    "Remove all references" \
+                    "Select references" \
+                    "Cancel operation"
+        case "$answer" in
+            "Remove all references")
+                IFS='|' read -ra reference_list <<< "${refs_ref["$asset_path"]:-}"
+            
+                for reference in "${reference_list[@]}"; do
+                    [[ -z "$reference" ]] && continue
+
+                    game_path="${reference%:*}"
+                    tag="${reference##*:}"
+                    safe_xpath=$(escape_xpath_string "$game_path")    
+
+                    if sudo xmlstarlet ed --inplace -d "(//game[path=$safe_xpath])[1]/$tag" "./gamelist.xml"; then
+                        printf "The ${GREEN}<%s>${ENDCOLOR} tag was successfully removed from the game entry %s in the gamelist.\n" "$tag" "$game_path"
+                    else
+                        printf "${BLUE}Failed to remove the tag from the source gamelist. Check permissions and/or file integrity.${ENDCOLOR}\n"
+                        failed=1
+                    fi
+                    
+                done
+            ;;
+
+            "Select references")
+                :    
+            ;;
+
+            "Cancel operation")
+                :    
+            ;;
+
+            *)
+                printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                ;;
+        esac
     fi
 }
 
@@ -2811,8 +2871,8 @@ print_asset_context() {
     local -a reference_list=()
     local -a sorted_games=()
 
-    local reference=""
     local game_path=""
+    local reference=""
     local reference_type=""
 
     local -A game_references=()
@@ -3823,17 +3883,56 @@ main_menu() {
             ;;
 
             "FILE_ACTION_MENU")
+                menu_options=()
+                case "$selected_relation" in
+                    "valid"|"orphan"|"linked"|"unlinked"|"unknown")
+                        menu_options+=( "Move" "Copy" "Delete" )
+                    ;;
+
+                    "ghost")
+                        menu_options+=( "Remove from gamelist.xml" )
+                    
+                    ;;
+                
+                esac
+
                 # Display the context of the selected asset before performing an action.
                 print_asset_context "$selected_file" asset_refs \
                     asset_refs_count asset_game_count
 
                 ask_user "What would you like to do?" user_answer \
-                    "Move" \
-                    "Copy" \
-                    "Delete" "Back"
+                    "${menu_options[@]}" "Back"
 
                 local target_dir=""
 
+                case "$user_answer" in
+                    "Move"|"Delete")
+                        if (( "${asset_game_count["$selected_file"]:-0}" > 1 )); then
+                            printf "${YELLOW}WARNING:${ENDCOLOR}\n"
+                            printf "%s is shared by multiples games, would you like to copy it instead of moving/removing? (y/n)" "$selected_file"
+                            while true; do
+                                local answer=""
+                                read -r -p "-> " answer
+
+                                case "$answer" in
+                                    [Yy])
+                                        user_answer="Copy"
+                                        break
+                                        ;;
+
+                                    [Nn])
+                                        continue
+                                        ;;
+
+                                    *)
+                                        printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
+                                        ;;
+                                esac
+                            done
+                        fi
+                    ;;
+                esac
+                
                 case "$user_answer" in
                     "Move"|"Copy")
                         # Validate the target directory before performing file operations.
@@ -3885,6 +3984,13 @@ main_menu() {
                             printf "${BLUE}Failed to delete file!${ENDCOLOR}\n"
                             exit 1
                         fi
+                    ;;
+
+                    "Remove from gamelist.xml")
+                        rm_gamelist_tag "$selected_file" asset_refs \
+                            asset_refs_count asset_game_count
+
+                        # HERE HERE HERE
                     ;;
 
                     "Back")
