@@ -2056,10 +2056,10 @@ rm_gamelist_tag() {
                     "Remove all references" \
                     "Select references" \
                     "Cancel operation"
+
+        IFS='|' read -ra reference_list <<< "${refs_ref["$asset_path"]:-}"
         case "$answer" in
             "Remove all references")
-                IFS='|' read -ra reference_list <<< "${refs_ref["$asset_path"]:-}"
-            
                 for reference in "${reference_list[@]}"; do
                     [[ -z "$reference" ]] && continue
 
@@ -2078,18 +2078,68 @@ rm_gamelist_tag() {
             ;;
 
             "Select references")
-                :    
+                local sorted_ghosts=()
+                local selected_ghosts=()
+
+                sort_files sorted_ghosts "${reference_list[@]}"
+                printf "\n${RED}Select a ghost file by entering their number, then press Enter.${ENDCOLOR}\n"
+
+                select opt in "${sorted_ghosts[@]}" "End selection"; do
+
+                    if is_valid_option "$REPLY" "${#sorted_ghosts[@]}"; then
+                        selected_ghosts+=( "$opt" )
+
+                    elif [[ "$opt" == "End selection" ]]; then
+                        break
+
+                    else
+                        printf "${BLUE}Invalid option! Try again${ENDCOLOR}\n"
+
+                    fi               
+                done
+
+                for reference in "${selected_ghosts[@]}"; do
+                    [[ -z "$reference" ]] && continue
+
+                    game_path="${reference%:*}"
+                    tag="${reference##*:}"
+                    safe_xpath=$(escape_xpath_string "$game_path")    
+
+                    if sudo xmlstarlet ed --inplace -d "(//game[path=$safe_xpath])[1]/$tag" "./gamelist.xml"; then
+                        printf "The ${GREEN}<%s>${ENDCOLOR} tag was successfully removed from the game entry %s in the gamelist.\n" "$tag" "$game_path"
+                    else
+                        printf "${BLUE}Failed to remove the tag from the source gamelist. Check permissions and/or file integrity.${ENDCOLOR}\n"
+                        failed=1
+                    fi
+                    
+                done
+
             ;;
 
             "Cancel operation")
-                :    
+                return 0 
             ;;
 
             *)
                 printf "${BLUE}Invalid option. Try again.${ENDCOLOR}\n"
                 ;;
         esac
+
+    else
+        game_path="${refs_ref["$asset_path"]%:*}"
+        tag="${refs_ref["$asset_path"]##*:}"
+        safe_xpath=$(escape_xpath_string "$game_path")    
+
+        if sudo xmlstarlet ed --inplace -d "(//game[path=$safe_xpath])[1]/$tag" "./gamelist.xml"; then
+            printf "The ${GREEN}<%s>${ENDCOLOR} tag was successfully removed from the game entry %s in the gamelist.\n" "$tag" "$game_path"
+        else
+            printf "${BLUE}Failed to remove the tag from the source gamelist. Check permissions and/or file integrity.${ENDCOLOR}\n"
+            failed=1
+        fi
+
     fi
+
+    return $failed
 }
 
 update_gamelist_node() {
@@ -3987,10 +4037,15 @@ main_menu() {
                     ;;
 
                     "Remove from gamelist.xml")
-                        rm_gamelist_tag "$selected_file" asset_refs \
-                            asset_refs_count asset_game_count
+                        if rm_gamelist_tag "$selected_file" asset_refs \
+                            asset_refs_count asset_game_count; then
+                            printf "${YELLOW}All ghost files were removed successfully.${ENDCOLOR}\n"
+                        else
+                            printf "${BLUE}Failed to remove ghost files. Please check the previous messages for details.${ENDCOLOR}\n"
+                            exit 1
 
-                        # HERE HERE HERE
+                        fi
+
                     ;;
 
                     "Back")
