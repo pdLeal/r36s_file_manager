@@ -1144,6 +1144,28 @@ classify_remaining_files() {
     done
 }
 
+build_cllection_totals() {
+    # Accumulate the number of files for each asset collection.
+    # The individual collection totals are stored in <prefix>_total.
+    local relation=""
+    local type=""
+
+    for relation in "${RELATIONS[@]:0:5}"; do
+        for type in "${TYPES[@]:1}"; do
+            # Skip collections without a corresponding total.
+            is_valid_combo "${relation}_${type}" "total" || continue
+
+            local -n count_ref="${relation}_${type}_total"
+            local -n total_ref="${relation}_total"
+
+            # Skip empty asset collections.
+            (( count_ref == 0 )) && continue
+
+            total_ref=$(( total_ref + count_ref ))
+        done
+    done
+}
+
 reset_analysis_state() {
 # Resets all analysis data before running the directory pipeline.
 
@@ -1588,20 +1610,7 @@ generate_overall_report() {
         # physical files. A single file may therefore contribute to more than
         # one relation category.
         # ----------------------------------------------------------------------
-        for relation in "${RELATIONS[@]}"; do
-            for type in "${TYPES[@]:1}"; do
-                # Skip collections without a corresponding total.
-                is_valid_combo "${relation}_${type}" "total" || continue
-
-                local -n count_ref="${relation}_${type}_total"
-                local -n total_ref="${relation}_total"
-
-                # Do not add empty relation collections to the overall total.
-                (( count_ref == 0 )) && continue
-
-                total_ref=$(( total_ref + count_ref ))
-            done
-        done
+        build_cllection_totals
 
         # ----------------------------------------------------------------------
         # ACCUMULATE OVERALL COUNTS
@@ -3380,6 +3389,8 @@ main_menu() {
                     reset_analysis_state
 
                     analyze_directory "$selected_system_dir"
+
+                    build_cllection_totals
                 
                 fi
 
@@ -3669,26 +3680,6 @@ main_menu() {
                 menu_options=( "See All Files" )
 
                 # --------------------------------------------------------------------------
-                # BUILD COLLECTION TOTALS
-                # --------------------------------------------------------------------------
-                # Accumulate the number of files for each asset collection.
-                # The individual collection totals are stored in <prefix>_total.
-                for relation in "${RELATIONS[@]:0:5}"; do
-                    for type in "${TYPES[@]:1}"; do
-                        # Skip collections without a corresponding total.
-                        is_valid_combo "${relation}_${type}" "total" || continue
-
-                        local -n count_ref="${relation}_${type}_total"
-                        local -n total_ref="${relation}_total"
-
-                        # Skip empty asset collections.
-                        (( count_ref == 0 )) && continue
-
-                        total_ref=$(( total_ref + count_ref ))
-                    done
-                done
-
-                # --------------------------------------------------------------------------
                 # BUILD MENU OPTIONS
                 # --------------------------------------------------------------------------
                 (( valid_total > 0 )) && menu_options+=( "Valid Files" )
@@ -3702,7 +3693,8 @@ main_menu() {
                     "${menu_options[@]}" "Back"
 
                 case "$user_answer" in
-
+                # bug no caminho see all files - ñ apresentas as opções no FILE_ACTION_MENU
+                # TODO: CONSERTAR
                     "See All Files")
                         # All categories are merged into a single collection.
                         # Therefore, no category selection is required in the next menu.
@@ -3929,7 +3921,6 @@ main_menu() {
 
                 STATE="FILE_ACTION_MENU"
                 PREV_STATE="FILE_SELECTION_MENU"
-            # HERE HERE HERE
             ;;
 
             "FILE_ACTION_MENU")
@@ -4063,20 +4054,9 @@ main_menu() {
             ;;
 
             "BATCH_MENU")
-            # TODO: add validação p/ opções de menu
-
-                local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
-                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
-
-                local prefix=""
-                local suffix=""
-                local combo=""
-                local combo_total=""
-
+            # TODO: add validação p/ opções de menu e passar  primeir caso p/ menu abaixo
                 local batch_operation=""
-
-                target_collection=()
-                selected_asset_collection=()
+                build_cllection_totals
 
                 ask_user "Which operation would like to perform?" user_answer \
                     "Move" \
@@ -4087,37 +4067,6 @@ main_menu() {
                     "Back"
 
                 case "$user_answer" in
-                # Essa constução inicial é necessário apenas p/ permitir a escolha manual
-                # no próximo menu...?
-
-                    "Move"|"Copy"|"Delete")
-                        build_target_collection game_library target_collection
-
-                        for prefix in "${prefixes[@]}"; do
-                            for suffix in "${suffixes[@]}"; do
-                                local combo="${prefix}_${suffix}"
-
-                                declare -p "$combo" &>/dev/null || continue
-
-                                case "$prefix" in
-                                    "unlinked"|"unknown")
-                                        build_asset_collection \
-                                            selected_asset_collection \
-                                            "$combo"
-                                    ;;
-
-                                    *)
-                                        build_asset_collection \
-                                            selected_asset_collection \
-                                            "$combo" \
-                                            "${combo}_count"
-                                    ;;
-                                esac
-                            done
-                        done
-
-                    ;;&
-
                     "Move")
                         batch_operation="mv"
                     ;;
@@ -4141,6 +4090,48 @@ main_menu() {
 
                 STATE="BATCH_COLLECTION_MENU"
                 PREV_STATE="BATCH_MENU"
+                 # Essa constução inicial é necessário apenas p/ permitir a escolha manual
+                # no próximo menu...?
+
+                    # local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
+                    # local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
+
+                    # local prefix=""
+                    # local suffix=""
+                    # local combo=""
+                    # local combo_total=""
+
+                    # target_collection=()
+                    # selected_asset_collection=()
+
+
+                    # "Move"|"Copy"|"Delete")
+                    #     build_target_collection game_library target_collection
+
+                    #     for prefix in "${prefixes[@]}"; do
+                    #         for suffix in "${suffixes[@]}"; do
+                    #             local combo="${prefix}_${suffix}"
+
+                    #             declare -p "$combo" &>/dev/null || continue
+
+                    #             case "$prefix" in
+                    #                 "unlinked"|"unknown")
+                    #                     build_asset_collection \
+                    #                         selected_asset_collection \
+                    #                         "$combo"
+                    #                 ;;
+
+                    #                 *)
+                    #                     build_asset_collection \
+                    #                         selected_asset_collection \
+                    #                         "$combo" \
+                    #                         "${combo}_count"
+                    #                 ;;
+                    #             esac
+                    #         done
+                    #     done
+
+                    # ;;&
 
             ;;
 
@@ -4169,33 +4160,6 @@ main_menu() {
                 local combo_total=""
 
                 local batch_type=""
-
-                # --------------------------------------------------------------------------
-                # BUILD COLLECTION TOTALS
-                # --------------------------------------------------------------------------
-
-                # Accumulate the number of files for each asset collection.
-                # The individual collection totals are stored in <prefix>_total.
-                for prefix in "${prefixes[@]}"; do
-                    for suffix in "${suffixes[@]}"; do
-                        combo="${prefix}_${suffix}"
-                        combo_total="${combo}_total"
-
-                        # Skip collections that do not exist.
-                        declare -p "$combo" &>/dev/null || continue
-
-                        # Skip collections without a corresponding total.
-                        declare -p "$combo_total" &>/dev/null || continue
-
-                        local -n count_ref="$combo_total"
-                        local -n total_ref="${prefix}_total"
-
-                        # Skip empty asset collections.
-                        (( count_ref == 0 )) && continue
-
-                        total_ref=$(( total_ref + count_ref ))
-                    done
-                done
 
                 # --------------------------------------------------------------------------
                 # BUILD MENU OPTIONS
