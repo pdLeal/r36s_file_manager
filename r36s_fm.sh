@@ -531,16 +531,16 @@ build_asset_index() {
     # <prefix>_game_count[path]
     #     Number of distinct games referencing the asset.
     #
-    # <prefix>_tags[path]
-    #     image|thumbnail
+    # <prefix>_relations[path]
+    #     valid|orphan
     # =========================================================================
     local -n asset_collection_ref="$1"
     local -n relation_context_ref="$2"
+    local relation="$3"
 
-    # local asset_type="${3%s}"
     local asset_type
-    if [[ -n "${3:-}" ]]; then
-    asset_type="${3%s}"
+    if [[ -n "${4:-}" ]]; then
+    asset_type="${4%s}"
     else
     asset_type="NOT SET"
     fi
@@ -551,7 +551,7 @@ build_asset_index() {
     local -n asset_refs_count_ref="${asset_prefix}_refs_count"
     local -n asset_games_ref="${asset_prefix}_games"
     local -n asset_game_count_ref="${asset_prefix}_game_count"
-    # local -n asset_tags_ref="${asset_prefix}_tags"
+    local -n asset_relations_ref="${asset_prefix}_relations"
 
     # Internal lookup tables used to avoid duplicate games/tags.
     local list=""
@@ -565,8 +565,6 @@ build_asset_index() {
     for game_path in "${!asset_collection_ref[@]}"; do
         value="${asset_collection_ref[$game_path]}"
 
-        # printf "Game: %s\nAsset: %s\n\n" "$game_path" "$asset_path"
-
         if [[ "$value" == *"|"* ]]; then
             IFS='|' read -ra asset_paths <<< "$value"
             
@@ -578,10 +576,6 @@ build_asset_index() {
             # ---------------------------------------------------------------------
             # Register the complete reference.
             # ---------------------------------------------------------------------
-
-            # Resquícios de uma outra versão e não utilizadas pelo programa atualmente
-            # APAGAR CASO REALMENTE SE MOSTRE SEM USO ATÉ O FINAL!!!
-
             register_reference \
                 "$asset_path" \
                 "$game_path:$asset_type" \
@@ -602,16 +596,16 @@ build_asset_index() {
             fi
 
             # ---------------------------------------------------------------------
-            # Register the tag only once per asset.
+            # Register the relation only once per asset.
             # ---------------------------------------------------------------------
-            # list="|${asset_tags_ref["$asset_path"]:-}|"
+            list="|${asset_relations_ref["$asset_path"]:-}|"
 
-            # if [[ "$list" != *"|$asset_type|"* ]]; then
-            #     register_reference \
-            #         "$asset_path" \
-            #         "$asset_type" \
-            #         asset_tags_ref
-            # fi
+            if [[ "$list" != *"|$relation|"* ]]; then
+                register_reference \
+                    "$asset_path" \
+                    "$relation" \
+                    asset_relations_ref
+            fi
         done
     done
 }
@@ -1234,7 +1228,7 @@ reset_analysis_state() {
     asset_games=()
     asset_game_count=()
 
-    asset_tags=()
+    asset_relations=()
 
     # ----------------------------------------------------------------------
     # LINKED FILES
@@ -1434,7 +1428,8 @@ analyze_directory() {
 
             build_asset_index \
                 arr_ref \
-                relation_context "$type"
+                relation_context "$relation" \
+                "$type"
         done
 
     done
@@ -3203,7 +3198,7 @@ main_menu() {
     local -A asset_games=()
     local -Ai asset_game_count=()
 
-    local -A asset_tags=()
+    local -A asset_relations=()
 
     # --------------------------------------------------------------------------
     # LINKED FILES
@@ -3693,8 +3688,6 @@ main_menu() {
                     "${menu_options[@]}" "Back"
 
                 case "$user_answer" in
-                # bug no caminho see all files - ñ apresentas as opções no FILE_ACTION_MENU
-                # TODO: CONSERTAR
                     "See All Files")
                         # All categories are merged into a single collection.
                         # Therefore, no category selection is required in the next menu.
@@ -3934,6 +3927,17 @@ main_menu() {
                         menu_options+=( "Remove from gamelist.xml" )
                     
                     ;;
+
+                    "all")
+                        local list=""
+                        list="|${asset_relations["$selected_file"]:-}|"
+                        if [[ "$list" == *"|ghost|"* ]]; then
+                            menu_options+=( "Remove from gamelist.xml" )
+                        else
+                            menu_options+=( "Move" "Copy" "Delete" )
+
+                        fi
+                    ;;
                 
                 esac
 
@@ -4055,6 +4059,7 @@ main_menu() {
 
             "BATCH_MENU")
             # TODO: add validação p/ opções de menu e passar  primeir caso p/ menu abaixo
+            # e consertar uns prefix/suffix restantes pra baixo
                 local batch_operation=""
                 build_cllection_totals
 
@@ -4148,16 +4153,6 @@ main_menu() {
                 (( ${#valid_games[@]} > 0 )) && menu_options+=( "Select XML games" )
                 (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Select orphan games" )
                 (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Select ghost games" )
-
-                # TODO: adicionar ghost_* em uma porrada de lugar ignorado até agora =)
-                local prefixes=( "valid" "orphan" "linked" "unlinked" "unknown" )
-                local suffixes=( "images" "videos" "marquees" "thumbnails" "auxiliary" "configs" "files" )
-
-                local prefix=""
-                local selected_relation=""
-                local suffix=""
-                local combo=""
-                local combo_total=""
 
                 local batch_type=""
 
