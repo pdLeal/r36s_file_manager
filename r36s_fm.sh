@@ -4058,6 +4058,7 @@ main_menu() {
             ;;
 
             "BATCH_MENU")
+            # Pre-refactor
                 local batch_operation=""
                 menu_options=()
                 build_cllection_totals
