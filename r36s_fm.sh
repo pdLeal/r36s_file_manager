@@ -3049,6 +3049,32 @@ find_games() {
     fi
 }
 
+build_asset_collection_by_type() {
+    local -n collection_to_build_ref="$1"
+    local relation="$2"
+
+    local type=""
+
+    for type in "${TYPES[@]:1}"; do
+        is_valid_combo "$relation" "$type" || continue
+
+        case "$relation" in
+            "unlinked"|"unknown")
+                build_asset_collection \
+                    collection_to_build_ref \
+                    "${relation}_${type}"
+            ;;
+
+            *)
+                build_asset_collection \
+                    collection_to_build_ref \
+                    "${relation}_${type}" \
+                    "${relation}_${type}_count"
+            ;;
+        esac
+    done
+}
+
 # Initial application state
 STATE="LOOK"
 PREV_STATE=""
@@ -4142,25 +4168,8 @@ main_menu() {
 
                         for relation in "${RELATIONS[@]}"; do
                             [[ "$relation" == "ghost" ]] && continue
-
-                            for type in "${TYPES[@]:1}"; do
-                                is_valid_combo "$relation" "$type" || continue
-
-                                case "$relation" in
-                                    "unlinked"|"unknown")
-                                        build_asset_collection \
-                                            selected_asset_collection \
-                                            "${relation}_${type}"
-                                    ;;
-
-                                    *)
-                                        build_asset_collection \
-                                            selected_asset_collection \
-                                            "${relation}_${type}" \
-                                            "${relation}_${type}_count"
-                                    ;;
-                                esac
-                            done
+                            build_asset_collection_by_type selected_asset_collection "$relation"
+                            
                         done
 
 
@@ -4178,31 +4187,14 @@ main_menu() {
                     "rm_node")
                     
                         (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Manual select: Games" )
-                        (( ${#asset_refs[@]} > 0 )) && menu_options+=( "Manual select: Assets" )
+                        (( ghost_total > 0 )) && menu_options+=( "Manual select: Assets" )
                         
                         (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Select ghost games" )
                         (( ghost_total > 0 )) && menu_options+=( "Select ghost files" )
 
                         build_target_collection ghost_games target_collection
-
-                        for type in "${TYPES[@]:1}"; do
-                            is_valid_combo "ghost" "$type" || continue
-
-                            case "$relation" in
-                                "unlinked"|"unknown")
-                                    build_asset_collection \
-                                        selected_asset_collection \
-                                        "ghost_${type}"
-                                ;;
-
-                                *)
-                                    build_asset_collection \
-                                        selected_asset_collection \
-                                        "ghost_${type}" \
-                                        "ghost_${type}_count"
-                                ;;
-                            esac
-                        done
+                        build_asset_collection_by_type selected_asset_collection "ghost"
+                        
                     ;;
 
                 esac
@@ -4262,24 +4254,8 @@ main_menu() {
 
                     "Select all assets")
                         for relation in "${RELATIONS[@]}"; do
-                            for type in "${TYPES[@]:1}"; do
-                                is_valid_combo "$relation" "$type" || continue
-
-                                case "$relation" in
-                                    "unlinked"|"unknown")
-                                        build_asset_collection \
-                                            selected_batch \
-                                            "${relation}_${type}"
-                                    ;;
-
-                                    *)
-                                        build_asset_collection \
-                                            selected_batch \
-                                            "${relation}_${type}" \
-                                            "${relation}_${type}_count"
-                                    ;;
-                                esac
-                            done
+                            build_asset_collection_by_type selected_batch "$relation"
+                            
                         done
                     
                     ;;
@@ -4291,14 +4267,8 @@ main_menu() {
                     ;;
 
                     "Select valid files")
-                        for type in "${TYPES[@]:1}"; do
-                                is_valid_combo "valid" "$type" || continue
-
-                            build_asset_collection \
-                                selected_batch \
-                                "valid_${type}" \
-                                "valid_${type}_count"     
-                        done
+                        build_asset_collection_by_type selected_batch "valid"
+                        
                     ;;
 
                     "Select orphan games")
@@ -4308,14 +4278,7 @@ main_menu() {
                     ;;
 
                     "Select orphan files")
-                        for type in "${TYPES[@]:1}"; do
-                            is_valid_combo "orphan" "$type" || continue
-
-                            build_asset_collection \
-                                selected_batch \
-                                "orphan_${type}" \
-                                "orphan_${type}_count"    
-                        done
+                        build_asset_collection_by_type selected_batch "orphan"
                     
                     ;;
 
@@ -4326,50 +4289,22 @@ main_menu() {
                     ;;
 
                     "Select ghost files")
-                        for type in "${TYPES[@]:1}"; do
-                            is_valid_combo "ghost" "$type" || continue
-
-                            build_asset_collection \
-                                selected_batch \
-                                "ghost_${type}" \
-                                "ghost_${type}_count"    
-                        done
-
+                        build_asset_collection_by_type selected_batch "ghost"
+                        
                     ;;
 
                     "Select linked files")
-                        for type in "${TYPES[@]:1}"; do
-                            is_valid_combo "linked" "$type" || continue
-
-                            build_asset_collection \
-                                selected_batch \
-                                "linked_${type}" \
-                                "linked_${type}_count"    
-                        done
-                    
+                        build_asset_collection_by_type selected_batch "linked"
+                        
                     ;;
 
                     "Select unlinked files")
-                        for type in "${TYPES[@]:1}"; do
-                            is_valid_combo "unlinked" "$type" || continue
-
-                            build_asset_collection \
-                                selected_batch \
-                                "unlinked_${type}" \
-                                "unlinked_${type}_count"    
-                        done
+                        build_asset_collection_by_type selected_batch "unlinked"
                     
                     ;;
 
                     "Select unknown files")
-                        for type in "${TYPES[@]:1}"; do
-                            is_valid_combo "unknown" "$type" || continue
-
-                            build_asset_collection \
-                                selected_batch \
-                                "unknown_${type}" \
-                                "unknown_${type}_count"    
-                        done
+                        build_asset_collection_by_type selected_batch "unknown"
                     
                     ;;
 
