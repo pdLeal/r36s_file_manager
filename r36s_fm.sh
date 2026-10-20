@@ -1650,9 +1650,9 @@ generate_overall_report() {
 
 sort_files() {
 # Sorts the provided game names alphabetically (case-insensitive).
-    local -n sorted="$1"
+    local -n sorted_ref="$1"
     shift
-    mapfile -t sorted < <( printf "%s\n" "$@" | sort -f )
+    mapfile -t sorted_ref < <( printf "%s\n" "$@" | sort -f )
 }
 
 build_target_collection() {
@@ -3075,6 +3075,30 @@ build_asset_collection_by_type() {
     done
 }
 
+manual_selection() {
+    local -n collection="$1"
+    local -n selected="$2"
+
+    local sorted=()
+    local opt=()
+    sort_files sorted "${!collection[@]}"
+
+    printf "\n${RED}Select by entering the desired number, then press Enter.${ENDCOLOR}\n"
+    select opt in "${sorted[@]}" "End selection"; do
+
+        if is_valid_option "$REPLY" "${#sorted[@]}"; then
+            selected["${sorted["$REPLY - 1"]}"]="${collection["${sorted["$REPLY - 1"]}"]}"
+
+        elif [[ "$opt" == "End selection" ]]; then
+            break
+
+        else
+            printf "${BLUE}Invalid option! Try again${ENDCOLOR}\n"
+
+        fi               
+    done
+}
+
 # Initial application state
 STATE="LOOK"
 PREV_STATE=""
@@ -4176,7 +4200,6 @@ main_menu() {
                     ;;
 
                     "add")
-
                         (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Manual select: Games" )
                         (( ${#orphan_games[@]} > 0 )) && menu_options+=( "Select orphan games" )
 
@@ -4185,7 +4208,6 @@ main_menu() {
                     ;;
 
                     "rm_node")
-                    
                         (( ${#ghost_games[@]} > 0 )) && menu_options+=( "Manual select: Games" )
                         (( ghost_total > 0 )) && menu_options+=( "Manual select: Assets" )
                         
@@ -4203,47 +4225,15 @@ main_menu() {
                     "${menu_options[@]}" "Back"
 
                 case "$user_answer" in
+                # HERE HERE HERE
                     "Manual select: Games")
-                        sorted_games=()
-                        sort_files sorted_games "${!target_collection[@]}"
-
-                        printf "\n${RED}Select a game by entering their number, then press Enter.${ENDCOLOR}\n"
-                        select opt in "${sorted_games[@]}" "End selection"; do
-
-                            if is_valid_option "$REPLY" "${#sorted_games[@]}"; then
-                                selected_batch["${sorted_games["$REPLY - 1"]}"]="${target_collection["${sorted_games["$REPLY - 1"]}"]}"
-            
-                            elif [[ "$opt" == "End selection" ]]; then
-                                break
-
-                            else
-                                printf "${BLUE}Invalid option! Try again${ENDCOLOR}\n"
-
-                            fi               
-                        done
+                        manual_selection target_collection selected_batch
                         batch_type="games"
                         
                     ;;
 
                     "Manual select: Assets")
-                        local sorted_assets=()
-                        sort_files sorted_assets "${!selected_asset_collection[@]}"
-                        
-                        printf "\n${RED}Select a file by entering their number, then press Enter.${ENDCOLOR}\n"
-
-                        select opt in "${sorted_assets[@]}" "End selection"; do
-
-                            if is_valid_option "$REPLY" "${#sorted_assets[@]}"; then
-                                selected_batch["${sorted_assets["$REPLY - 1"]}"]="${selected_asset_collection["${sorted_assets["$REPLY - 1"]}"]}" 
-            
-                            elif [[ "$opt" == "End selection" ]]; then
-                                break
-
-                            else
-                                printf "${BLUE}Invalid option! Try again${ENDCOLOR}\n"
-
-                            fi               
-                        done
+                        manual_selection selected_asset_collection selected_batch
                     
                     ;;
 
